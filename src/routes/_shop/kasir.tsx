@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Html5Qrcode } from "html5-qrcode";
 import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { checkout, listMasters, listPartners, listShifts, searchProducts } from "@/lib/shop/api";
-import { digits, grouped, rupiah, when } from "@/lib/shop/format";
+import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
+import { checkout, listMasters, listPartners, listShifts, savePartner, saveProduct, searchProducts } from "@/lib/shop/api";
+import { digits, grouped, rupiah } from "@/lib/shop/format";
+import { printSaleReceipt } from "@/lib/shop/print";
 import type { Bank, Partner, Product, Shift } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/kasir")({ component: KasirPage });
@@ -45,7 +47,8 @@ function KasirPage() {
   const [busy, setBusy] = useState(false);
   const [camera, setCamera] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
   const scanLock = useRef(false);
 
   useEffect(() => {
@@ -79,47 +82,30 @@ function KasirPage() {
   }, [q]);
 
   useEffect(() => {
-    if (!camera || !videoRef.current) return;
-    const video = videoRef.current;
-    let stop = false;
-    let stream: MediaStream | null = null;
-    const Detector = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => { detect: (src: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector;
-    void (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        video.srcObject = stream;
-        await video.play();
-        if (!Detector) {
-          toast.error("Browser ini tidak punya pembaca barcode. Ketik kode atau pakai alat scan.");
-          return;
-        }
-        const detector = new Detector({ formats: ["code_128", "ean_13", "code_39", "qr_code"] });
-        const tick = async () => {
-          if (stop) return;
-          try {
-            const codes = await detector.detect(video);
-            const value = codes[0]?.rawValue;
-            if (value && !scanLock.current) {
-              scanLock.current = true;
-              setQ(value);
-              beep();
-              setCamera(false);
-              return;
-            }
-          } catch {
-            /* frame not ready */
-          }
-          requestAnimationFrame(() => void tick());
-        };
-        void tick();
-      } catch {
-        toast.error("Kamera tidak bisa dibuka.");
+    if (!camera) return;
+    scanLock.current = false;
+    const reader = new Html5Qrcode("kasir-qr");
+    let stopped = false;
+    reader
+      .start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 140 } },
+        (value) => {
+          if (stopped || scanLock.current) return;
+          scanLock.current = true;
+          setQ(value);
+          beep();
+          setCamera(false);
+        },
+        () => undefined,
+      )
+      .catch(() => {
+        toast.error("Kamera tidak bisa dibuka. Ketik kode atau pakai alat scan USB.");
         setCamera(false);
-      }
-    })();
+      });
     return () => {
-      stop = true;
-      stream?.getTracks().forEach((track) => track.stop());
+      stopped = true;
+      void reader.stop().then(() => reader.clear()).catch(() => undefined);
     };
   }, [camera]);
 
@@ -165,6 +151,7 @@ function KasirPage() {
   async function pay() {
     if (!shiftId) return toast.error("Shift belum aktif.");
     if (cart.length === 0) return toast.error("Keranjang kosong.");
+    if (cart.some((line) => line.harga <= 0)) return toast.error("Isi harga satuan.");
     setBusy(true);
     try {
       const result = (await checkout({
@@ -178,7 +165,7 @@ function KasirPage() {
           items: cart.map((line) =>
             line.custom
               ? { custom: line.custom, qty: line.qty, harga: line.harga }
-              : { productId: line.productId, qty: line.qty, isAlt: line.isAlt },
+              : { productId: line.productId, qty: line.qty, isAlt: line.isAlt, harga: line.harga },
           ),
         },
       })) as {
@@ -196,12 +183,12 @@ function KasirPage() {
         kasir: string;
         lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string }>;
       };
-      printReceipt(result);
+      printSaleReceipt(result);
       setCart([]);
       setBayar("");
       setDiskon("");
       setMetode("Tunai");
-      toast.success(`Nota ${result.nomor} tersimpan.`);
+      toast.success(`${me.role} · Nota ${result.nomor} tersimpan.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Gagal menyimpan");
     } finally {
@@ -217,7 +204,7 @@ function KasirPage() {
         </div>
         <input
           className={inputClass}
-          placeholder="Ketik Nama / Scan Barcode..."
+          placeholder="Ketik nama, part, kategori (oli), atau scan barcode..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -231,32 +218,42 @@ function KasirPage() {
         />
         {camera ? (
           <div className="relative mt-3 overflow-hidden rounded-lg bg-slate-900">
-            <video ref={videoRef} className="aspect-video w-full" muted playsInline />
+            <div id="kasir-qr" className="min-h-48 w-full" />
             <button className="absolute top-2 right-2 rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" onClick={() => setCamera(false)}>Tutup Kamera</button>
           </div>
         ) : null}
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
-          {me.role === "Admin" ? (
-            <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500" onClick={() => toast.message("Barang baru ditambah dari menu Daftar Sparepart.")}>Tambah Baru</button>
+          {me.role !== "Kasir" ? (
+            <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500" onClick={() => setProductOpen(true)}>Tambah Baru</button>
           ) : null}
           <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-purple-300 text-xs text-purple-500" onClick={() => setCustomOpen(true)}>Jasa / Item Custom</button>
           {!camera ? <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-green-300 text-xs text-green-500" onClick={() => setCamera(true)}>Scan Barcode (Kamera)</button> : null}
-          {hits.map((item) => (
-            <button key={item.id} className="flex min-h-20 flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50" onClick={() => { addProduct(item, false, false); setQ(""); setHits([]); }}>
-              <span>
-                <span className="line-clamp-2 text-xs font-medium">{item.nama}{item.kodePajak ? ` (${item.kodePajak})` : ""}</span>
-                <span className="mt-1 block font-mono text-[10px] text-blue-600">PN: {item.partNumber || item.kode}</span>
-                {item.merek ? <span className="mt-0.5 block text-[10px] text-slate-500">{item.merek}</span> : null}
-              </span>
-              <span className="mt-2 flex items-end justify-between">
-                <span className="text-sm font-bold text-green-600">{rupiah(item.hargaJual)}</span>
-                <span className="text-[10px] text-slate-500">Stok: {item.stok} {item.satuan}</span>
-              </span>
-              {item.satuanAlt ? (
-                <span className="mt-2 text-[10px] font-bold text-blue-600" onClick={(event) => { event.stopPropagation(); addProduct(item, true, true); setQ(""); setHits([]); }}>+ {item.satuanAlt}</span>
-              ) : null}
-            </button>
-          ))}
+          {hits.map((item) => {
+            const dusOk = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
+            const dusStok = dusOk ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
+            const habis = item.stok <= 0;
+            return (
+              <div key={item.id} className="flex min-h-28 flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50">
+                <div>
+                  <p className="line-clamp-2 text-xs font-semibold"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</p>
+                  <p className="mt-1 font-mono text-[10px] text-blue-600">PN: {item.partNumber || item.kode || "-"}</p>
+                  {item.merek ? <p className="text-[10px] text-slate-500">{item.merek}</p> : null}
+                </div>
+                <div className="mt-2 flex items-center gap-1">
+                  <button className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700" onClick={() => addProduct(item, false, false)}>Pcs</button>
+                  <button className="rounded bg-blue-600 px-2 py-1 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!dusOk} title={dusOk ? "" : "Isi satuan dus lewat Ubah di Daftar Sparepart"} onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button>
+                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"}`}>{habis ? "HABIS" : "CUKUP"}</span>
+                </div>
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <span className="text-[11px] font-bold text-green-600">
+                    {rupiah(item.hargaJual)} / {item.satuan}
+                    {dusOk ? <span className="mt-0.5 block text-blue-700">{rupiah(item.hargaJualAlt)} / {item.satuanAlt}</span> : null}
+                  </span>
+                  <span className="text-right text-[10px] text-slate-500">Stok: {item.stok} {item.satuan}{dusOk ? ` · ${dusStok} ${item.satuanAlt}` : ""}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Panel>
       <Panel className={`flex flex-col ${metode === "Bon" ? "ring-2 ring-red-500" : ""}`}>
@@ -274,7 +271,14 @@ function KasirPage() {
         </div>
         <div className="mt-3">
           <Field label="Pelanggan">
-            <select className={inputClass} value={customer} onChange={(e) => setCustomer(e.target.value)}>
+            <select className={inputClass} value={customer} onChange={(e) => {
+              if (e.target.value === "__new__") {
+                setPartnerOpen(true);
+                setCustomer("Umum");
+                return;
+              }
+              setCustomer(e.target.value);
+            }}>
               <option value="Umum">Umum / Cash</option>
               <optgroup label="Pelanggan">
                 {partners.filter((partner) => partner.tipe === "Pelanggan").map((partner) => <option key={partner.id} value={partner.nama}>{partner.nama}</option>)}
@@ -282,6 +286,7 @@ function KasirPage() {
               <optgroup label="Supplier">
                 {partners.filter((partner) => partner.tipe === "Supplier").map((partner) => <option key={partner.id} value={partner.nama}>{partner.nama}</option>)}
               </optgroup>
+              <option value="__new__">+ Tambah Pelanggan Baru...</option>
             </select>
           </Field>
         </div>
@@ -304,19 +309,27 @@ function KasirPage() {
                       <option value="base">{line.satuanBase}</option>
                       <option value="alt">{line.satuanAlt}</option>
                     </select>
-                  ) : <p className="mt-0.5 text-[10px] font-bold text-indigo-600">{line.satuan}{line.isAlt ? ` (@${line.konv})` : ""}</p>}
+                  ) : <p className="mt-0.5 text-[10px] font-bold text-indigo-600">{line.satuan}{line.isAlt ? ` · 1 ${line.satuan} = ${line.isi} pcs` : ""}</p>}
+                  <p className="text-[10px] text-slate-500">Stok berkurang {line.qty * line.konv} pcs</p>
                 </div>
                 <button aria-label="Hapus" onClick={() => setCart((prev) => prev.filter((item) => item.key !== line.key))}><Trash2 className="size-3 text-red-400" /></button>
               </div>
               <div className="mt-1 flex items-center justify-between">
                 <div className="flex items-center gap-1">
-                  <button className="size-5 rounded bg-slate-100 text-xs font-bold" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: Math.max(1, item.qty - 1) } : item))}>-</button>
+                  <button className="qty-btn bg-slate-200" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: Math.max(1, item.qty - 1) } : item))}>-</button>
                   <input className="num w-10 rounded border border-slate-200 p-0.5 text-center text-xs" value={line.qty} onChange={(e) => {
                     const qty = Math.max(1, Number(e.target.value) || 1);
                     setCart((prev) => prev.map((item) => (item.key === line.key ? { ...item, qty } : item)));
                   }} />
-                  <button className="size-5 rounded bg-slate-100 text-xs font-bold" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: item.qty + 1 } : item))}>+</button>
+                  <button className="qty-btn bg-slate-200" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: item.qty + 1 } : item))}>+</button>
                 </div>
+                <label className="text-[10px] text-slate-500">
+                  Harga {line.satuan}
+                  <input className="num mt-0.5 w-28 rounded border border-slate-200 p-1 text-right text-xs font-bold" inputMode="numeric" value={grouped(line.harga)} onChange={(e) => {
+                    const harga = digits(e.target.value);
+                    setCart((prev) => prev.map((item) => (item.key === line.key ? { ...item, harga } : item)));
+                  }} />
+                </label>
                 <span className="num text-xs font-bold">{rupiah(line.harga * line.qty)}</span>
               </div>
             </li>
@@ -399,7 +412,7 @@ function KasirPage() {
               <span className="num text-2xl font-extrabold text-red-600">{rupiah(total)}</span>
             </div>
           </div>
-          <button className="w-full rounded-lg bg-green-600 p-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || !shiftId || cart.length === 0} onClick={() => void pay()}>
+          <button className="w-full rounded-lg bg-green-600 p-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || !shiftId || cart.length === 0 || (metode === "Tunai" && bayarNum < total) || (metode === "Split" && (bayarNum <= 0 || bayarNum >= total || !bank)) || (metode === "Transfer" && !bank) || (metode === "Bon" && customer === "Umum")} onClick={() => void pay()}>
             {busy ? "Menyimpan..." : metode === "Bon" ? "Simpan Bon (Hutang)" : "Proses Bayar & Simpan"}
           </button>
         </div>
@@ -413,6 +426,17 @@ function KasirPage() {
           }}
         />
       ) : null}
+      {partnerOpen ? (
+        <QuickPartner
+          onClose={() => setPartnerOpen(false)}
+          onSave={(nama) => {
+            setCustomer(nama);
+            setPartnerOpen(false);
+            void listPartners().then(setPartners);
+          }}
+        />
+      ) : null}
+      {productOpen ? <QuickProduct onClose={() => setProductOpen(false)} onSaved={() => { setProductOpen(false); toast.success("Barang ditambahkan"); }} /> : null}
     </div>
   );
 }
@@ -443,6 +467,73 @@ function CustomItem({ onClose, onAdd }: { onClose: () => void; onAdd: (nama: str
   );
 }
 
+function QuickPartner({ onClose, onSave }: { onClose: () => void; onSave: (nama: string) => void }) {
+  const [nama, setNama] = useState("");
+  const [telp, setTelp] = useState("");
+  const [busyForm, setBusyForm] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
+      <form className="w-full max-w-sm rounded-2xl bg-panel p-4" onSubmit={(e) => {
+        e.preventDefault();
+        if (!nama.trim()) return;
+        setBusyForm(true);
+        void savePartner({ data: { nama: nama.trim(), tipe: "Pelanggan", telp, alamat: "" } })
+          .then(() => onSave(nama.trim()))
+          .catch((error: Error) => toast.error(error.message))
+          .finally(() => setBusyForm(false));
+      }}>
+        <h3 className="font-semibold">Pelanggan baru</h3>
+        <div className="mt-3 space-y-3">
+          <input className={inputClass} placeholder="Nama pelanggan" value={nama} onChange={(e) => setNama(e.target.value)} />
+          <input className={inputClass} placeholder="Telepon" value={telp} onChange={(e) => setTelp(e.target.value)} />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="h-11 px-3" onClick={onClose}>Batal</button>
+          <PrimaryButton type="submit" disabled={busyForm}>Simpan</PrimaryButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function QuickProduct({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [nama, setNama] = useState("");
+  const [part, setPart] = useState("");
+  const [kategori, setKategori] = useState("SPAREPART");
+  const [harga, setHarga] = useState("");
+  const [stok, setStok] = useState("0");
+  const [busyForm, setBusyForm] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
+      <form className="w-full max-w-sm rounded-2xl bg-panel p-4" onSubmit={(e) => {
+        e.preventDefault();
+        setBusyForm(true);
+        void saveProduct({
+          data: {
+            partNumber: part, partNumbersAlt: "", nama, kategori, merek: "", satuan: "Pcs", stokMin: 0,
+            stok: Number(stok) || 0, hargaBeli: 0, hargaJual: digits(harga), satuanAlt: "", isiSatuanAlt: 0,
+            hargaJualAlt: 0, pajakStatus: "Non Pajak", kodePajak: "", keterangan: "",
+          },
+        }).then(() => onSaved()).catch((error: Error) => toast.error(error.message)).finally(() => setBusyForm(false));
+      }}>
+        <h3 className="font-semibold">Barang baru</h3>
+        <p className="mt-1 text-xs text-muted">Satuan dus dan harga beli bisa dilengkapi nanti di Daftar Sparepart.</p>
+        <div className="mt-3 space-y-3">
+          <input className={inputClass} placeholder="Nama barang" value={nama} onChange={(e) => setNama(e.target.value)} />
+          <input className={inputClass} placeholder="Part number" value={part} onChange={(e) => setPart(e.target.value)} />
+          <input className={inputClass} placeholder="Kategori, contoh Oli" value={kategori} onChange={(e) => setKategori(e.target.value)} />
+          <input className={`${inputClass} num`} placeholder="Harga jual" inputMode="numeric" value={harga} onChange={(e) => setHarga(grouped(digits(e.target.value)))} />
+          <input className={`${inputClass} num`} placeholder="Stok awal" inputMode="numeric" value={stok} onChange={(e) => setStok(e.target.value.replace(/\D/g, ""))} />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="h-11 px-3" onClick={onClose}>Batal</button>
+          <PrimaryButton type="submit" disabled={busyForm}>Simpan</PrimaryButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function beep() {
   try {
     const ctx = new AudioContext();
@@ -459,41 +550,3 @@ function beep() {
   }
 }
 
-function printReceipt(result: {
-  nomor: string;
-  total: number;
-  subtotal: number;
-  diskon: number;
-  bayarTunai: number;
-  kembalian: number;
-  transfer: number;
-  status: string;
-  metode: string;
-  bank: string;
-  customer: string;
-  kasir: string;
-  lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string }>;
-}) {
-  const rows = (result.lines ?? []).map((line) => {
-    const lineTotal = Number(line.harga) * Number(line.qty);
-    return `<div style="margin-bottom:6px"><b>${line.nama}${line.kodePajak ? " (" + line.kodePajak + ")" : ""}</b><div style="display:flex;justify-content:space-between"><span>${line.qty} ${line.satuan} x ${rupiah(line.harga)}</span><span>${rupiah(lineTotal)}</span></div></div>`;
-  }).join("");
-  const pay = result.status === "Bon"
-    ? `<div style="text-align:center;border:2px solid #8f2d2d;color:#8f2d2d;padding:6px;font-weight:700">BON / BELUM LUNAS</div>`
-    : `<div>Metode: ${result.metode}</div>${result.bank ? `<div>Bank: ${result.bank}</div>` : ""}${result.metode === "Tunai" ? `<div>Terima: ${rupiah(result.bayarTunai)}</div><div>Kembali: ${rupiah(result.kembalian)}</div>` : ""}${result.metode === "Split" ? `<div>Tunai: ${rupiah(result.bayarTunai)}</div><div>Transfer: ${rupiah(result.transfer)}</div>` : ""}`;
-  const html = `<!doctype html><html><head><title>${result.nomor}</title><style>@page{size:80mm auto;margin:0}body{font-family:monospace;width:80mm;margin:0;padding:8px;font-size:12px}</style></head><body>
-    <div style="text-align:center"><b>MURIA JAYA SAKTI</b><div>Jl. Raja Alam RT.13 No.22</div><div>0852-4717-7445</div></div>
-    <hr>
-    <div>No: ${result.nomor}</div><div>${when(new Date().toISOString())}</div><div>Kasir: ${result.kasir}</div><div>Pelanggan: ${result.customer}</div>
-    <hr>${rows}<hr>
-    <div style="display:flex;justify-content:space-between"><span>Subtotal</span><b>${rupiah(result.subtotal)}</b></div>
-    ${Number(result.diskon) > 0 ? `<div style="display:flex;justify-content:space-between"><span>Diskon</span><b>- ${rupiah(result.diskon)}</b></div>` : ""}
-    <div style="display:flex;justify-content:space-between;font-size:16px"><span>TOTAL</span><b>${rupiah(result.total)}</b></div>
-    <hr>${pay}<p style="text-align:center">Terima kasih</p>
-  </body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => win.print(), 300);
-}

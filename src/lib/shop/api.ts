@@ -62,12 +62,13 @@ export const searchProducts = createServerFn({ method: "GET" })
   });
 
 export const listProducts = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; kategori?: string; page?: number; sort?: string; status?: string }) => ({
+  .validator((input: { q?: string; kategori?: string; page?: number; sort?: string; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
     kategori: String(input?.kategori ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
     sort: String(input?.sort ?? "nama"),
     status: String(input?.status ?? ""),
+    all: Boolean(input?.all),
   }))
   .handler(async ({ data }) => {
     const { listProducts: run } = await import("./logic.server");
@@ -158,6 +159,13 @@ export const closeShift = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const deleteClosedShift = createServerFn({ method: "POST" })
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const { deleteClosedShift: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const addCashMove = createServerFn({ method: "POST" })
   .validator((input: { jenis: string; jumlah: number; keterangan: string; shiftId: string }) => input)
   .handler(async ({ data }) => {
@@ -207,10 +215,51 @@ export const editBon = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const editSale = createServerFn({ method: "POST" })
+  .validator((input: Record<string, unknown>) => input)
+  .handler(async ({ data }) => {
+    const { editSale: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const editManual = createServerFn({ method: "POST" })
+  .validator((input: { nomor: string; tujuan: string; keterangan: string; lines: Array<{ id: number; qty: number; jenis: string; productId?: number | null; isAlt?: boolean }> }) => ({
+    nomor: String(input?.nomor ?? ""),
+    tujuan: String(input?.tujuan ?? ""),
+    keterangan: String(input?.keterangan ?? ""),
+    lines: Array.isArray(input?.lines)
+      ? input.lines.map((line) => ({
+          id: Number(line.id),
+          qty: Number(line.qty),
+          jenis: String(line.jenis),
+          productId: line.productId ? Number(line.productId) : null,
+          isAlt: Boolean(line.isAlt),
+        }))
+      : [],
+  }))
+  .handler(async ({ data }) => {
+    const { editManual: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const deleteRetur = createServerFn({ method: "POST" })
+  .validator((input: { id: string }) => ({ id: String(input?.id ?? "") }))
+  .handler(async ({ data }) => {
+    const { deleteRetur: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const removeInvoice = createServerFn({ method: "POST" })
   .validator((input: { nomor: string }) => ({ nomor: String(input.nomor ?? "") }))
   .handler(async ({ data }) => {
     const { removeInvoice: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const findRetur = createServerFn({ method: "GET" })
+  .validator((input: { nomor: string }) => ({ nomor: String(input?.nomor ?? "") }))
+  .handler(async ({ data }) => {
+    const { findRetur: run } = await import("./logic.server");
     return run(data);
   });
 
@@ -222,25 +271,42 @@ export const getInvoice = createServerFn({ method: "GET" })
   });
 
 export const listInvoices = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; source?: string; status?: string; start?: string; end?: string; page?: number }) => ({
+  .validator((input: { q?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
     source: String(input?.source ?? ""),
     status: String(input?.status ?? ""),
+    jenis: String(input?.jenis ?? ""),
     start: String(input?.start ?? ""),
     end: String(input?.end ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
+    all: Boolean(input?.all),
   }))
   .handler(async ({ data }) => {
     const { listInvoices: run } = await import("./logic.server");
     return run(data);
   });
 
+export const listHistoryLines = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string }) => ({
+    q: String(input?.q ?? "").trim(),
+    source: String(input?.source ?? ""),
+    status: String(input?.status ?? ""),
+    jenis: String(input?.jenis ?? ""),
+    start: String(input?.start ?? ""),
+    end: String(input?.end ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { listHistoryLines: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const listBon = createServerFn({ method: "GET" })
-  .validator((input: { status?: string; customer?: string; start?: string; end?: string }) => ({
+  .validator((input: { status?: string; customer?: string; start?: string; end?: string; withItems?: boolean }) => ({
     status: String(input?.status ?? "Bon"),
     customer: String(input?.customer ?? "").trim(),
     start: String(input?.start ?? ""),
     end: String(input?.end ?? ""),
+    withItems: Boolean(input?.withItems),
   }))
   .handler(async ({ data }) => {
     const { listBon: run } = await import("./logic.server");
@@ -284,9 +350,27 @@ export const listStaff = createServerFn({ method: "GET" })
   });
 
 export const saveStaff = createServerFn({ method: "POST" })
-  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string }) => input)
+  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string; photo?: string }) => ({
+    username: String(input?.username ?? ""),
+    name: String(input?.name ?? ""),
+    role: String(input?.role ?? "Kasir"),
+    shift: String(input?.shift ?? ""),
+    password: String(input?.password ?? ""),
+    status: String(input?.status ?? "Aktif"),
+    photo: String(input?.photo ?? ""),
+  }))
   .handler(async ({ data }) => {
     const { saveStaff: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const updateOwnProfile = createServerFn({ method: "POST" })
+  .validator((input: { name: string; photo?: string }) => ({
+    name: String(input?.name ?? ""),
+    photo: String(input?.photo ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { updateOwnProfile: run } = await import("./logic.server");
     return run(data);
   });
 

@@ -2,14 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { editBon, getInvoice, listBon, payoffBon } from "@/lib/shop/api";
-import { digits, grouped, periodRange, rupiah, todayInput, when } from "@/lib/shop/format";
+import { editSale, getInvoice, listBon, payoffBon } from "@/lib/shop/api";
+import { PeriodPicker } from "@/components/shop/period";
+import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
+import { printDebtReport, printStoredSale } from "@/lib/shop/print";
 
 export const Route = createFileRoute("/_shop/bon")({ component: BonPage });
 
 function BonPage() {
   const me = Route.useRouteContext().me;
-  const canEdit = me.role === "Admin";
+  const canEdit = me.role !== "Kasir";
   const [status, setStatus] = useState("Bon");
   const [customer, setCustomer] = useState("");
   const [start, setStart] = useState("");
@@ -35,19 +37,8 @@ function BonPage() {
     <div className="space-y-4">
       <Panel>
         <h2 className="font-extrabold">Daftar Bon / Piutang (Rekap Per Pelanggan)</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["today", "week", "month"] as const).map((kind) => (
-            <button key={kind} className="h-9 rounded-lg bg-slate-100 px-3 text-xs font-bold" onClick={() => {
-              const range = periodRange(kind);
-              setStart(range.start);
-              setEnd(range.end);
-            }}>{kind === "today" ? "Hari Ini" : kind === "week" ? "Minggu Ini" : "Bulan Ini"}</button>
-          ))}
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-5">
-          <input className={inputClass} type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-          <span className="hidden items-center text-sm text-muted md:flex">s/d</span>
-          <input className={inputClass} type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <div className="mt-3"><PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setStart(nextStart); setEnd(nextEnd); }} /></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
           <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="Bon">Belum Lunas</option>
             <option value="Lunas">Sudah Lunas</option>
@@ -56,6 +47,12 @@ function BonPage() {
           <input className={inputClass} placeholder="Nama pelanggan" value={customer} onChange={(e) => setCustomer(e.target.value)} />
         </div>
         <button className="mt-2 h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => { setStatus("Bon"); setCustomer(""); setStart(""); setEnd(""); }}>Reset</button>
+        <button className="ml-2 mt-2 h-10 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => {
+          void listBon({ data: { status, customer, start, end, withItems: true } }).then((data) => {
+            try { printDebtReport(data as Array<Record<string, unknown>>, start, end, status); }
+            catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+          });
+        }}>Cetak Laporan</button>
         <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm">
           <div className="rounded-lg bg-red-50 p-3"><p className="text-[11px] text-red-700">Sisa Piutang</p><p className="num font-black text-danger">{rupiah(piutangAll)}</p></div>
           <div className="rounded-lg bg-emerald-50 p-3"><p className="text-[11px] text-emerald-700">Histori Lunas</p><p className="num font-black text-emerald-700">{rupiah(lunasAll)}</p></div>
@@ -74,11 +71,18 @@ function BonPage() {
               {invoices.map((inv) => (
                 <li key={String(inv.nomor)} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-medium">{String(inv.nomor)} · {String(inv.status_bayar)}</p>
-                    <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}</p>
+                    <p className="font-medium">{String(inv.nomor)} · {String(inv.keterangan || inv.status_bayar)}</p>
+                    <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
                   </div>
-                  {canEdit && inv.status_bayar === "Bon" ? (
-                    <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
+                      void getInvoice({ data: { nomor: String(inv.nomor) } }).then((res) => {
+                        if (!res) return toast.error("Nota tidak ditemukan");
+                        printStoredSale(res.invoice as Record<string, unknown>, res.lines as Array<Record<string, unknown>>);
+                      }).catch((error: Error) => toast.error(error.message));
+                    }}>Cetak Bon</button>
+                    {canEdit && inv.status_bayar === "Bon" ? (
+                      <>
                       <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
                         void getInvoice({ data: { nomor: String(inv.nomor) } }).then((res) => {
                           if (!res) return;
@@ -101,8 +105,9 @@ function BonPage() {
                           .then((res) => { toast.success(`Kas masuk ${rupiah(Number((res as { total: number }).total))}`); load(); })
                           .catch((error: Error) => toast.error(error.message));
                       }}>Lunasi</PrimaryButton>
-                    </div>
-                  ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -114,20 +119,24 @@ function BonPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
           <form className="w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(event) => {
             event.preventDefault();
-            void editBon({
+            void editSale({
               data: {
                 nomor: edit.nomor,
                 diskon: digits(edit.diskon),
-                items: edit.items.map((item) => ({ id: item.id, harga: digits(item.harga) })),
+                lines: edit.items.map((item) => ({ id: item.id, harga: digits(item.harga), qty: item.jumlah })),
               },
-            }).then(() => { toast.success("Struk diperbarui"); setEdit(null); load(); }).catch((error: Error) => toast.error(error.message));
+            }).then(() => { toast.success("Struk diperbarui. Cetak bon lagi untuk kertas yang baru."); setEdit(null); load(); }).catch((error: Error) => toast.error(error.message));
           }}>
             <h3 className="font-semibold">Edit {edit.nomor}</h3>
-            <p className="mt-1 text-xs text-muted">Hanya harga dan diskon. Jumlah barang dan stok tidak berubah.</p>
+            <p className="mt-1 text-xs text-muted">Ubah jumlah, harga, atau diskon. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>
             <ul className="mt-3 space-y-2">
               {edit.items.map((item, index) => (
-                <li key={item.id} className="grid grid-cols-[1fr_7rem] items-center gap-2 text-sm">
-                  <span>{item.nama} · {item.jumlah} {item.satuan}</span>
+                <li key={item.id} className="grid grid-cols-[1fr_4.5rem_7rem] items-center gap-2 text-sm">
+                  <span>{item.nama}<span className="block text-[11px] text-muted">{item.satuan}</span></span>
+                  <input className={`${inputClass} num`} value={item.jumlah} onChange={(e) => {
+                    const jumlah = Math.max(1, Number(e.target.value) || 1);
+                    setEdit({ ...edit, items: edit.items.map((row, i) => i === index ? { ...row, jumlah } : row) });
+                  }} />
                   <input className={`${inputClass} num`} value={item.harga} onChange={(e) => {
                     const harga = grouped(digits(e.target.value));
                     setEdit({ ...edit, items: edit.items.map((row, i) => i === index ? { ...row, harga } : row) });

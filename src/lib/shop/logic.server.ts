@@ -25,6 +25,27 @@ function verifyPassword(password: string, stored: string) {
   return timingSafeEqual(prev, next);
 }
 
+function cleanPhoto(value: unknown) {
+  const photo = String(value ?? "");
+  if (!photo) return "";
+  if (!/^data:image\/(jpeg|png);base64,/.test(photo) || photo.length > 180000) {
+    throw new Error("Foto harus gambar kecil. Pilih ulang fotonya.");
+  }
+  return photo;
+}
+
+const defaultPasswords: Record<string, string> = {
+  owner: "owner123",
+  admin: "admin123",
+  pagi: "pagi123",
+  siang: "siang123",
+};
+
+function stillDefault(username: string, hash: string) {
+  const password = defaultPasswords[username];
+  return Boolean(password && verifyPassword(password, hash));
+}
+
 function cleanError(error: unknown) {
   const raw = error instanceof Error ? error.message : "Gagal memproses";
   return raw.replace(/^error:\s*/i, "").split("\n")[0];
@@ -37,6 +58,7 @@ async function sql() {
 async function ensureStaff() {
   if (seeded) return;
   const db = await sql();
+  await db.query(`alter table staff add column if not exists photo text not null default ''`);
   const rows = await db.query<{ n: number }>("select count(*)::int as n from staff");
   if (Number(rows[0]?.n ?? 0) === 0) {
     const defaults: Array<[string, string, Role, string, string]> = [
@@ -102,7 +124,7 @@ async function readStaff(): Promise<Staff | null> {
   if (!token) return null;
   const db = await sql();
   const rows = await db.query<StaffRow>(
-    `select s.username, s.role, s.name, s.shift, s.status
+    `select s.username, s.role, s.name, s.shift, s.status, s.photo, s.password_hash
      from sessions e
      join staff s on s.username = e.username
      where e.token = $1 and e.expires_at > now() and s.status = 'Aktif'`,
@@ -116,6 +138,8 @@ async function readStaff(): Promise<Staff | null> {
     name: row.name,
     shift: row.shift,
     status: row.status,
+    photo: String(row.photo ?? ""),
+    mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
   };
 }
 
@@ -126,7 +150,7 @@ async function requireStaff() {
 }
 
 function assertAdmin(me: Staff) {
-  if (me.role !== "Admin") throw new Error("Hanya Admin yang dapat mengubah data ini.");
+  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Hanya Admin atau Owner yang dapat mengubah data ini.");
 }
 
 async function audit(me: Staff, action: string) {
@@ -147,12 +171,15 @@ export async function login(data: any) {
     await ensureStaff();
     const db = await sql();
     const rows = await db.query<StaffRow>(
-      `select username, password_hash, role, name, shift, status from staff where lower(username) = lower($1)`,
+      `select username, password_hash, role, name, shift, status, photo from staff where lower(username) = lower($1)`,
       [data.username],
     );
     const row = rows[0];
-    if (!row || row.status !== "Aktif" || !verifyPassword(data.password, String(row.password_hash))) {
+    if (!row || !verifyPassword(data.password, String(row.password_hash))) {
       throw new Error("Username atau password salah.");
+    }
+    if (row.status !== "Aktif") {
+      throw new Error("Akun ini nonaktif. Hubungi admin.");
     }
     const token = randomBytes(32).toString("hex");
     await db.query(
@@ -166,9 +193,10 @@ export async function login(data: any) {
       secure: false,
       maxAge: 60 * 60 * 14,
     });
-    await db.query(`insert into audit_log (username, name, action) values ($1, $2, 'Login')`, [
+    await db.query(`insert into audit_log (username, name, action) values ($1, $2, $3)`, [
       row.username,
       row.name,
+      `${row.role} masuk`,
     ]);
     const me: Staff = {
       username: row.username,
@@ -176,6 +204,8 @@ export async function login(data: any) {
       name: row.name,
       shift: row.shift,
       status: row.status,
+      photo: String(row.photo ?? ""),
+      mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
     };
     return me;
   }
@@ -367,7 +397,7 @@ export async function searchProducts(data: any) {
     const rows = await db.query(
       `select * from products
        where nama ilike $1 or part_number ilike $1 or part_numbers_alt ilike $1
-          or kode ilike $1 or merek ilike $1 or kode_pajak ilike $1
+          or kode ilike $1 or merek ilike $1 or kode_pajak ilike $1 or kategori ilike $1
        order by
          case when lower(part_number) = lower($2) or lower(kode) = lower($2) then 0 else 1 end,
          nama
@@ -391,8 +421,8 @@ export async function listProducts(data: any) {
       );
     }
     if (data.kategori) {
-      params.push(data.kategori);
-      where.push(`kategori = $${params.length}`);
+      params.push(`%${data.kategori}%`);
+      where.push(`kategori ilike $${params.length}`);
     }
     if (data.status === "Habis") where.push(`stok <= 0`);
     if (data.status === "Menipis") where.push(`stok > 0 and stok_min > 0 and stok <= stok_min`);
@@ -410,7 +440,7 @@ export async function listProducts(data: any) {
       `select count(*)::int as n from products ${clause}`,
       params,
     );
-    const perPage = 15;
+    const perPage = data.all ? 100000 : 15;
     const offset = (data.page - 1) * perPage;
     const rows = await db.query(
       `select * from products ${clause} order by ${order} limit ${perPage} offset ${offset}`,
@@ -465,6 +495,10 @@ export async function saveProduct(data: any) {
     const db = await sql();
     const pajak = data.pajakStatus === "Pajak" ? "Pajak" : "Non Pajak";
     const kodePajak = pajak === "Pajak" ? String(data.kodePajak ?? "").trim() : "";
+    const satuanAlt = String(data.satuanAlt ?? "").trim();
+    const isiSatuanAlt = satuanAlt ? Math.max(0, Math.floor(Number(data.isiSatuanAlt) || 0)) : 0;
+    if (satuanAlt && isiSatuanAlt <= 0) throw new Error("Isi jumlah pcs di dalam 1 dus.");
+    const hargaJualAlt = satuanAlt ? Number(data.hargaJualAlt) || 0 : 0;
     if (data.id) {
       await db.query(
         `update products set
@@ -484,9 +518,9 @@ export async function saveProduct(data: any) {
           Number(data.stok) || 0,
           Number(data.hargaBeli) || 0,
           Number(data.hargaJual) || 0,
-          data.satuanAlt ?? "",
-          Number(data.isiSatuanAlt) || 0,
-          Number(data.hargaJualAlt) || 0,
+          satuanAlt,
+          isiSatuanAlt,
+          hargaJualAlt,
           pajak,
           kodePajak,
           data.keterangan ?? "",
@@ -513,9 +547,9 @@ export async function saveProduct(data: any) {
         Number(data.stok) || 0,
         Number(data.hargaBeli) || 0,
         Number(data.hargaJual) || 0,
-        data.satuanAlt ?? "",
-        Number(data.isiSatuanAlt) || 0,
-        Number(data.hargaJualAlt) || 0,
+        satuanAlt,
+        isiSatuanAlt,
+        hargaJualAlt,
         pajak,
         kodePajak,
         data.keterangan ?? "",
@@ -643,9 +677,10 @@ export async function listPartners() {
 
 export async function savePartner(data: any) {
     const me = await requireStaff();
-    assertAdmin(me);
     if (!data.nama?.trim()) throw new Error("Nama wajib diisi.");
     const tipe = data.tipe === "Supplier" ? "Supplier" : "Pelanggan";
+    const creatingCustomer = !data.id && tipe === "Pelanggan";
+    if (!creatingCustomer) assertAdmin(me);
     const db = await sql();
     if (data.id) {
       await db.query(`update partners set nama=$2, tipe=$3, telp=$4, alamat=$5 where id=$1`, [
@@ -806,6 +841,9 @@ export async function closeShift(data: any) {
     const me = await requireStaff();
     assertAdmin(me);
     const db = await sql();
+    const [current] = await db.query<{ status: string }>(`select status from shifts where id = $1`, [data.id]);
+    if (!current) throw new Error("Shift tidak ditemukan.");
+    if (current.status !== "AKTIF") throw new Error("Shift ini sudah selesai.");
     const [drawer] = await db.query<{ n: number }>(`select shift_drawer($1)::bigint as n`, [data.id]);
     const kasAkhir = Number(drawer?.n ?? 0);
     const counted = data.countedCash == null || Number.isNaN(Number(data.countedCash)) ? null : Number(data.countedCash);
@@ -816,6 +854,21 @@ export async function closeShift(data: any) {
     await audit(me, `Tutup shift ${data.id}`);
     return { kasAkhir, counted };
   }
+
+
+
+export async function deleteClosedShift(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const rows = await db.query<{ id: string; status: string }>(`select id, status from shifts where id = $1`, [data.id]);
+  const shift = rows[0];
+  if (!shift) throw new Error("Shift tidak ditemukan.");
+  if (shift.status === "AKTIF") throw new Error("Shift masih aktif. Tutup dulu, baru bisa dihapus.");
+  await db.query(`delete from shifts where id = $1`, [data.id]);
+  await audit(me, `Hapus arsip shift ${data.id}`);
+  return { ok: true };
+}
 
 
 
@@ -923,6 +976,21 @@ export async function payoffBon(data: any): Promise<any> {
 
 
 
+export async function editSale(data: any): Promise<any> {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ shop_edit_sale: unknown }>(`select shop_edit_sale($1::jsonb) as shop_edit_sale`, [
+      JSON.stringify(data),
+    ]);
+    await audit(me, `Ubah nota ${String(data.nomor ?? "")}`);
+    return row?.shop_edit_sale;
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 export async function editBon(data: any): Promise<any> {
     const me = await requireStaff();
     assertAdmin(me);
@@ -940,6 +1008,45 @@ export async function editBon(data: any): Promise<any> {
 
 
 
+export async function editManual(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  try {
+    await db.query(`select shop_edit_manual($1::jsonb) as shop_edit_manual`, [
+      JSON.stringify({
+        nomor: data.nomor,
+        tujuan: data.tujuan ?? "",
+        keterangan: data.keterangan ?? "",
+        lines: (data.lines ?? []).map((line: any) => ({
+          id: line.id,
+          qty: line.qty,
+          jenis: line.jenis,
+          productId: line.productId || null,
+          isAlt: Boolean(line.isAlt),
+        })),
+      }),
+    ]);
+    await audit(me, `Ubah nota manual ${data.nomor}`);
+    return { ok: true, nomor: String(data.nomor) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+export async function deleteRetur(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  try {
+    await db.query(`select shop_delete_retur($1)`, [String(data.id ?? "")]);
+    await audit(me, `Hapus retur ${data.id}`);
+    return { ok: true };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 export async function removeInvoice(data: any) {
     const me = await requireStaff();
     assertAdmin(me);
@@ -954,6 +1061,45 @@ export async function removeInvoice(data: any) {
   }
 
 
+
+export async function findRetur(data: any) {
+  await requireStaff();
+  const db = await sql();
+  const [inv] = await db.query<{ parent_invoice: string; retur_id: string; total: string; nomor: string; source: string }>(
+    `select nomor, source, parent_invoice, coalesce(retur_id, '') as retur_id, total::text as total from invoices where nomor = $1`,
+    [String(data.nomor ?? "")],
+  );
+  if (!inv) return null;
+  const parent = inv.source === "Retur" ? inv.parent_invoice : inv.nomor;
+  const [row] = await db.query<Record<string, unknown>>(
+    `select * from returs
+     where ($1 <> '' and id = $1)
+        or parent_invoice = $2
+     order by case when id = $1 then 0 else 1 end,
+              case when exchange_value = $3::bigint then 0 else 1 end,
+              tanggal desc
+     limit 1`,
+    [inv.retur_id || "", parent, inv.total || 0],
+  );
+  if (!row) return null;
+  return {
+    id: String(row.id ?? ""),
+    parent_invoice: String(row.parent_invoice ?? ""),
+    tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
+    kasir: String(row.kasir ?? ""),
+    pelanggan: String(row.pelanggan ?? ""),
+    items: row.items ?? [],
+    exchange_items: row.exchange_items ?? [],
+    metode_bayar: String(row.metode_bayar ?? ""),
+    bank_transfer: String(row.bank_transfer ?? ""),
+    retur_value: Number(row.retur_value ?? 0),
+    exchange_value: Number(row.exchange_value ?? 0),
+    net_amount: Number(row.net_amount ?? 0),
+    payment_direction: String(row.payment_direction ?? ""),
+    cash_amount: Number(row.cash_amount ?? 0),
+    transfer_amount: Number(row.transfer_amount ?? 0),
+  };
+}
 
 export async function getInvoice(data: any): Promise<any> {
     await requireStaff();
@@ -998,9 +1144,13 @@ export async function listInvoices(data: any): Promise<any> {
       params.push(`%${data.q}%`);
       where.push(`(nomor ilike $${params.length} or tujuan ilike $${params.length} or kasir ilike $${params.length})`);
     }
+    if (data.jenis === "MASUK" || data.jenis === "KELUAR") {
+      params.push(data.jenis);
+      where.push(`exists (select 1 from invoice_lines l where l.invoice_id = invoices.id and l.jenis = $${params.length})`);
+    }
     const clause = where.length ? `where ${where.join(" and ")}` : "";
     const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from invoices ${clause}`, params);
-    const perPage = 12;
+    const perPage = data.all ? 100000 : 12;
     const rows = await db.query(
       `select * from invoices ${clause} order by tanggal desc limit ${perPage} offset ${(data.page - 1) * perPage}`,
       params,
@@ -1009,6 +1159,64 @@ export async function listInvoices(data: any): Promise<any> {
   }
 
 
+
+export async function listHistoryLines(data: any) {
+  await requireStaff();
+  const db = await sql();
+  const where = ["true"];
+  const params: unknown[] = [];
+  if (data.q) {
+    params.push(`%${data.q}%`);
+    where.push(`(i.nomor ilike $${params.length} or i.tujuan ilike $${params.length} or coalesce(p.nama, '') ilike $${params.length} or coalesce(p.part_number, '') ilike $${params.length} or coalesce(l.custom_item, '') ilike $${params.length})`);
+  }
+  if (data.source) {
+    params.push(data.source);
+    where.push(`i.source = $${params.length}`);
+  }
+  if (data.status) {
+    params.push(data.status);
+    where.push(`i.status_bayar = $${params.length}`);
+  }
+  if (data.jenis === "MASUK" || data.jenis === "KELUAR") {
+    params.push(data.jenis);
+    where.push(`l.jenis = $${params.length}`);
+  }
+  if (data.start) {
+    params.push(data.start);
+    where.push(`i.tanggal >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.end) {
+    params.push(data.end);
+    where.push(`i.tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
+  const rows = await db.query<Record<string, unknown>>(
+    `select i.tanggal, i.nomor, i.source, i.metode_bayar, i.status_bayar, l.jenis, l.jumlah, l.satuan, l.harga_satuan,
+            coalesce(nullif(l.custom_item, ''), p.nama, 'Barang') as nama,
+            coalesce(p.part_number, '') as part_number,
+            coalesce(p.kode_pajak, '') as kode_pajak
+     from invoice_lines l
+     join invoices i on i.id = l.invoice_id
+     left join products p on p.id = l.product_id
+     where ${where.join(" and ")}
+     order by i.tanggal desc, l.id
+     limit 5000`,
+    params,
+  );
+  return rows.map((row) => ({
+    tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
+    nomor: String(row.nomor ?? ""),
+    source: String(row.source ?? ""),
+    metode_bayar: String(row.metode_bayar ?? ""),
+    status_bayar: String(row.status_bayar ?? ""),
+    jenis: String(row.jenis ?? ""),
+    jumlah: Number(row.jumlah ?? 0),
+    satuan: String(row.satuan ?? ""),
+    harga_satuan: Number(row.harga_satuan ?? 0),
+    nama: String(row.nama ?? ""),
+    part_number: String(row.part_number ?? ""),
+    kode_pajak: String(row.kode_pajak ?? ""),
+  }));
+}
 
 export async function listBon(data: any): Promise<any> {
     await requireStaff();
@@ -1031,8 +1239,31 @@ export async function listBon(data: any): Promise<any> {
       params.push(data.end);
       where.push(`tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
     }
+    if (data.withItems) {
+      const rows = await db.query(
+        `select i.nomor, i.tanggal, i.tujuan, i.status_bayar, i.keterangan, i.total, i.tanggal_lunas, i.kasir,
+           coalesce((
+             select json_agg(json_build_object(
+               'nama', coalesce(nullif(l.custom_item, ''), p.nama, 'Barang'),
+               'kode_pajak', coalesce(p.kode_pajak, ''),
+               'qty', l.jumlah,
+               'satuan', l.satuan,
+               'harga', l.harga_satuan
+             ) order by l.id)
+             from invoice_lines l
+             left join products p on p.id = l.product_id
+             where l.invoice_id = i.id
+           ), '[]'::json) as items
+         from invoices i
+         where ${where.join(" and ")}
+         order by i.tanggal desc
+         limit 5000`,
+        params,
+      );
+      return rows;
+    }
     const rows = await db.query(
-      `select * from invoices where ${where.join(" and ")} order by tanggal desc limit 200`,
+      `select * from invoices where ${where.join(" and ")} order by tanggal desc limit 5000`,
       params,
     );
     return rows;
@@ -1065,7 +1296,7 @@ export async function listTax(data: any): Promise<any> {
       );
     }
     const rows = await db.query(
-      `select * from tax_lines where ${where.join(" and ")} order by tanggal desc limit 300`,
+      `select * from tax_lines where ${where.join(" and ")} order by tanggal desc limit 5000`,
       params,
     );
     return rows;
@@ -1105,9 +1336,9 @@ export async function shiftLedger(data: any): Promise<any> {
       params.push(data.end);
       filter += ` and tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`;
     }
-    const invoices = await db.query(`select * from invoices where source = 'Kasir' and ${filter} order by tanggal desc limit 300`, params);
-    const moves = await db.query(`select * from cash_moves where ${filter} order by tanggal desc limit 200`, params);
-    const returs = await db.query(`select * from returs where ${filter} order by tanggal desc limit 200`, params);
+    const invoices = await db.query(`select * from invoices where source = 'Kasir' and ${filter} order by tanggal desc limit 5000`, params);
+    const moves = await db.query(`select * from cash_moves where ${filter} order by tanggal desc limit 5000`, params);
+    const returs = await db.query(`select * from returs where ${filter} order by tanggal desc limit 5000`, params);
     return { drawer: null, invoices, moves, returs, shift: null };
   }
 
@@ -1132,7 +1363,18 @@ export async function listStaff() {
   const me = await requireStaff();
   assertAdmin(me);
   const db = await sql();
-  return db.query<Staff>(`select username, role, name, shift, status from staff order by username`);
+  const rows = await db.query<Staff & { password_hash: string }>(
+    `select username, role, name, shift, status, photo, password_hash from staff order by username`,
+  );
+  return rows.map((row) => ({
+    username: row.username,
+    role: row.role,
+    name: row.name,
+    shift: row.shift,
+    status: row.status,
+    photo: String(row.photo ?? ""),
+    mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
+  }));
 }
 
 
@@ -1142,29 +1384,42 @@ export async function saveStaff(data: any) {
     assertAdmin(me);
     const username = data.username.trim().toLowerCase();
     if (!username || !data.name?.trim()) throw new Error("Username dan nama wajib diisi.");
+    const status = data.status === "Nonaktif" ? "Nonaktif" : "Aktif";
+    if (username === me.username && status === "Nonaktif") {
+      throw new Error("Akun yang sedang digunakan tidak dapat dinonaktifkan.");
+    }
     const role: Role = data.role === "Owner" || data.role === "Admin" ? data.role : "Kasir";
     const db = await sql();
-    const existing = await db.query(`select username from staff where username = $1`, [username]);
+    const existing = await db.query<{ role: string; status: string }>(`select role, status from staff where username = $1`, [username]);
+    if (existing.length && existing[0].role === "Owner" && (role !== "Owner" || status !== "Aktif")) {
+      const [left] = await db.query<{ n: number }>(
+        `select count(*)::int as n from staff where role = 'Owner' and status = 'Aktif' and username <> $1`,
+        [username],
+      );
+      if (Number(left?.n ?? 0) === 0) throw new Error("Harus tetap ada satu akun Owner yang aktif.");
+    }
+    const photo = cleanPhoto(data.photo);
     if (existing.length) {
       if (data.password) {
         await db.query(
-          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6 where username=$1`,
-          [username, data.name.trim(), role, data.shift ?? "", data.status === "Nonaktif" ? "Nonaktif" : "Aktif", hashPassword(data.password)],
+          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7 where username=$1`,
+          [username, data.name.trim(), role, data.shift ?? "", status, hashPassword(data.password), photo],
         );
       } else {
-        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5 where username=$1`, [
+        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6 where username=$1`, [
           username,
           data.name.trim(),
           role,
           data.shift ?? "",
-          data.status === "Nonaktif" ? "Nonaktif" : "Aktif",
+          status,
+          photo,
         ]);
       }
     } else {
       if (!data.password) throw new Error("Password wajib untuk akun baru.");
       await db.query(
-        `insert into staff (username, password_hash, role, name, shift, status) values ($1,$2,$3,$4,$5,$6)`,
-        [username, hashPassword(data.password), role, data.name.trim(), data.shift ?? "", "Aktif"],
+        `insert into staff (username, password_hash, role, name, shift, status, photo) values ($1,$2,$3,$4,$5,$6,$7)`,
+        [username, hashPassword(data.password), role, data.name.trim(), data.shift ?? "", status, photo],
       );
     }
     await audit(me, `Simpan akun ${username}`);
@@ -1172,6 +1427,17 @@ export async function saveStaff(data: any) {
   }
 
 
+
+export async function updateOwnProfile(data: any) {
+  const me = await requireStaff();
+  const name = String(data.name ?? "").trim();
+  if (!name) throw new Error("Nama wajib diisi.");
+  const photo = cleanPhoto(data.photo);
+  const db = await sql();
+  await db.query(`update staff set name = $2, photo = $3 where username = $1`, [me.username, name, photo]);
+  await audit(me, "Ubah nama atau foto akun sendiri");
+  return { ok: true };
+}
 
 export async function changeOwnPassword(data: any) {
     const me = await requireStaff();

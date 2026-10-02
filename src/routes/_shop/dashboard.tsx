@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { getDashboard } from "@/lib/shop/api";
 import { rupiah, when } from "@/lib/shop/format";
 
@@ -13,6 +14,11 @@ function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const notice = sessionStorage.getItem("mjs-notice");
+    if (notice) {
+      sessionStorage.removeItem("mjs-notice");
+      toast.success(notice);
+    }
     void getDashboard()
       .then(setData)
       .catch((e: Error) => setError(e.message));
@@ -99,7 +105,7 @@ function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDa
           </div>
         </div>
       </section>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Stat label="Penjualan Hari Ini" value={rupiah(data.today.sales)} hint={`${data.today.trx} trx`} tone="ok" />
         <Stat label="Penjualan Bulan" value={rupiah(data.month)} hint={`${data.monthTrx} trx`} tone="info" />
         <Stat label="Tunai Hari Ini" value={rupiah(data.today.tunai)} hint="Penjualan cash" tone="ok" />
@@ -225,7 +231,7 @@ function Chart({ data, max, title, hint, className = "" }: { data: NonNullable<A
       </div>
       <ul className="space-y-4">
         {data.week.map((day) => (
-          <li key={day.date} className="grid grid-cols-[72px_1fr_105px] items-center gap-3">
+          <li key={day.date} className="grid grid-cols-[4.2rem_minmax(0,1fr)_auto] items-center gap-2">
             <span className="text-[11px] font-bold text-slate-500">{dayLabel(day.date)}</span>
             <span className="h-2 overflow-hidden rounded-full bg-slate-100">
               <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(2, (day.total / max) * 100)}%` }} />
@@ -270,7 +276,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   return (
     <section className="rounded-xl border border-line bg-panel p-4 shadow-sm">
       <p className="text-[9px] font-bold tracking-wider text-muted uppercase">{label}</p>
-      <p className={`num mt-2 text-base font-black sm:text-xl ${color}`}>{value}</p>
+      <p className={`num mt-2 text-sm leading-tight font-black break-words sm:text-lg ${color}`}>{value}</p>
       <p className="mt-1 text-[9px] text-muted">{hint}</p>
     </section>
   );

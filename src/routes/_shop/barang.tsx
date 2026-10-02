@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
+import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
 import { digits, grouped, rupiah } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
@@ -30,13 +30,20 @@ const empty = {
 
 function BarangPage() {
   const me = Route.useRouteContext().me;
-  const canEdit = me.role === "Admin";
+  const canEdit = me.role !== "Kasir";
   const [q, setQ] = useState("");
+  useEffect(() => {
+    const saved = sessionStorage.getItem("mjs-find");
+    if (!saved) return;
+    sessionStorage.removeItem("mjs-find");
+    setQ(saved);
+  }, []);
   const [kategori, setKategori] = useState("");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("nama");
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
   const [form, setForm] = useState(empty);
+  const [useDus, setUseDus] = useState(false);
   const [open, setOpen] = useState(false);
   const [replaceStock, setReplaceStock] = useState(true);
 
@@ -54,7 +61,7 @@ function BarangPage() {
       <Panel>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
-            {canEdit ? <PrimaryButton onClick={() => { setForm(empty); setOpen(true); }}>+ Tambah</PrimaryButton> : null}
+            {canEdit ? <PrimaryButton onClick={() => { setForm(empty); setUseDus(false); setOpen(true); }}>+ Tambah</PrimaryButton> : null}
             {canEdit ? (
               <label className="inline-flex h-11 cursor-pointer items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700">
                 Import CSV
@@ -95,11 +102,11 @@ function BarangPage() {
             </button>
           </div>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
-            <input className={inputClass} placeholder="Cari nama / part..." value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-            <select className={inputClass} value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }}>
-              <option value="">Semua Kategori</option>
-              {data?.categories.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+            <input className={inputClass} list="kategori-barang" placeholder="Ketik kategori, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
+            <datalist id="kategori-barang">
+              {data?.categories.map((item) => <option key={item} value={item} />)}
+            </datalist>
             <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="nama">Nama (A - Z)</option>
               <option value="nama_desc">Nama (Z - A)</option>
@@ -139,11 +146,14 @@ function BarangPage() {
               return (
               <tr key={item.id} className="border-t border-line">
                 <td className="py-3 pr-3">
-                  <div className="font-medium">{item.nama}{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
+                  <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
                   <div className="text-[11px] text-muted">{item.kategori}{item.merek ? ` · ${item.merek}` : ""}</div>
                 </td>
                 <td className="hidden font-mono text-xs md:table-cell">{item.partNumber || item.kode}</td>
-                <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>{item.stok} {item.satuan}</td>
+                <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
+                  <div>{item.stok} {item.satuan}</div>
+                  {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
+                </td>
                 <td className="num hidden text-right sm:table-cell">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
                 <td className="text-center text-xs">{item.kodePajak || "-"}</td>
                 <td className="text-center">
@@ -153,7 +163,7 @@ function BarangPage() {
                   <button className="h-11 px-2 text-sm" onClick={() => void printBarcode(item)}>Barcode</button>
                   {canEdit ? (
                     <>
-                      <button className="h-11 px-2 text-sm" onClick={() => { setForm({ ...item, id: item.id }); setOpen(true); }}>Ubah</button>
+                      <button className="h-11 px-2 text-sm" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>Ubah</button>
                       <button className="h-11 px-2 text-sm text-danger" onClick={() => { if (confirm("Hapus barang ini?")) void deleteProduct({ data: { id: item.id } }).then(() => load()).catch((e: Error) => toast.error(e.message)); }}>Hapus</button>
                     </>
                   ) : null}
@@ -175,10 +185,15 @@ function BarangPage() {
       {open ? (
         <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4">
           <form
-            className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-panel p-4 sm:max-w-lg sm:rounded-2xl"
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-panel p-4 sm:max-w-xl sm:rounded-2xl"
             onSubmit={(event) => {
               event.preventDefault();
-              void saveProduct({ data: form })
+              if (useDus && (!form.satuanAlt.trim() || form.isiSatuanAlt <= 0)) {
+                toast.error("Isi nama dus dan jumlah pcs di dalam 1 dus.");
+                return;
+              }
+              const payload = useDus ? form : { ...form, satuanAlt: "", isiSatuanAlt: 0, hargaJualAlt: 0 };
+              void saveProduct({ data: payload })
                 .then(() => { setOpen(false); toast.success("Barang tersimpan"); load(); })
                 .catch((error: Error) => toast.error(error.message));
             }}
@@ -190,14 +205,32 @@ function BarangPage() {
               <Field label="Part number lain"><input className={inputClass} value={form.partNumbersAlt} onChange={(e) => setForm({ ...form, partNumbersAlt: e.target.value })} /></Field>
               <Field label="Kategori"><input className={inputClass} value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></Field>
               <Field label="Merek"><input className={inputClass} value={form.merek} onChange={(e) => setForm({ ...form, merek: e.target.value })} /></Field>
-              <Field label="Satuan dasar"><input className={inputClass} value={form.satuan} onChange={(e) => setForm({ ...form, satuan: e.target.value })} /></Field>
-              <Field label="Stok Pcs"><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
-              <Field label="Stok minimum"><input className={`${inputClass} num`} value={form.stokMin} onChange={(e) => setForm({ ...form, stokMin: Number(e.target.value) || 0 })} /></Field>
+              <Field label="Satuan"><input className={inputClass} value={form.satuan} onChange={(e) => setForm({ ...form, satuan: e.target.value })} /></Field>
+              <Field label="Stok (Pcs)"><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
+              <Field label="Stok minimum (Pcs)"><input className={`${inputClass} num`} value={form.stokMin} onChange={(e) => setForm({ ...form, stokMin: Number(e.target.value) || 0 })} /></Field>
               <Field label="Harga beli"><input className={`${inputClass} num`} value={grouped(form.hargaBeli)} onChange={(e) => setForm({ ...form, hargaBeli: digits(e.target.value) })} /></Field>
               <Field label="Harga jual Pcs"><input className={`${inputClass} num`} value={grouped(form.hargaJual)} onChange={(e) => setForm({ ...form, hargaJual: digits(e.target.value) })} /></Field>
-              <Field label="Satuan dus"><input className={inputClass} value={form.satuanAlt} onChange={(e) => setForm({ ...form, satuanAlt: e.target.value })} placeholder="Dus" /></Field>
-              <Field label="Isi 1 dus (Pcs)"><input className={`${inputClass} num`} value={form.isiSatuanAlt} onChange={(e) => setForm({ ...form, isiSatuanAlt: Number(e.target.value) || 0 })} /></Field>
-              <Field label="Harga jual dus"><input className={`${inputClass} num`} value={grouped(form.hargaJualAlt)} onChange={(e) => setForm({ ...form, hargaJualAlt: digits(e.target.value) })} /></Field>
+            </div>
+            <div className="mt-4 rounded-xl border border-line p-3">
+              <p className="text-sm font-bold">Satuan jual</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" className={`h-11 rounded-lg text-sm font-bold ${!useDus ? "bg-slate-900 text-white" : "bg-slate-100"}`} onClick={() => setUseDus(false)}>Pcs saja</button>
+                <button type="button" className={`h-11 rounded-lg text-sm font-bold ${useDus ? "bg-blue-700 text-white" : "bg-slate-100"}`} onClick={() => { setUseDus(true); setForm((prev) => ({ ...prev, satuanAlt: prev.satuanAlt || "Dus" })); }}>Ada Dus</button>
+              </div>
+              {!useDus ? <p className="mt-2 text-xs text-muted">Barang ini hanya dijual per pcs. Stok yang diisi adalah jumlah pcs.</p> : (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field label="Nama satuan"><input className={inputClass} value={form.satuanAlt} onChange={(e) => setForm({ ...form, satuanAlt: e.target.value })} placeholder="Dus" /></Field>
+                  <Field label="Isi 1 dus (berapa pcs)"><input className={`${inputClass} num`} value={form.isiSatuanAlt || ""} onChange={(e) => setForm({ ...form, isiSatuanAlt: Number(e.target.value) || 0 })} placeholder="12" /></Field>
+                  <Field label="Harga jual 1 dus"><input className={`${inputClass} num`} value={grouped(form.hargaJualAlt)} onChange={(e) => setForm({ ...form, hargaJualAlt: digits(e.target.value) })} /></Field>
+                  <p className="self-end text-xs text-blue-800">
+                    {form.isiSatuanAlt > 0
+                      ? `1 ${form.satuanAlt || "Dus"} = ${form.isiSatuanAlt} ${form.satuan || "Pcs"}. Stok ${form.stok} ${form.satuan || "Pcs"} = ${Math.floor(form.stok / form.isiSatuanAlt)} ${form.satuanAlt || "Dus"}${form.stok % form.isiSatuanAlt ? ` + ${form.stok % form.isiSatuanAlt} ${form.satuan || "Pcs"}` : ""}.`
+                      : "Isi berapa pcs di dalam 1 dus. Penjualan dus akan mengurangi stok pcs sebanyak angka itu."}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Status pajak">
                 <select className={inputClass} value={form.pajakStatus} onChange={(e) => setForm({ ...form, pajakStatus: e.target.value })}>
                   <option>Non Pajak</option>
@@ -269,8 +302,12 @@ async function printBarcode(item: Product) {
     <div><b>${item.nama}</b><div style="font-size:12px">${item.merek || "-"} · PN ${item.partNumber || "-"}</div>${item.kodePajak ? `<div>${item.kodePajak}</div>` : ""}${make(`${item.kode}-PCS`)}<div style="font-size:16px">${rupiah(item.hargaJual)}</div></div>
     ${dus}
   </body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
+  const win = window.open("", "_blank", "width=420,height=640");
+  if (!win) {
+    toast.error("Popup diblokir. Izinkan popup untuk mencetak barcode.");
+    return;
+  }
   win.document.write(html);
   win.document.close();
+  setTimeout(() => win.print(), 300);
 }

@@ -16,10 +16,19 @@ export function grouped(value: number | string) {
   return n.toLocaleString("id-ID");
 }
 
-export function periodRange(kind: "today" | "week" | "month") {
+export function monthSpan(year: number, month: number) {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mm = String(month).padStart(2, "0");
+  return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${String(last).padStart(2, "0")}` };
+}
+
+export function periodRange(kind: "today" | "week" | "month" | "year") {
   const today = todayInput();
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
   if (kind === "today") return { start: today, end: today };
-  if (kind === "month") return { start: `${today.slice(0, 8)}01`, end: today };
+  if (kind === "month") return monthSpan(year, month);
+  if (kind === "year") return { start: `${year}-01-01`, end: `${year}-12-31` };
   const date = new Date(`${today}T00:00:00Z`);
   const dow = date.getUTCDay();
   date.setUTCDate(date.getUTCDate() - (dow === 0 ? 6 : dow - 1));

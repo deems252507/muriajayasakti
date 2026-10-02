@@ -72,7 +72,11 @@ function LoginPage() {
             event.preventDefault();
             setBusy(true);
             void login({ data: { username, password } })
-              .then(() => navigate({ to: "/dashboard" }))
+              .then((me) => {
+                const role = me?.role === "Owner" ? "Owner" : me?.role === "Kasir" ? "Kasir" : "Admin";
+                sessionStorage.setItem("mjs-notice", `${role} masuk${me?.name ? ` · ${me.name}` : ""}`);
+                return navigate({ to: "/dashboard" });
+              })
               .catch((error: Error) => toast.error(error.message))
               .finally(() => setBusy(false));
           }}
@@ -94,7 +98,7 @@ function LoginPage() {
               Password
               <span className="relative mt-1 block">
                 <input className="h-12 w-full rounded-xl border border-slate-200 px-3 pr-16 text-sm font-normal normal-case" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" placeholder="Masukkan password" />
-                <button type="button" className="absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted" onClick={() => setShow((v) => !v)}>{show ? "Sembunyi" : "Lihat"}</button>
+                <button type="button" className="btn-inline absolute top-1/2 right-3 -translate-y-1/2 text-xs font-bold text-slate-600" onClick={() => setShow((v) => !v)}>{show ? "Sembunyi" : "Lihat"}</button>
               </span>
             </label>
             <button className="mt-6 h-12 w-full rounded-xl bg-accent text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50" disabled={busy}>

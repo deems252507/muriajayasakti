@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
+import { printStockReport } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
@@ -21,11 +23,11 @@ function StokPage() {
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
-        <input className={inputClass} placeholder="Cari nama / part..." value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-        <select className={inputClass} value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }}>
-          <option value="">Semua Kategori</option>
-          {data?.categories.map((item) => <option key={item}>{item}</option>)}
-        </select>
+        <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <input className={inputClass} list="kategori-stok" placeholder="Ketik kategori, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
+        <datalist id="kategori-stok">
+          {data?.categories.map((item) => <option key={item} value={item} />)}
+        </datalist>
         <select className={inputClass} value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
           <option value="">Semua Status</option>
           <option value="Aman">Aman</option>
@@ -39,6 +41,11 @@ function StokPage() {
           <option value="stok_asc">Stok Terkecil</option>
         </select>
         <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
+          void listProducts({ data: { q, sort, page: 1, kategori, status, all: true } }).then((res) => {
+            try { printStockReport(res.items); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+          });
+        }}>Cetak PDF</button>
       </div>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -64,7 +71,10 @@ function StokPage() {
                   <td className="px-2 font-mono text-xs">{item.partNumber || "-"}</td>
                   <td className="hidden px-2 font-mono text-xs md:table-cell">{item.partNumbersAlt || "-"}</td>
                   <td className="num px-2 text-center">{item.stokMin}</td>
-                  <td className="num px-2 text-center font-semibold">{item.stok} {item.satuan}</td>
+                  <td className="num px-2 text-center font-semibold">
+                    <div>{item.stok} {item.satuan}</div>
+                    {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}</div> : null}
+                  </td>
                   <td className="num hidden px-2 text-right sm:table-cell">{rupiah(item.hargaJual)}</td>
                   <td className="px-2 text-center text-xs">{item.kodePajak || "-"}</td>
                   <td className="px-2 text-center">

@@ -3,25 +3,27 @@
 @theme {
   --font-sans: "Inter", "Segoe UI", sans-serif;
   --font-mono: "Inter", ui-monospace, monospace;
-  --color-paper: #f1f5f9;
+  --color-paper: #eef3f8;
   --color-panel: #ffffff;
   --color-ink: #0f172a;
   --color-muted: #64748b;
   --color-line: #e2e8f0;
-  --color-accent: #2563eb;
+  --color-accent: #1d4ed8;
   --color-accent-fg: #ffffff;
   --color-navy: #0b1220;
   --color-danger: #dc2626;
   --color-ok: #16a34a;
   --color-warn: #d97706;
-  --radius-card: 0.75rem;
-  --radius-control: 0.5rem;
+  --radius-card: 1rem;
+  --radius-control: 0.75rem;
 }
 
 @layer base {
   html,
   body {
-    background: var(--color-paper);
+    background:
+      radial-gradient(900px 280px at 100% -40px, rgba(29, 78, 216, 0.08), transparent 55%),
+      var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
   }
@@ -36,10 +38,45 @@
   }
 }
 
-@layer components {
-  .num {
-    font-variant-numeric: tabular-nums;
-  }
+button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not([class*="bg-"]) {
+  background: #fff;
+  border: 1px solid #475569;
+  color: #0f172a;
+}
+button:not(:disabled):hover {
+  filter: brightness(0.96);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.btn-inline {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+}
+button.qty-btn {
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  border-radius: 0.6rem;
+  font-size: 1rem;
+  font-weight: 900;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -48,5 +85,42 @@
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+table {
+  border-collapse: collapse;
+}
+th,
+td {
+  border-bottom: 1px solid #334155;
+  border-right: 1px solid #334155;
+}
+th:first-child,
+td:first-child {
+  border-left: 1px solid #334155;
+}
+thead th {
+  background: #f1f5f9;
+  border-bottom: 2px solid #0f172a;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+tbody tr:hover td {
+  background: #dbeafe;
+}
+
+@media print {
+  .no-print,
+  aside,
+  header {
+    display: none !important;
+  }
+  .app-shell {
+    display: block !important;
+    background: white !important;
+  }
+  body {
+    background: white !important;
   }
 }

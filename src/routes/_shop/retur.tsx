@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Panel } from "@/components/shop/shell";
-import { getInvoice, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
+import { deleteRetur, getInvoice, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
+import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, when } from "@/lib/shop/format";
+import { printReturSlip } from "@/lib/shop/print";
 import type { Bank, Product, Shift } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/retur")({ component: ReturPage });
@@ -36,6 +38,8 @@ function ReturPage() {
   const [bank, setBank] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
   function loadHistory() {
     void shiftLedger({ data: {} }).then((res) => setHistory((res?.returs as Array<Record<string, unknown>>) ?? []));
@@ -65,6 +69,12 @@ function ReturPage() {
     return sum + harga * line.qty;
   }, 0);
   const net = returValue - exchangeValue;
+  const shown = history.filter((row) => {
+    const day = String(row.tanggal || "").slice(0, 10);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+  });
 
   return (
     <Panel>
@@ -207,8 +217,9 @@ function ReturPage() {
                 },
               })
                 .then((result) => {
-                  const info = result as { id: string };
-                  toast.success(`${info.id} tersimpan`);
+                  const info = result as Record<string, unknown>;
+                  toast.success(`${me.role} · Retur ${String(info.id)} tersimpan`);
+                  try { printReturSlip(info); } catch (error) { toast.error(error instanceof Error ? error.message : "Nota retur gagal dicetak"); }
                   setLines([]);
                   setExchange([]);
                   setCustomer("");
@@ -224,19 +235,36 @@ function ReturPage() {
         </div>
       </div>
       <div className="mt-8">
-        <h3 className="font-extrabold">Histori Retur Terbaru</h3>
+        <h3 className="font-extrabold">Histori Retur</h3>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <PeriodPicker start={from} end={to} onChange={(nextStart, nextEnd) => { setFrom(nextStart); setTo(nextEnd); }} />
+          <button className="h-11 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => printReturList(shown, from, to)}>Cetak PDF</button>
+        </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="text-[11px] text-muted uppercase"><tr><th className="py-2">No Retur</th><th>Invoice Asal</th><th>Tanggal</th><th>Pelanggan</th><th className="text-right">Selisih</th></tr></thead>
+            <thead className="text-[11px] text-muted uppercase"><tr><th className="py-2">No Retur</th><th>Invoice Asal</th><th>Tanggal</th><th>Pelanggan</th><th className="text-right">Selisih</th><th></th></tr></thead>
             <tbody>
-              {history.length === 0 ? <tr><td colSpan={5} className="p-4 text-center text-muted">Belum ada retur barang.</td></tr> : null}
-              {history.slice(0, 12).map((row) => (
+              {shown.length === 0 ? <tr><td colSpan={6} className="p-4 text-center text-muted">Tidak ada retur pada periode ini.</td></tr> : null}
+              {shown.map((row) => (
                 <tr key={String(row.id)} className="border-t border-line">
                   <td className="py-2">{String(row.id)}</td>
                   <td>{String(row.parent_invoice)}</td>
                   <td>{when(String(row.tanggal))}</td>
                   <td>{String(row.pelanggan)}</td>
                   <td className="num text-right">{rupiah(Number(row.net_amount))}</td>
+                  <td className="text-right">
+                    <button className="text-xs font-bold text-accent" onClick={() => {
+                      try { printReturSlip(row); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+                    }}>Cetak</button>
+                    {me.role !== "Kasir" ? (
+                      <button className="ml-3 text-xs font-bold text-danger" onClick={() => {
+                        if (!confirm(`Hapus nota retur ${String(row.id)}? Stok dan uang laci dikembalikan.`)) return;
+                        void deleteRetur({ data: { id: String(row.id) } })
+                          .then(() => { toast.success("Retur dihapus. Stok dan kas dikembalikan."); loadHistory(); })
+                          .catch((error: Error) => toast.error(error.message));
+                      }}>Hapus</button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -245,4 +273,19 @@ function ReturPage() {
       </div>
     </Panel>
   );
+}
+
+function printReturList(rows: Array<Record<string, unknown>>, start: string, end: string) {
+  if (!rows.length) {
+    toast.error("Tidak ada retur pada periode ini.");
+    return;
+  }
+  const body = rows.map((row) => `<tr><td>${row.id}</td><td>${row.parent_invoice || "-"}</td><td>${when(String(row.tanggal || ""))}</td><td>${row.pelanggan || "-"}</td><td style="text-align:right">${rupiah(Number(row.net_amount || 0))}</td></tr>`).join("");
+  const win = window.open("", "_blank", "width=800,height=700");
+  if (!win) {
+    toast.error("Izinkan popup untuk mencetak.");
+    return;
+  }
+  win.document.write(`<!doctype html><html><head><title>Laporan Retur</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>MURIA JAYA SAKTI</h2><p>Laporan Retur ${start || "awal"} s/d ${end || "sekarang"}</p><table><thead><tr><th>No Retur</th><th>Invoice</th><th>Tanggal</th><th>Pelanggan</th><th>Selisih</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.close();
 }

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
+import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { manualNota, searchProducts } from "@/lib/shop/api";
 import { todayInput } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
@@ -26,6 +26,10 @@ function ManualPage() {
     return () => clearTimeout(timer);
   }, [q]);
 
+  function addItem(product: Product, isAlt: boolean) {
+    setItems((prev) => [...prev, { product, jenis, qty: 1, isAlt, tujuan, keterangan: ket }]);
+  }
+
   if (me.role === "Kasir") return <p>Halaman ini untuk Admin.</p>;
 
   return (
@@ -36,18 +40,19 @@ function ManualPage() {
         <button className="mt-2 text-xs font-bold text-red-500" onClick={() => { setItems([]); setQ(""); setTujuan(""); setKet(""); }}>Reset Form</button>
         <input className={`${inputClass} mt-3`} placeholder="Cari Sparepart" value={q} onChange={(e) => setQ(e.target.value)} />
         <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-line">
-          {hits.map((item) => (
-            <li key={item.id}>
-              <button className="min-h-11 w-full px-3 text-left text-sm" onClick={() => {
-                setItems((prev) => [...prev, { product: item, jenis, qty: 1, isAlt: false, tujuan, keterangan: ket }]);
-                setQ("");
-                setHits([]);
-              }}>
-                <span className="font-medium">{item.nama}</span>
-                <span className="block text-[11px] text-muted">Stok: {item.stok} {item.satuan}</span>
-              </button>
-            </li>
-          ))}
+          {hits.map((item) => {
+            const dusOk = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
+            return (
+              <li key={item.id} className="flex items-center gap-2 border-b border-line px-3 py-2 hover:bg-blue-50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium"><Mark text={item.nama} q={q} /></p>
+                  <p className="text-[11px] text-muted">Stok: {item.stok} {item.satuan}{dusOk ? ` · ${Math.floor(item.stok / item.isiSatuanAlt)} ${item.satuanAlt}` : ""}</p>
+                </div>
+                <button className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold" onClick={() => addItem(item, false)}>Pcs</button>
+                <button className="rounded bg-blue-600 px-2 py-1 text-[11px] font-bold text-white disabled:opacity-40" disabled={!dusOk} onClick={() => addItem(item, true)}>{item.satuanAlt || "Dus"}</button>
+              </li>
+            );
+          })}
         </ul>
         <div className="mt-3 grid gap-2">
           <label className="text-xs text-muted">Tanggal Nota<input className={`${inputClass} mt-1`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
@@ -71,7 +76,16 @@ function ManualPage() {
           {items.map((item, index) => (
             <li key={`${item.product.id}-${index}`} className="flex items-center gap-2 py-2 text-sm">
               <span className="flex-1">{item.jenis} · {item.product.nama}<span className="block text-[11px] text-muted">Stok saat ini: {item.product.stok} {item.product.satuan}</span></span>
-              {item.product.satuanAlt ? <button className="text-xs font-bold text-accent" onClick={() => setItems((prev) => prev.map((row, i) => i === index ? { ...row, isAlt: !row.isAlt } : row))}>{item.isAlt ? item.product.satuanAlt : item.product.satuan}</button> : <span className="text-xs">{item.product.satuan}</span>}
+              {item.product.satuanAlt ? (
+                <select
+                  className="rounded border border-blue-300 bg-blue-50 px-1 py-1 text-xs font-bold text-blue-700"
+                  value={item.isAlt ? "alt" : "base"}
+                  onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, isAlt: e.target.value === "alt" } : row))}
+                >
+                  <option value="base">{item.product.satuan}</option>
+                  <option value="alt">{item.product.satuanAlt}</option>
+                </select>
+              ) : <span className="text-xs">{item.product.satuan}</span>}
               <input className="num h-11 w-16 rounded-lg border border-line text-center" value={item.qty} onChange={(e) => {
                 const qty = Math.max(1, Number(e.target.value) || 1);
                 setItems((prev) => prev.map((row, i) => i === index ? { ...row, qty } : row));
@@ -95,11 +109,21 @@ function ManualPage() {
               })),
             },
           }).then((res) => {
-            toast.success(`Tersimpan ${(res as { nomor: string }).nomor}`);
+            const nomor = (res as { nomor: string }).nomor;
+            toast.success(`${me.role} · Nota ${nomor} tersimpan`);
+            printManual(nomor, tanggal, items);
             setItems([]);
           }).catch((error: Error) => toast.error(error.message));
         }}>Simpan & Cetak 1 Nota</PrimaryButton>
       </Panel>
     </div>
   );
+}
+
+function printManual(nomor: string, tanggal: string, items: Draft[]) {
+  const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td></tr>`).join("");
+  const win = window.open("", "_blank", "width=720,height=640");
+  if (!win) return;
+  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>Muria Jaya Sakti</h2><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.close();
 }

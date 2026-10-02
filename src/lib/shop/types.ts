@@ -6,6 +6,8 @@ export type Staff = {
   name: string;
   shift: string;
   status: string;
+  photo: string;
+  mustChange?: boolean;
 };
 
 export type Product = {

@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { PeriodPicker } from "@/components/shop/period";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { addCashMove, closeShift, deleteCashMove, listShifts, openShift, shiftLedger } from "@/lib/shop/api";
+import { addCashMove, closeShift, deleteCashMove, deleteClosedShift, listShifts, openShift, shiftLedger } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
+import { printShiftReport } from "@/lib/shop/print";
 import type { Shift, Staff } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/kas")({ component: KasPage });
@@ -13,6 +15,7 @@ function KasPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [drawers, setDrawers] = useState<Record<string, number>>({});
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [arsip, setArsip] = useState<Shift | null>(null);
   const [selected, setSelected] = useState("");
   const [ledger, setLedger] = useState<Awaited<ReturnType<typeof shiftLedger>> | null>(null);
   const [kasAwal, setKasAwal] = useState("");
@@ -44,7 +47,7 @@ function KasPage() {
   const returs = (ledger?.returs ?? []) as Array<Record<string, unknown>>;
   const drawer = selected ? Number(drawers[selected] ?? ledger?.drawer ?? 0) : 0;
   const awal = Number(ledger?.shift?.kasAwal ?? 0);
-  const tunai = invoices.filter((i) => i.status_bayar === "Lunas" && i.metode_bayar === "Tunai").reduce((s, i) => s + Number(i.bayar_tunai) - Number(i.kembalian), 0);
+  const tunai = invoices.filter((i) => i.status_bayar === "Lunas" && (i.metode_bayar === "Tunai" || i.metode_bayar === "Split")).reduce((s, i) => s + Number(i.bayar_tunai) - Number(i.kembalian), 0);
   const transfer = invoices.reduce((s, i) => {
     if (i.status_bayar !== "Lunas") return s;
     if (i.metode_bayar === "Transfer") return s + Number(i.total);
@@ -71,6 +74,87 @@ function KasPage() {
     return { name, active, latest: active || mine[0] || null };
   });
 
+  function pantau(id: string) {
+    setSelected(id);
+    setArsip(null);
+  }
+
+  function lihat(id: string) {
+    const shift = shifts.find((item) => item.id === id) ?? null;
+    if (!shift || shift.status !== "SELESAI") {
+      toast.error("Arsip shift tidak ditemukan.");
+      return;
+    }
+    setSelected(id);
+    setArsip(shift);
+  }
+
+  function hapusArsip(shift: Shift) {
+    if (!confirm(`Hapus arsip ${shift.shift} milik ${shift.cashierName}? Nota, kas, retur, dan laporan harian tidak ikut dihapus.`)) return;
+    void deleteClosedShift({ data: { id: shift.id } })
+      .then(() => {
+        toast.success("Arsip shift dihapus");
+        if (selected === shift.id) setSelected("");
+        if (arsip?.id === shift.id) setArsip(null);
+        refresh();
+      })
+      .catch((err: Error) => toast.error(err.message));
+  }
+
+  function tutupShift(id: string) {
+    const shift = shifts.find((item) => item.id === id);
+    if (!shift || shift.status !== "AKTIF") return toast.error("Tidak ada shift aktif yang dipilih.");
+    if (!confirm(`Tutup shift ${shift.shift} milik ${shift.cashierName}?`)) return;
+    setSelected(id);
+    void closeShift({ data: { id, countedCash: counted === "" ? null : digits(counted) } })
+      .then(async (res) => {
+        toast.success(`Shift ditutup. Kas akhir ${rupiah(res.kasAkhir)}`);
+        setCounted("");
+        try { await cetakShift(id); } catch (error) { toast.error(error instanceof Error ? error.message : "Laporan tidak terbuka. Izinkan popup."); }
+        refresh();
+      })
+      .catch((err: Error) => toast.error(err.message));
+  }
+
+  async function cetakShift(id: string) {
+    const data = await shiftLedger({ data: { shiftId: id } });
+    const live = (data?.shift as Shift | undefined) ?? shifts.find((item) => item.id === id);
+    if (!live) return toast.error("Shift tidak ditemukan.");
+    const list = (data?.invoices ?? []) as Array<Record<string, unknown>>;
+    const moveList = (data?.moves ?? []) as Array<Record<string, unknown>>;
+    const returList = (data?.returs ?? []) as Array<Record<string, unknown>>;
+    const tunaiNota = list.filter((i) => i.status_bayar === "Lunas" && (i.metode_bayar === "Tunai" || i.metode_bayar === "Split")).reduce((s, i) => s + Number(i.bayar_tunai) - Number(i.kembalian), 0);
+    const transferNota = list.reduce((s, i) => {
+      if (i.status_bayar !== "Lunas") return s;
+      if (i.metode_bayar === "Transfer") return s + Number(i.total);
+      if (i.metode_bayar === "Split") return s + Number(i.transfer_amount);
+      return s;
+    }, 0);
+    const bonNota = list.filter((i) => i.status_bayar === "Bon").reduce((s, i) => s + Number(i.total), 0);
+    const masuk = moveList.filter((m) => m.jenis === "MASUK").reduce((s, m) => s + Number(m.jumlah), 0);
+    const keluar = moveList.filter((m) => m.jenis === "KELUAR").reduce((s, m) => s + Number(m.jumlah), 0);
+    const returKeluar = returList.filter((r) => r.payment_direction === "REFUND" && r.metode_bayar !== "Transfer").reduce((s, r) => s + Number(r.cash_amount), 0);
+    const returMasuk = returList.filter((r) => r.payment_direction === "ADDITIONAL_PAYMENT" && r.metode_bayar !== "Transfer").reduce((s, r) => s + Number(r.cash_amount), 0);
+    printShiftReport({
+      shift: live.shift,
+      kasir: live.cashierName,
+      status: live.status,
+      mulai: when(live.start),
+      selesai: when(live.end),
+      kasAwal: Number(data?.shift?.kasAwal ?? live.kasAwal ?? 0),
+      penjualanTunai: tunaiNota,
+      uangMasuk: tunaiNota + masuk + returMasuk,
+      uangKeluar: keluar + returKeluar,
+      transfer: transferNota,
+      bon: bonNota,
+      kasAkhir: Number(data?.drawer ?? live.kasAkhir ?? 0),
+      closedBy: live.closedBy || live.cashierName,
+      invoices: list,
+      moves: moveList,
+      returs: returList,
+    });
+  }
+
   function reloadLedger() {
     if (selected) void shiftLedger({ data: { shiftId: selected } }).then(setLedger);
   }
@@ -92,7 +176,7 @@ function KasPage() {
         </div>
       </div>
 
-      {me.role === "Admin" ? (
+      {me.role !== "Kasir" ? (
         <div className="grid gap-4 md:grid-cols-2">
           {cards.map((card) => (
             <Panel key={card.name}>
@@ -108,16 +192,16 @@ function KasPage() {
                 {card.active ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">ONLINE</span> : null}
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-50" disabled={!card.latest} onClick={() => card.latest && setSelected(card.latest.id)}>Pantau Shift</button>
+                <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-50" disabled={!card.latest} onClick={() => card.latest && pantau(card.latest.id)}>Pantau Shift</button>
                 <button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white" onClick={() => setTarget(card.name)}>Buka / Ganti</button>
-                {card.active ? <button className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700" onClick={() => setSelected(card.active!.id)}>Tutup Shift</button> : null}
+                {card.active ? <button className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700" onClick={() => tutupShift(card.active!.id)}>Tutup Shift</button> : null}
               </div>
             </Panel>
           ))}
         </div>
       ) : null}
 
-      {me.role === "Admin" ? (
+      {me.role !== "Kasir" ? (
         <Panel>
           <div className="grid gap-3 md:grid-cols-2">
             <form className="space-y-2" onSubmit={(e) => {
@@ -140,9 +224,14 @@ function KasPage() {
             </form>
             <form className="space-y-2" onSubmit={(e) => {
               e.preventDefault();
-              if (!selected || !confirm("Tutup shift ini?")) return;
+              if (!selected || !confirm("Tutup shift ini dan cetak laporannya?")) return;
               void closeShift({ data: { id: selected, countedCash: counted === "" ? null : digits(counted) } })
-                .then((res) => { toast.success(`Ditutup. Kas akhir ${rupiah(res.kasAkhir)}`); setCounted(""); refresh(); })
+                .then(async (res) => {
+                  toast.success(`Ditutup. Kas akhir ${rupiah(res.kasAkhir)}`);
+                  setCounted("");
+                  try { await cetakShift(selected); } catch (error) { toast.error(error instanceof Error ? error.message : "Laporan tidak terbuka. Izinkan popup."); }
+                  refresh();
+                })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <h3 className="text-sm font-extrabold">Tutup Shift</h3>
@@ -153,14 +242,18 @@ function KasPage() {
         </Panel>
       ) : null}
 
-      {me.role === "Admin" ? (
+      {me.role !== "Kasir" ? (
         <Panel>
-          <h3 className="font-extrabold">Arsip Shift Selesai</h3>
-          <p className="mt-1 text-xs text-muted">Riwayat shift yang sudah ditutup. Gunakan filter tanggal untuk mencari arsip.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <label className="text-xs text-muted">Dari Tanggal<input className={`${inputClass} mt-1`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-            <label className="text-xs text-muted">Sampai Tanggal<input className={`${inputClass} mt-1`} type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-            <button className="mt-5 h-11 rounded-lg border border-line px-3 text-xs" onClick={() => { setFrom(""); setTo(""); }}>Semua Tanggal</button>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-extrabold">Arsip Shift Selesai</h3>
+              <p className="mt-1 text-xs text-muted">Riwayat shift yang sudah ditutup. Gunakan filter tanggal untuk mencari arsip.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{archives.length} arsip</span>
+          </div>
+          <div className="mt-3">
+            <PeriodPicker start={from} end={to} onChange={(nextStart, nextEnd) => { setFrom(nextStart); setTo(nextEnd); }} />
+            <button className="mt-2 h-11 rounded-lg border border-line px-3 text-xs" onClick={() => { setFrom(""); setTo(""); }}>Semua Tanggal</button>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -168,13 +261,17 @@ function KasPage() {
               <tbody>
                 {archives.length === 0 ? <tr><td colSpan={6} className="py-4 text-center text-muted">Tidak ada arsip shift pada filter tanggal tersebut.</td></tr> : null}
                 {archives.map((shift) => (
-                  <tr key={shift.id} className="border-t border-line">
+                  <tr key={shift.id} className={selected === shift.id ? "bg-blue-50" : ""}>
                     <td className="py-2">{shift.shift}</td>
                     <td>{shift.cashierName}</td>
                     <td className="text-xs">{when(shift.start)}</td>
                     <td className="text-xs">{when(shift.end)}</td>
                     <td className="num text-right">{rupiah(shift.kasAkhir ?? 0)}</td>
-                    <td className="text-right"><button className="text-xs font-bold text-accent" onClick={() => setSelected(shift.id)}>Lihat</button></td>
+                    <td className="text-right">
+                      <button className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700" onClick={() => lihat(shift.id)}>Lihat</button>
+                      <button className="ml-2 rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white" onClick={() => void cetakShift(shift.id).catch((err: Error) => toast.error(err.message))}>Cetak</button>
+                      <button className="ml-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-danger" onClick={() => hapusArsip(shift)}>Hapus</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -204,9 +301,14 @@ function KasPage() {
         <p className="mt-1 text-xs text-muted">Angka laci memakai rumus shift yang sama dengan transaksi: tunai bersih, tambahan kas, pengeluaran, dan selisih retur tunai.</p>
       </Panel>
 
-      <Panel className="overflow-x-auto">
-        <h3 className="font-extrabold">Arus Kas Shift</h3>
-        <p className="text-xs text-muted">Semua pergerakan uang fisik yang memengaruhi laci kasir.</p>
+      <Panel id="arus-kas" className="overflow-x-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-extrabold">Arus Kas Shift</h3>
+            <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Pilih arsip atau shift aktif."} Semua pergerakan uang fisik yang memengaruhi laci kasir.</p>
+          </div>
+          {selected ? <button className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))}>Cetak PDF Shift</button> : null}
+        </div>
         <table className="mt-3 w-full text-left text-sm">
           <thead className="text-[11px] tracking-wide text-muted uppercase"><tr><th className="py-2">Waktu / Ref</th><th>Jenis</th><th>Metode</th><th className="text-right">Masuk</th><th className="text-right">Keluar</th></tr></thead>
           <tbody>
@@ -229,7 +331,7 @@ function KasPage() {
                 <td>Tunai</td>
                 <td className="num text-right text-emerald-700">{String(move.jenis) === "MASUK" ? `+ ${rupiah(Number(move.jumlah))}` : "-"}</td>
                 <td className="num text-right text-rose-600">{String(move.jenis) === "KELUAR" ? `- ${rupiah(Number(move.jumlah))}` : "-"}</td>
-                {me.role === "Admin" ? <td><button className="text-xs text-danger" onClick={() => void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); })}>Hapus</button></td> : null}
+                {me.role !== "Kasir" ? <td><button className="text-xs text-danger" onClick={() => void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); })}>Hapus</button></td> : null}
               </tr>
             ))}
             {returs.map((retur) => {
@@ -257,12 +359,13 @@ function KasPage() {
             <p className="text-xs text-muted">Masukkan uang tambahan ke laci.</p>
             <form className="mt-3 space-y-2" onSubmit={(e) => {
               e.preventDefault();
-              void addCashMove({ data: { jenis: "MASUK", jumlah: digits(jumlah), keterangan: ket || "Tambahan kas", shiftId: selected } })
+              if (!ket.trim() || digits(jumlah) <= 0) return toast.error("Isi jumlah dan keterangan, contoh: tambahan dari owner.");
+              void addCashMove({ data: { jenis: "MASUK", jumlah: digits(jumlah), keterangan: ket.trim(), shiftId: selected } })
                 .then(() => { toast.success("Kas masuk"); setJumlah(""); setKet(""); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <input className={`${inputClass} num`} placeholder="Jumlah" value={jumlah} onChange={(e) => setJumlah(grouped(digits(e.target.value)))} />
-              <input className={inputClass} placeholder="Keterangan" value={ket} onChange={(e) => setKet(e.target.value)} />
+              <input className={inputClass} placeholder="Keterangan, contoh: tambahan dari owner" value={ket} onChange={(e) => setKet(e.target.value)} />
               <PrimaryButton type="submit">+ Tambah</PrimaryButton>
             </form>
           </Panel>
@@ -274,12 +377,13 @@ function KasPage() {
               const form = e.currentTarget;
               const nilai = digits((form.elements.namedItem("nilai") as HTMLInputElement).value);
               const note = (form.elements.namedItem("note") as HTMLInputElement).value;
-              void addCashMove({ data: { jenis: "KELUAR", jumlah: nilai, keterangan: note || "Pengeluaran", shiftId: selected } })
+              if (nilai <= 0 || !note.trim()) return toast.error("Isi jumlah dan keterangan, contoh: beli makan.");
+              void addCashMove({ data: { jenis: "KELUAR", jumlah: nilai, keterangan: note.trim(), shiftId: selected } })
                 .then(() => { toast.success("Pengeluaran tersimpan"); form.reset(); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <input name="nilai" className={`${inputClass} num`} placeholder="Jumlah" />
-              <input name="note" className={inputClass} placeholder="Keterangan" />
+              <input name="note" className={inputClass} placeholder="Keterangan, contoh: beli makan" />
               <PrimaryButton type="submit" className="bg-red-600 hover:bg-red-700">+ Pengeluaran</PrimaryButton>
             </form>
           </Panel>
@@ -301,6 +405,40 @@ function KasPage() {
         </div>
         <p className="mt-2 text-[11px] text-muted">Tanggal acuan {todayInput()} WITA.</p>
       </Panel>
+      {arsip ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-panel p-4">
+            <h3 className="font-extrabold">Detail Arsip Shift</h3>
+            <p className="mt-1 text-sm">{arsip.shift} · {arsip.cashierName}</p>
+            <p className="text-xs text-muted">Mulai {when(arsip.start)} · Selesai {when(arsip.end)} · {arsip.status}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg bg-slate-50 p-3">Kasir<b className="mt-1 block">{arsip.cashierName}</b></div>
+              <div className="rounded-lg bg-slate-50 p-3">Status<b className="mt-1 block">{arsip.status}</b></div>
+              <div className="rounded-lg bg-slate-50 p-3">Mulai<b className="mt-1 block text-xs">{when(arsip.start)}</b></div>
+              <div className="rounded-lg bg-slate-50 p-3">Selesai<b className="mt-1 block text-xs">{when(arsip.end)}</b></div>
+              <div className="rounded-lg bg-blue-50 p-3">Kas awal<b className="mt-1 block">{rupiah(arsip.kasAwal)}</b></div>
+              <div className="rounded-lg bg-emerald-50 p-3">Kas akhir<b className="mt-1 block">{rupiah(ledger?.shift?.id === arsip.id ? drawer : arsip.kasAkhir ?? 0)}</b></div>
+            </div>
+            <div className="mt-3 rounded-xl border border-line p-3 text-sm">
+              <p className="font-bold">Ringkasan Keuangan Shift</p>
+              {ledger?.shift?.id === arsip.id ? (
+                <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                  <p className="flex justify-between gap-3"><span className="text-muted">Uang masuk</span><b>{rupiah(uangMasuk)}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-muted">Uang keluar</span><b>{rupiah(uangKeluar)}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-muted">Penjualan tunai</span><b>{rupiah(tunai)}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-muted">Refund tunai</span><b>{rupiah(returKeluar)}</b></p>
+                </div>
+              ) : <p className="mt-2 text-xs text-muted">Memuat rincian...</p>}
+              <p className="mt-2 text-[11px] text-muted">{invoices.length} nota · {moves.length} arus kas · {returs.length} retur</p>
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => setArsip(null)}>Tutup</button>
+              <button className="h-11 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-bold text-danger" onClick={() => hapusArsip(arsip)}>Hapus</button>
+              <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => void cetakShift(arsip.id).catch((err: Error) => toast.error(err.message))}>Cetak Shift</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
