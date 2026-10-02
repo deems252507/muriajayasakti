@@ -810,7 +810,7 @@ export async function listShifts() {
   const db = await sql();
   const rows = await db.query(
     me.role === "Kasir"
-      ? `select * from shifts where username = $1 or status = 'AKTIF' order by start_time desc limit 40`
+      ? `select * from shifts where status = 'AKTIF' and (username = $1 or shift = (select shift from staff where username = $1)) order by start_time desc limit 5`
       : `select * from shifts order by start_time desc limit 80`,
     me.role === "Kasir" ? [me.username] : [],
   );
