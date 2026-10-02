@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
+import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/barang")({ component: BarangPage });
@@ -52,6 +53,13 @@ function BarangPage() {
   }
   useEffect(() => {
     load(page);
+    const timer = setInterval(() => load(page), 4000);
+    const onFocus = () => load(page);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [q, page, sort, kategori]);
 
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
@@ -92,7 +100,7 @@ function BarangPage() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = "stok-muria-jaya-sakti.csv";
+                  a.download = `${shopBrand().nama.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-stok.csv`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }).catch((error: Error) => toast.error(error.message));

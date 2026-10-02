@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { manualNota, searchProducts } from "@/lib/shop/api";
 import { todayInput } from "@/lib/shop/format";
+import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/manual")({ component: ManualPage });
@@ -124,6 +125,6 @@ function printManual(nomor: string, tanggal: string, items: Draft[]) {
   const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td></tr>`).join("");
   const win = window.open("", "_blank", "width=720,height=640");
   if (!win) return;
-  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>Muria Jaya Sakti</h2><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat}<br>${shopBrand().telepon}</p><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
   win.document.close();
 }
