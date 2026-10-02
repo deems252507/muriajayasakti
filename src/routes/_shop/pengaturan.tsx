@@ -17,7 +17,7 @@ function SettingsPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [bankOpen, setBankOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [shop, setShop] = useState({ nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM" });
+  const [shop, setShop] = useState({ nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" });
   const [bank, setBank] = useState({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" });
   const [account, setAccount] = useState(emptyAccount);
   const [current, setCurrent] = useState("");
@@ -47,14 +47,27 @@ function SettingsPage() {
       {me.role !== "Kasir" ? (
         <Panel>
           <h2 className="font-extrabold">Identitas Toko</h2>
-          <p className="mt-1 text-xs text-muted">Nama, alamat, dan nomor ini langsung dipakai di struk kasir dan laporan cetak.</p>
+          <p className="mt-1 text-xs text-muted">Nama, alamat, nomor, dan logo ini dipakai di menu, halaman masuk, dan struk.</p>
           <form className="mt-3 space-y-2" onSubmit={(e) => {
             e.preventDefault();
             void saveShopProfile({ data: shop }).then(() => {
               setShopProfile(shop);
-              toast.success("Identitas toko disimpan. Struk berikutnya memakai data ini.");
+              toast.success("Identitas toko disimpan. Menu dan halaman masuk memakai data ini.");
             }).catch((err: Error) => toast.error(err.message));
           }}>
+            <div className="flex items-center gap-3">
+              <img src={shop.logo || "/brand/logo.png"} alt="" className="h-16 w-16 rounded-2xl bg-slate-100 object-contain p-1" />
+              <label className="text-sm font-bold text-accent">
+                Ganti logo
+                <input className="hidden" type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  void shrinkLogo(file).then((logo) => setShop((prev) => ({ ...prev, logo }))).catch((err: Error) => toast.error(err.message));
+                }} />
+              </label>
+              {shop.logo ? <button type="button" className="text-xs text-danger" onClick={() => setShop({ ...shop, logo: "" })}>Pakai logo bawaan</button> : null}
+            </div>
             <Field label="Nama toko"><input className={inputClass} value={shop.nama} onChange={(e) => setShop({ ...shop, nama: e.target.value })} /></Field>
             <Field label="Alamat"><input className={inputClass} value={shop.alamat} onChange={(e) => setShop({ ...shop, alamat: e.target.value })} /></Field>
             <Field label="No. HP / telepon"><input className={inputClass} value={shop.telepon} onChange={(e) => setShop({ ...shop, telepon: e.target.value })} /></Field>
@@ -245,6 +258,33 @@ function SettingsPage() {
       </Panel>
     </div>
   );
+}
+
+function shrinkLogo(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      const max = 256;
+      const scale = Math.min(max / image.width, max / image.height, 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Logo tidak bisa diproses"));
+        return;
+      }
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Logo tidak bisa dibaca"));
+    };
+    image.src = url;
+  });
 }
 
 function shrinkPhoto(file: File) {
