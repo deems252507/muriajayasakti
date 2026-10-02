@@ -113,24 +113,29 @@ export function Mark({ text, q }: { text: string; q: string }) {
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");
+  const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const groups = me.role === "Kasir" ? KASIR : ADMIN;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
   useEffect(() => {
-    void listMasters().then((res) => {
-      const profile = res.profile;
+    function apply(profile: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string }) {
       if (!profile?.nama) return;
       setBrand(profile.nama);
+      setLogo(profile.logo || "/brand/logo.png");
       setShopProfile(profile);
-    }).catch(() => undefined);
+    }
+    void listMasters().then((res) => apply(res.profile)).catch(() => undefined);
+    const onShop = (event: Event) => apply((event as CustomEvent).detail);
+    window.addEventListener("mjs-shop", onShop);
+    return () => window.removeEventListener("mjs-shop", onShop);
   }, []);
 
   return (
     <div className="app-shell min-h-screen bg-paper text-ink md:grid md:grid-cols-[260px_1fr]">
       <aside className={`no-print fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col bg-gradient-to-b from-[#121a2b] to-[#0b1220] text-white shadow-2xl transition-transform duration-200 md:static md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
-          <img src="/brand/logo.png" alt="" className="h-11 w-11 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/15" />
+          <img src={logo} alt="" className="h-11 w-11 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/15" />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold tracking-wide">{brand}</p>
             <p className="text-[11px] text-white/45">Sistem Manajemen Stok</p>
