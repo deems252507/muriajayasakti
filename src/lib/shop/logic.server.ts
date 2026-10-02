@@ -390,22 +390,26 @@ export async function searchProducts(data: any) {
       const rows = await db.query(`select * from products where lower(kode) = lower($1) limit 1`, [scan[1]]);
       return {
         unit: scan[2].toLowerCase() as "pcs" | "dus",
+        exact: rows.length > 0,
         items: rows.map((row) => mapProduct(row as Record<string, unknown>)),
       };
     }
-    if (data.q.length < 1) return { unit: null, items: [] as Product[] };
+    if (data.q.length < 1) return { unit: null, exact: false, items: [] as Product[] };
     const like = `%${data.q}%`;
     const rows = await db.query(
       `select * from products
        where nama ilike $1 or part_number ilike $1 or part_numbers_alt ilike $1
           or kode ilike $1 or merek ilike $1 or kode_pajak ilike $1 or kategori ilike $1
        order by
-         case when lower(part_number) = lower($2) or lower(kode) = lower($2) then 0 else 1 end,
+         case when lower(part_number) = lower($2) or lower(kode) = lower($2) or lower(kode_pajak) = lower($2) then 0 else 1 end,
          nama
        limit $3`,
       [like, data.q, data.limit],
     );
-    return { unit: null, items: rows.map((row) => mapProduct(row as Record<string, unknown>)) };
+    const items = rows.map((row) => mapProduct(row as Record<string, unknown>));
+    const needle = String(data.q).trim().toLowerCase();
+    const exact = items.some((item) => [item.kode, item.partNumber, item.kodePajak].some((value) => value.toLowerCase() === needle));
+    return { unit: null, exact, items };
   }
 
 
@@ -816,7 +820,7 @@ export async function listShifts() {
   );
   const shifts = rows.map((row) => mapShift(row as Record<string, unknown>));
   const drawers: Record<string, number> = {};
-  for (const shift of shifts.filter((s) => s.status === "AKTIF")) {
+  for (const shift of shifts) {
     const [d] = await db.query<{ n: number }>(`select shift_drawer($1)::bigint as n`, [shift.id]);
     drawers[shift.id] = Number(d?.n ?? 0);
   }
