@@ -525,25 +525,72 @@ export function printCashDaily(input: {
 
 export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string }) {
   if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
-  const kategori = info?.kategori?.trim() || "Semua Kategori";
   const tanggal = info?.tanggal || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-  const judul = `STOK ${kategori.toUpperCase()} PER TANGGAL ${tanggal.toUpperCase()}`;
-  let totalStok = 0;
-  let modal = 0;
-  const rows = items
-    .map((item, index) => {
-      totalStok += Number(item.stok);
-      modal += Number(item.hargaBeli) * Number(item.stok);
-      const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
-      return `<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
-    })
-    .join("");
+  const filter = info?.kategori?.trim() || "";
+  const groups = new Map<string, typeof items>();
+  for (const item of items) {
+    const key = (item.kategori || "").trim() || "Tanpa Kategori";
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  const names = [...groups.keys()].sort((a, b) => a.localeCompare(b, "id"));
+  let grandStok = 0;
+  let grandModal = 0;
+  let grandJual = 0;
+  const sections = names.map((name, groupIndex) => {
+    const rows = [...(groups.get(name) ?? [])].sort((a, b) => a.nama.localeCompare(b.nama, "id"));
+    let subStok = 0;
+    let subModal = 0;
+    let subJual = 0;
+    const body = rows.map((item, index) => {
+      const stok = Number(item.stok) || 0;
+      const modal = (Number(item.hargaBeli) || 0) * stok;
+      const jual = (Number(item.hargaJual) || 0) * stok;
+      subStok += stok;
+      subModal += modal;
+      subJual += jual;
+      const status = stok <= 0 ? "HABIS" : item.stokMin > 0 && stok <= item.stokMin ? "KRITIS" : "CUKUP";
+      return `<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}${item.merek ? `<br><span style="font-size:9px;color:#555">${esc(item.merek)}</span>` : ""}</td><td>${esc(item.partNumber || "-")}</td><td class="center">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin || 0}</td><td class="center bold">${stok} ${esc(item.satuan || "Pcs")}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
+    }).join("");
+    grandStok += subStok;
+    grandModal += subModal;
+    grandJual += subJual;
+    return `<section class="${groupIndex ? "cat-break" : ""}">
+      <div class="cat-head"><b>${esc(name.toUpperCase())}</b><span>${rows.length} barang · stok ${subStok.toLocaleString("id-ID")}</span></div>
+      <table><thead><tr><th class="center">No</th><th>Nama Barang</th><th>Part Number</th><th class="center">Kode Pajak</th><th class="center">Min</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td colspan="5" class="right bold">Subtotal ${esc(name)}</td><td class="center bold">${subStok.toLocaleString("id-ID")}</td><td class="right bold">${money(subJual)}</td><td></td></tr></tfoot></table>
+    </section>`;
+  }).join("");
+  const summary = names.map((name) => {
+    const rows = groups.get(name) ?? [];
+    const stok = rows.reduce((sum, item) => sum + (Number(item.stok) || 0), 0);
+    return `<tr><td>${esc(name)}</td><td class="center">${rows.length}</td><td class="center bold">${stok.toLocaleString("id-ID")}</td></tr>`;
+  }).join("");
+  const judul = filter && filter !== "Semua Kategori"
+    ? `STOK ${filter.toUpperCase()} PER TANGGAL ${tanggal.toUpperCase()}`
+    : `STOK SEMUA KATEGORI PER TANGGAL ${tanggal.toUpperCase()}`;
   openPrint(
     judul,
-    `<h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
-    <p style="text-align:center;margin:0 0 10px">Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p>
-    <table><thead><tr><th>No</th><th>Nama</th><th>Kategori</th><th>Part Number</th><th>Alt PN</th><th class="center">Kode Pajak</th><th class="center">Min Stok</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="7" class="right bold">Total Stok & Nilai Modal:</td><td class="center bold">${totalStok}</td><td class="right bold">${money(modal)}</td><td></td></tr></tfoot></table>`,
+    `<style>
+      .cat-head { display:flex; justify-content:space-between; align-items:flex-end; margin:14px 0 4px; border-bottom:2px solid #111; padding-bottom:3px; }
+      .cat-head b { font-size:13px; letter-spacing:.04em; }
+      .cat-head span { font-size:10px; }
+      .cat-break { break-before: page; page-break-before: always; }
+      .sum-table { width: 420px; margin-top: 16px; }
+    </style>
+    <h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
+    <p style="text-align:center;margin:0 0 8px">${names.length} kategori · ${items.length} barang · Tanggal cetak: ${esc(tanggal)}</p>
+    ${sections}
+    <section class="cat-break">
+      <div class="cat-head"><b>RINGKASAN PER KATEGORI</b><span>Total stok ${grandStok.toLocaleString("id-ID")}</span></div>
+      <table class="sum-table"><thead><tr><th>Kategori</th><th class="center">Jumlah Barang</th><th class="center">Total Stok</th></tr></thead>
+      <tbody>${summary}</tbody>
+      <tfoot><tr><td class="bold">TOTAL</td><td class="center bold">${items.length}</td><td class="center bold">${grandStok.toLocaleString("id-ID")}</td></tr>
+      <tr><td colspan="2" class="right bold">Nilai modal</td><td class="right bold">${money(grandModal)}</td></tr>
+      <tr><td colspan="2" class="right bold">Nilai jual stok</td><td class="right bold">${money(grandJual)}</td></tr></tfoot></table>
+    </section>`,
     true,
   );
 }
