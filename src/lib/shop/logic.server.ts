@@ -726,8 +726,8 @@ export async function listMasters() {
     `select id, nama, rekening, atas_nama, aktif, keterangan from master_bank order by id`,
   );
   const pajak = await db.query(`select id, jenis, persentase, aktif from master_pajak order by id`);
-  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string }>(
-    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline from shop_profile where id = 1`,
+  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string }>(
+    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo from shop_profile where id = 1`,
   );
   return {
     banks: banks.map((row) => {
@@ -750,7 +750,7 @@ export async function listMasters() {
         aktif: Boolean(p.aktif),
       } satisfies Pajak;
     }),
-    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM" },
+    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" },
   };
 }
 
@@ -759,15 +759,25 @@ export async function saveShopProfile(data: any) {
   assertAdmin(me);
   const nama = String(data.nama ?? "").trim();
   if (!nama) throw new Error("Nama toko wajib diisi.");
+  const logo = String(data.logo ?? "");
+  if (logo.length > 500000) throw new Error("Logo terlalu besar. Pilih gambar yang lebih kecil.");
   const db = await sql();
   await db.query(
-    `insert into shop_profile (id, nama, alamat, telepon, tagline)
-     values (1, $1, $2, $3, $4)
-     on conflict (id) do update set nama = excluded.nama, alamat = excluded.alamat, telepon = excluded.telepon, tagline = excluded.tagline`,
-    [nama, String(data.alamat ?? "").trim(), String(data.telepon ?? "").trim(), String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM"],
+    `insert into shop_profile (id, nama, alamat, telepon, tagline, logo)
+     values (1, $1, $2, $3, $4, $5)
+     on conflict (id) do update set nama = excluded.nama, alamat = excluded.alamat, telepon = excluded.telepon, tagline = excluded.tagline, logo = excluded.logo`,
+    [nama, String(data.alamat ?? "").trim(), String(data.telepon ?? "").trim(), String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM", logo],
   );
   await audit(me, `Ubah profil toko ${nama}`);
-  return { ok: true };
+  return { ok: true, nama, alamat: String(data.alamat ?? "").trim(), telepon: String(data.telepon ?? "").trim(), tagline: String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM", logo };
+}
+
+export async function publicShop() {
+  const db = await sql();
+  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string }>(
+    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo from shop_profile where id = 1`,
+  );
+  return profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" };
 }
 
 

@@ -3,13 +3,20 @@ const shop = {
   alamat: "Jl. Raja Alam RT.13 No.22",
   telepon: "0852-4717-7445",
   tagline: "INTEGRATED BUSINESS SYSTEM",
+  logo: "",
 };
 
 export function setShopProfile(next: Partial<typeof shop>) {
+  const before = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}`;
   if (next.nama) shop.nama = next.nama;
   if (next.alamat != null) shop.alamat = next.alamat;
   if (next.telepon != null) shop.telepon = next.telepon;
   if (next.tagline != null) shop.tagline = next.tagline;
+  if (next.logo != null) shop.logo = next.logo;
+  const after = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}`;
+  if (before === after) return;
+  if (typeof document !== "undefined") document.title = shop.nama;
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mjs-shop", { detail: { ...shop } }));
 }
 
 export function shopBrand() {
