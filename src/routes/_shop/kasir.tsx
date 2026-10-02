@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -50,6 +50,7 @@ function KasirPage() {
   const [customOpen, setCustomOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
+  const [scanConfirm, setScanConfirm] = useState<{ product: Product; unit: "pcs" | "dus" | null } | null>(null);
   const scanLock = useRef(false);
 
   useEffect(() => {
@@ -81,8 +82,8 @@ function KasirPage() {
     }
     const timer = setTimeout(() => {
       void searchProducts({ data: { q } }).then((res) => {
-        if (res.unit && res.items[0]) {
-          addProduct(res.items[0], res.unit === "dus", true);
+        if (res.items[0] && (res.unit || res.exact)) {
+          setScanConfirm({ product: res.items[0], unit: res.unit });
           setQ("");
           setHits([]);
           beep();
@@ -90,19 +91,34 @@ function KasirPage() {
         }
         setHits(res.items);
       });
-    }, 160);
+    }, /[\s]/.test(q) ? 160 : 40);
     return () => clearTimeout(timer);
   }, [q]);
 
   useEffect(() => {
     if (!camera) return;
     scanLock.current = false;
-    const reader = new Html5Qrcode("kasir-qr");
+    const reader = new Html5Qrcode("kasir-qr", {
+      verbose: false,
+      useBarCodeDetectorIfSupported: true,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.QR_CODE,
+      ],
+    });
     let stopped = false;
     reader
       .start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 140 } },
+        {
+          fps: 30,
+          qrbox: { width: 300, height: 180 },
+          videoConstraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+        },
         (value) => {
           if (stopped || scanLock.current) return;
           scanLock.current = true;
@@ -221,12 +237,21 @@ function KasirPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && hits[0]) {
-              e.preventDefault();
-              addProduct(hits[0], false, false);
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            const code = q.trim();
+            if (!code) return;
+            void searchProducts({ data: { q: code } }).then((res) => {
+              const item = res.items[0];
+              if (!item) {
+                toast.error("Barcode tidak dikenali.");
+                return;
+              }
+              setScanConfirm({ product: item, unit: res.unit });
               setQ("");
               setHits([]);
-            }
+              beep();
+            }).catch((err: Error) => toast.error(err.message));
           }}
         />
         {camera ? (
@@ -456,6 +481,17 @@ function KasirPage() {
         />
       ) : null}
       {productOpen ? <QuickProduct onClose={() => setProductOpen(false)} onSaved={() => { setProductOpen(false); toast.success("Barang ditambahkan"); }} /> : null}
+      {scanConfirm ? (
+        <ScanConfirm
+          product={scanConfirm.product}
+          unit={scanConfirm.unit}
+          onCancel={() => setScanConfirm(null)}
+          onOk={(isAlt) => {
+            addProduct(scanConfirm.product, isAlt, true);
+            setScanConfirm(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -549,6 +585,40 @@ function QuickProduct({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <PrimaryButton type="submit" disabled={busyForm}>Simpan</PrimaryButton>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ScanConfirm({ product, unit, onCancel, onOk }: { product: Product; unit: "pcs" | "dus" | null; onCancel: () => void; onOk: (isAlt: boolean) => void }) {
+  const dusOk = Boolean(product.satuanAlt && product.isiSatuanAlt > 0);
+  const [mode, setMode] = useState<"pcs" | "dus">(unit === "dus" && dusOk ? "dus" : "pcs");
+  const dusStok = dusOk ? Math.floor(product.stok / product.isiSatuanAlt) : 0;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-panel p-4">
+        <p className="text-xs font-bold tracking-wide text-muted uppercase">Cek barang sebelum masuk keranjang</p>
+        <h3 className="mt-1 text-lg font-extrabold">{product.nama}</h3>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">{product.kategori || "Tanpa kategori"}</span>
+          {product.merek ? <span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{product.merek}</span> : null}
+        </div>
+        <p className="mt-2 font-mono text-xs text-blue-700">PN: {product.partNumber || product.kode || "-"}{product.kodePajak ? ` · Pajak ${product.kodePajak}` : ""}</p>
+        <p className="mt-1 text-sm">Stok: {product.stok} {product.satuan}{dusOk ? ` · ${dusStok} ${product.satuanAlt}` : ""}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" className={`rounded-xl border-2 p-3 text-left ${mode === "pcs" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200"}`} onClick={() => setMode("pcs")}>
+            <b>Pcs</b>
+            <span className="mt-1 block text-sm">{rupiah(product.hargaJual)} / {product.satuan}</span>
+          </button>
+          <button type="button" className={`rounded-xl border-2 p-3 text-left disabled:opacity-40 ${mode === "dus" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-200"}`} disabled={!dusOk} onClick={() => setMode("dus")}>
+            <b>{product.satuanAlt || "Dus"}</b>
+            <span className="mt-1 block text-sm">{dusOk ? `${rupiah(product.hargaJualAlt)} · isi ${product.isiSatuanAlt} pcs` : "Tidak ada dus"}</span>
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" className="rounded-xl border border-slate-300 py-3 font-bold" onClick={onCancel}>Batal</button>
+          <button type="button" className="rounded-xl bg-green-600 py-3 font-bold text-white" onClick={() => onOk(mode === "dus")}>Lanjut</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -220,7 +220,14 @@ function KasPage() {
             <form id="buka-shift" className="space-y-2" onSubmit={(e) => {
               e.preventDefault();
               void openShift({ data: { shift: target, username: cashier, kasAwal: digits(kasAwal) } })
-                .then((res) => { toast.success("Shift dibuka. Transaksi mulai dari 0."); setKasAwal(""); if (res?.id) setSelected(res.id); refresh(); })
+                .then((res) => {
+                  const modal = digits(kasAwal);
+                  const nama = target.replace(/^Kasir\s+/i, "");
+                  toast.success(`Shift ${nama} dibuka. Transaksi mulai dari ${rupiah(modal)} uang kas masuk.`);
+                  setKasAwal("");
+                  if (res?.id) setSelected(res.id);
+                  refresh();
+                })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <h3 className="text-sm font-extrabold">Buka / Ganti Shift</h3>
@@ -284,7 +291,7 @@ function KasPage() {
                     <td>{shift.cashierName}</td>
                     <td className="text-xs">{when(shift.start)}</td>
                     <td className="text-xs">{when(shift.end)}</td>
-                    <td className="num text-right">{rupiah(shift.kasAkhir ?? 0)}</td>
+                    <td className="num text-right">{rupiah(drawers[shift.id] ?? shift.kasAkhir ?? 0)}</td>
                     <td className="text-right">
                       <button className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700" onClick={() => lihat(shift.id)}>Lihat</button>
                       <button className="ml-2 rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white" onClick={() => void cetakShift(shift.id).catch((err: Error) => toast.error(err.message))}>Cetak</button>
@@ -303,7 +310,7 @@ function KasPage() {
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi title="Kas Awal" hint="Modal awal shift" value={rupiah(awal)} />
+        <Kpi title="Kas Awal" hint={ledger?.shift ? `Modal saat shift ${ledger.shift.shift} dibuka` : "Belum ada shift"} value={rupiah(awal)} />
         <Kpi title="Uang Masuk Laci" hint="Tunai + tambahan kas" value={rupiah(uangMasuk)} tone="ok" />
         <Kpi title="Uang Keluar Laci" hint="Retur tunai + pengeluaran" value={rupiah(uangKeluar)} tone="danger" />
         <Kpi title="Kas Seharusnya" hint="Kas awal + pergerakan laci" value={rupiah(drawer)} />
@@ -323,7 +330,7 @@ function KasPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-extrabold">Arus Kas Shift</h3>
-            <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Tidak ada shift aktif. Transaksi berjalan 0 sampai shift baru dibuka."} {ledger?.shift?.status === "SELESAI" ? "Ini arsip, bukan transaksi berjalan." : "Semua pergerakan uang fisik yang memengaruhi laci kasir."}</p>
+            <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Belum ada shift yang dipilih."} {ledger?.shift?.status === "SELESAI" ? "Ini arsip. Kas awal yang diisi saat buka shift tetap dihitung. Transaksi baru mulai dari 0 setelah shift baru dibuka." : ledger?.shift ? "Kas awal + uang masuk − uang keluar = kas seharusnya." : "Buka shift dan isi kas awal. Selama belum ada penjualan, kas di laci sama dengan kas awal itu."}</p>
           </div>
           {selected ? <button className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))}>Cetak PDF Shift</button> : null}
         </div>
