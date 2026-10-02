@@ -132,6 +132,18 @@ export const savePajak = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const saveShopProfile = createServerFn({ method: "POST" })
+  .validator((input: { nama?: string; alamat?: string; telepon?: string; tagline?: string }) => ({
+    nama: String(input?.nama ?? ""),
+    alamat: String(input?.alamat ?? ""),
+    telepon: String(input?.telepon ?? ""),
+    tagline: String(input?.tagline ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { saveShopProfile: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const saveBank = createServerFn({ method: "POST" })
   .validator((input: Bank & { id?: number }) => input)
   .handler(async ({ data }) => {

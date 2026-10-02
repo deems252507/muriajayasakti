@@ -1,3 +1,21 @@
+const shop = {
+  nama: "MURIA JAYA SAKTI",
+  alamat: "Jl. Raja Alam RT.13 No.22",
+  telepon: "0852-4717-7445",
+  tagline: "INTEGRATED BUSINESS SYSTEM",
+};
+
+export function setShopProfile(next: Partial<typeof shop>) {
+  if (next.nama) shop.nama = next.nama;
+  if (next.alamat != null) shop.alamat = next.alamat;
+  if (next.telepon != null) shop.telepon = next.telepon;
+  if (next.tagline != null) shop.tagline = next.tagline;
+}
+
+export function shopBrand() {
+  return shop;
+}
+
 function esc(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -34,7 +52,7 @@ export function openPrint(title: string, inner: string, landscape = false) {
   .foot { margin-top: 16px; text-align: center; font-size: 9px; color: #555; }
   @media print { thead { display: table-header-group; } tr { break-inside: avoid; } }
 </style></head><body>
-  <div class="head"><h1>MURIA JAYA SAKTI</h1><p>Jl. Raja Alam RT.13 No.22 | 0852-4717-7445</p></div>
+  <div class="head"><h1>${esc(shop.nama)}</h1><p>${esc([shop.alamat, shop.telepon].filter(Boolean).join(" | "))}</p></div>
   ${inner}
   <div class="foot">Dicetak pada: ${esc(new Date().toLocaleString("id-ID"))}</div>
 </body></html>`);
@@ -204,6 +222,7 @@ function openSlip(title: string, body: string, plain = false) {
   .brand { font-size: 15px; font-weight: 800; letter-spacing: .04em; }
   .sub { margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
   .addr { margin-top: 4px; font-size: 11px; }
+  .meta { margin-top: 2px; font-size: 10px; line-height: 1.35; }
   .rule { border: 0; border-top: 1px dashed #222; margin: 8px 0; }
   table { width: 100%; border-collapse: collapse; }
   td { vertical-align: top; padding: 1px 0; }
@@ -216,7 +235,7 @@ function openSlip(title: string, body: string, plain = false) {
   .copy { text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .08em; margin-top: 6px; }
   .thanks { text-align: center; margin: 8px 0 0; font-size: 11px; }
 </style></head><body>
-  <div class="shop"><div class="brand">MURIA JAYA SAKTI</div>${plain ? "" : `<div class="sub">INTEGRATED BUSINESS SYSTEM</div>`}<div class="addr">Jl. Raja Alam RT.13 No.22<br>0852-4717-7445</div></div>
+  <div class="shop"><div class="brand">${esc(shop.nama)}</div>${plain || !shop.tagline ? "" : `<div class="sub">${esc(shop.tagline)}</div>`}<div class="addr">${esc(shop.alamat)}${shop.telepon ? `<br>${esc(shop.telepon)}` : ""}</div></div>
   <hr class="rule">${body}${plain ? "" : `<p class="thanks">Terima kasih</p>`}
 </body></html>`);
   win.document.close();
@@ -225,6 +244,15 @@ function openSlip(title: string, body: string, plain = false) {
 
 function slipRow(label: string, value: string, strong = false) {
   return `<tr><td>${esc(label)}</td><td class="${strong ? "strong" : ""}">${esc(value)}</td></tr>`;
+}
+
+function itemIdentity(line: { merek?: string; partNumber?: string; partNumbersAlt?: string }) {
+  const bits = [
+    line.merek ? `Merek: ${esc(line.merek)}` : "",
+    line.partNumber ? `PN: ${esc(line.partNumber)}` : "",
+    line.partNumbersAlt ? `PN Alt: ${esc(line.partNumbersAlt)}` : "",
+  ].filter(Boolean);
+  return bits.length ? `<div class="meta">${bits.join("<br>")}</div>` : "";
 }
 
 export function printSaleReceipt(result: {
@@ -242,13 +270,13 @@ export function printSaleReceipt(result: {
   kasir: string;
   waktu?: string;
   reprint?: boolean;
-  lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string }>;
+  lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string; merek?: string; partNumber?: string; partNumbersAlt?: string; alt?: string }>;
 }) {
   const lines = Array.isArray(result.lines) ? result.lines : [];
   const items = lines
     .map((line) => {
       const title = `${line.nama || "-"}${line.kodePajak ? ` (${line.kodePajak})` : ""}`;
-      return `<div class="item"><div class="name">${esc(title)}</div><div class="line"><span>${esc(line.qty)} ${esc(line.satuan)} x ${esc(money(line.harga))}</span><span>${esc(money(Number(line.harga) * Number(line.qty)))}</span></div></div>`;
+      return `<div class="item"><div class="name">${esc(title)}</div>${itemIdentity({ merek: line.merek, partNumber: line.partNumber, partNumbersAlt: line.partNumbersAlt || line.alt })}<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)} x ${esc(money(line.harga))}</span><span>${esc(money(Number(line.harga) * Number(line.qty)))}</span></div></div>`;
     })
     .join("");
   const pay =
@@ -298,6 +326,9 @@ export function printStoredSale(invoice: Record<string, unknown>, lines: Array<R
       satuan: String(line.satuan || ""),
       harga: Number(line.harga_satuan || line.harga || 0),
       kodePajak: String(line.kode_pajak || line.kodePajak || ""),
+      merek: String(line.merek || line.product_merek || ""),
+      partNumber: String(line.part_number || line.product_part || line.partNumber || ""),
+      partNumbersAlt: String(line.part_numbers_alt || line.product_alt || line.alt || ""),
     })),
   });
 }
@@ -308,7 +339,7 @@ export function printStoredManual(invoice: Record<string, unknown>, lines: Array
       const nama = String(line.custom_item || line.product_nama || "Barang");
       const arah = line.jenis === "MASUK" ? "MASUK (+)" : "KELUAR (-)";
       const tujuan = String(line.tujuan || invoice.tujuan || (line.jenis === "MASUK" ? "Supplier/Gudang" : "Pelanggan/Service"));
-      return `<div style="margin-bottom:9px"><div style="font-weight:bold">${esc(nama)}</div><div style="font-size:10px">PN: ${esc(line.part_number || "-")}</div><div style="display:flex;justify-content:space-between;margin-top:3px"><span>${arah}</span><span>${esc(line.jumlah)} ${esc(line.satuan || "")}</span></div><div style="font-size:10px">${esc(tujuan)}</div></div>`;
+      return `<div style="margin-bottom:9px"><div style="font-weight:bold">${esc(nama)}</div><div class="meta">${[line.merek ? `Merek: ${esc(line.merek)}` : "", `PN: ${esc(line.part_number || "-")}`, line.part_numbers_alt ? `PN Alt: ${esc(line.part_numbers_alt)}` : ""].filter(Boolean).join("<br>")}</div><div style="display:flex;justify-content:space-between;margin-top:3px"><span>${arah}</span><span>${esc(line.jumlah)} ${esc(line.satuan || "")}</span></div><div style="font-size:10px">${esc(tujuan)}</div></div>`;
     })
     .join("");
   const masuk = lines.filter((line) => line.jenis === "MASUK").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
@@ -331,10 +362,10 @@ export function printReturSlip(row: Record<string, unknown>) {
   const items = asList(row.items);
   const exchange = asList(row.exchangeItems ?? row.exchange_items);
   const itemRows = items
-    .map((item) => `<div class="item"><div class="name">${esc(item.nama || "Barang")}</div><div class="line"><span>${esc(item.qty)} ${esc(item.satuan || "")} x ${esc(money(item.harga))}</span><span>${esc(money(item.subtotal ?? Number(item.harga) * Number(item.qty)))}</span></div></div>`)
+    .map((item) => `<div class="item"><div class="name">${esc(item.nama || "Barang")}</div>${itemIdentity({ merek: String(item.merek || ""), partNumber: String(item.part_number || item.partNumber || ""), partNumbersAlt: String(item.part_numbers_alt || item.alt || "") })}<div class="line"><span>${esc(item.qty)} ${esc(item.satuan || "")} x ${esc(money(item.harga))}</span><span>${esc(money(item.subtotal ?? Number(item.harga) * Number(item.qty)))}</span></div></div>`)
     .join("");
   const exRows = exchange
-    .map((item) => `<div class="item"><div class="name">${esc(item.nama || "Barang")}</div><div class="line"><span>${esc(item.qty)} ${esc(item.satuan || "")} x ${esc(money(item.harga))}</span><span>${esc(money(item.subtotal ?? Number(item.harga) * Number(item.qty)))}</span></div></div>`)
+    .map((item) => `<div class="item"><div class="name">${esc(item.nama || "Barang")}</div>${itemIdentity({ merek: String(item.merek || ""), partNumber: String(item.part_number || item.partNumber || ""), partNumbersAlt: String(item.part_numbers_alt || item.alt || "") })}<div class="line"><span>${esc(item.qty)} ${esc(item.satuan || "")} x ${esc(money(item.harga))}</span><span>${esc(money(item.subtotal ?? Number(item.harga) * Number(item.qty)))}</span></div></div>`)
     .join("");
   const direction = String(row.direction || row.payment_direction || "");
   const note = direction === "REFUND" ? "Toko mengembalikan uang" : direction === "ADDITIONAL_PAYMENT" ? "Pelanggan menambah bayar" : "Nilai impas";
@@ -485,8 +516,11 @@ export function printCashDaily(input: {
   );
 }
 
-export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>) {
+export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string }) {
   if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
+  const kategori = info?.kategori?.trim() || "Semua Kategori";
+  const tanggal = info?.tanggal || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  const judul = `STOK ${kategori.toUpperCase()} PER TANGGAL ${tanggal.toUpperCase()}`;
   let totalStok = 0;
   let modal = 0;
   const rows = items
@@ -494,14 +528,15 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
       totalStok += Number(item.stok);
       modal += Number(item.hargaBeli) * Number(item.stok);
       const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
-      return `<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
+      return `<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
     })
     .join("");
   openPrint(
-    "Laporan Stok",
-    `<h2 style="text-align:center;margin:0 0 10px">Laporan Stok Barang</h2>
-    <table><thead><tr><th>No</th><th>Nama</th><th>Part Number</th><th>Alt PN</th><th class="center">Kode Pajak</th><th class="center">Min Stok</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="6" class="right bold">Total Stok & Nilai Modal:</td><td class="center bold">${totalStok}</td><td class="right bold">${money(modal)}</td><td></td></tr></tfoot></table>`,
+    judul,
+    `<h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
+    <p style="text-align:center;margin:0 0 10px">Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p>
+    <table><thead><tr><th>No</th><th>Nama</th><th>Kategori</th><th>Part Number</th><th>Alt PN</th><th class="center">Kode Pajak</th><th class="center">Min Stok</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="7" class="right bold">Total Stok & Nilai Modal:</td><td class="center bold">${totalStok}</td><td class="right bold">${money(modal)}</td><td></td></tr></tfoot></table>`,
     true,
   );
 }

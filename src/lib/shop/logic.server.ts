@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
+import { packFromName } from "@/lib/shop/format";
 import type { Bank, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
@@ -421,8 +422,8 @@ export async function listProducts(data: any) {
       );
     }
     if (data.kategori) {
-      params.push(`%${data.kategori}%`);
-      where.push(`kategori ilike $${params.length}`);
+      params.push(String(data.kategori).trim());
+      where.push(`(lower(btrim(kategori)) = lower($${params.length}) or lower(btrim(kategori)) like lower($${params.length}) || ' %')`);
     }
     if (data.status === "Habis") where.push(`stok <= 0`);
     if (data.status === "Menipis") where.push(`stok > 0 and stok_min > 0 and stok <= stok_min`);
@@ -589,14 +590,10 @@ function splitCatalogName(raw: string) {
   let nama = raw.trim();
   let kodePajak = "";
   let merek = "";
-  const slash = nama.indexOf(" / ");
-  if (slash > 0) {
-    const left = nama.slice(0, slash).trim();
-    const right = nama.slice(slash + 3).trim();
-    if (left && !/\s/.test(left) && left.length <= 24) {
-      kodePajak = left;
-      nama = right;
-    }
+  const slash = nama.match(/^([^/\s]{1,24})\s*\/\s*(.+)$/);
+  if (slash) {
+    kodePajak = slash[1].trim();
+    nama = slash[2].trim();
   }
   const dash = nama.lastIndexOf(" - ");
   if (dash > 0) {
@@ -625,18 +622,23 @@ export async function importProducts(data: any) {
       const nama = parsed.nama;
       if (!partNumber && !nama) continue;
       const status = kodePajak || (row["STATUS PAJAK"] || "").toLowerCase() === "pajak" ? "Pajak" : "Non Pajak";
+      const harga = moneyId(row["HARGA"] || row["HARGA JUAL"] || "0");
+      const pack = packFromName(nama);
+      const satuanAlt = row["SATUAN ALT"] || row["SATUAN KONVERSI"] || (pack ? "Dus" : "");
+      const isiAlt = Number(String(row["ISI ALT"] || row["ISI SATUAN ALT"] || "0").replace(/\D/g, "")) || pack?.pcs || 0;
+      const hargaDus = row["HARGA JUAL ALT"] || row["HARGA DUS"] || "";
       rows.push({
         partNumber,
         nama,
         kategori: row["JENIS BARANG"] || row["JENIS"] || row["KATEGORI"] || "Umum",
         merek,
         stok: Number(String(row["STOK"] ?? row["STOK AWAL"] ?? "0").replace(/[^\d-]/g, "")) || 0,
-        harga: moneyId(row["HARGA"] || row["HARGA JUAL"] || "0"),
+        harga,
         hargaBeli: moneyId(row["HARGA BELI"] || "0"),
         satuan: row["SATUAN"] || "Pcs",
-        satuanAlt: row["SATUAN ALT"] || row["SATUAN KONVERSI"] || "",
-        isiAlt: Number(String(row["ISI ALT"] || row["ISI SATUAN ALT"] || "0").replace(/\D/g, "")) || 0,
-        hargaAlt: moneyId(row["HARGA JUAL ALT"] || row["HARGA DUS"] || "0"),
+        satuanAlt,
+        isiAlt,
+        hargaAlt: hargaDus ? moneyId(hargaDus) : pack && isiAlt > 0 ? harga * isiAlt : 0,
         status,
         kodePajak,
       });
@@ -720,8 +722,8 @@ export async function listMasters() {
     `select id, nama, rekening, atas_nama, aktif, keterangan from master_bank order by id`,
   );
   const pajak = await db.query(`select id, jenis, persentase, aktif from master_pajak order by id`);
-  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string }>(
-    `select nama, alamat, telepon from shop_profile where id = 1`,
+  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string }>(
+    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline from shop_profile where id = 1`,
   );
   return {
     banks: banks.map((row) => {
@@ -744,8 +746,24 @@ export async function listMasters() {
         aktif: Boolean(p.aktif),
       } satisfies Pajak;
     }),
-    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "", telepon: "" },
+    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM" },
   };
+}
+
+export async function saveShopProfile(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const nama = String(data.nama ?? "").trim();
+  if (!nama) throw new Error("Nama toko wajib diisi.");
+  const db = await sql();
+  await db.query(
+    `insert into shop_profile (id, nama, alamat, telepon, tagline)
+     values (1, $1, $2, $3, $4)
+     on conflict (id) do update set nama = excluded.nama, alamat = excluded.alamat, telepon = excluded.telepon, tagline = excluded.tagline`,
+    [nama, String(data.alamat ?? "").trim(), String(data.telepon ?? "").trim(), String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM"],
+  );
+  await audit(me, `Ubah profil toko ${nama}`);
+  return { ok: true };
 }
 
 
@@ -1107,7 +1125,9 @@ export async function getInvoice(data: any): Promise<any> {
     const [inv] = await db.query(`select * from invoices where lower(nomor) = lower($1)`, [data.nomor]);
     if (!inv) return null;
     const lines = await db.query(
-      `select l.*, p.nama as product_nama, p.kode, p.part_number, p.kode_pajak, p.kategori
+      `select l.*, p.nama as product_nama, p.kode,
+              p.part_number as product_part, p.part_numbers_alt as product_alt, p.merek as product_merek,
+              p.kode_pajak, p.kategori
        from invoice_lines l
        left join products p on p.id = l.product_id
        where l.invoice_id = $1

@@ -23,8 +23,8 @@ function StokPage() {
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
-        <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-        <input className={inputClass} list="kategori-stok" placeholder="Ketik kategori, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
+        <input className={inputClass} placeholder="Cari nama atau part number" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <input className={inputClass} list="kategori-stok" placeholder="Kategori persis, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
         <datalist id="kategori-stok">
           {data?.categories.map((item) => <option key={item} value={item} />)}
         </datalist>
@@ -43,7 +43,10 @@ function StokPage() {
         <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
           void listProducts({ data: { q, sort, page: 1, kategori, status, all: true } }).then((res) => {
-            try { printStockReport(res.items); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+            try {
+              const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+              printStockReport(res.items, { kategori: kategori || "Semua Kategori", tanggal });
+            } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
         }}>Cetak PDF</button>
       </div>
@@ -52,6 +55,7 @@ function StokPage() {
           <thead className="bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
             <tr>
               <th className="px-2 py-3">Nama Barang</th>
+              <th className="px-2 py-3">Kategori</th>
               <th className="px-2 py-3">Part Number</th>
               <th className="hidden px-2 py-3 md:table-cell">Part Number Alt</th>
               <th className="px-2 py-3 text-center">Stok Min</th>
@@ -62,12 +66,13 @@ function StokPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.length === 0 ? <tr><td colSpan={8} className="py-6 text-center text-muted">Tidak ada data barang.</td></tr> : null}
+            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-muted">Tidak ada barang di kategori ini.</td></tr> : null}
             {data?.items.map((item) => {
               const label = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "MENIPIS" : "AMAN";
               return (
                 <tr key={item.id} className="border-t border-line">
                   <td className="px-2 py-3 font-medium">{item.nama}</td>
+                  <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
                   <td className="px-2 font-mono text-xs">{item.partNumber || "-"}</td>
                   <td className="hidden px-2 font-mono text-xs md:table-cell">{item.partNumbersAlt || "-"}</td>
                   <td className="num px-2 text-center">{item.stokMin}</td>

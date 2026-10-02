@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
-import { digits, grouped, rupiah } from "@/lib/shop/format";
+import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/barang")({ component: BarangPage });
@@ -200,7 +200,16 @@ function BarangPage() {
           >
             <h2 className="text-lg font-semibold">{form.id ? "Ubah barang" : "Barang baru"}</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Nama"><input className={inputClass} value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} /></Field>
+              <Field label="Nama"><input className={inputClass} value={form.nama} onChange={(e) => {
+                const nama = e.target.value;
+                const pack = packFromName(nama);
+                if (pack && form.isiSatuanAlt <= 0) {
+                  setUseDus(true);
+                  setForm({ ...form, nama, satuanAlt: form.satuanAlt || "Dus", isiSatuanAlt: pack.pcs, hargaJualAlt: form.hargaJualAlt || form.hargaJual * pack.pcs });
+                  return;
+                }
+                setForm({ ...form, nama });
+              }} /></Field>
               <Field label="Part number"><input className={inputClass} value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} /></Field>
               <Field label="Part number lain"><input className={inputClass} value={form.partNumbersAlt} onChange={(e) => setForm({ ...form, partNumbersAlt: e.target.value })} /></Field>
               <Field label="Kategori"><input className={inputClass} value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></Field>
@@ -224,7 +233,7 @@ function BarangPage() {
                   <Field label="Harga jual 1 dus"><input className={`${inputClass} num`} value={grouped(form.hargaJualAlt)} onChange={(e) => setForm({ ...form, hargaJualAlt: digits(e.target.value) })} /></Field>
                   <p className="self-end text-xs text-blue-800">
                     {form.isiSatuanAlt > 0
-                      ? `1 ${form.satuanAlt || "Dus"} = ${form.isiSatuanAlt} ${form.satuan || "Pcs"}. Stok ${form.stok} ${form.satuan || "Pcs"} = ${Math.floor(form.stok / form.isiSatuanAlt)} ${form.satuanAlt || "Dus"}${form.stok % form.isiSatuanAlt ? ` + ${form.stok % form.isiSatuanAlt} ${form.satuan || "Pcs"}` : ""}.`
+                      ? `1 ${form.satuanAlt || "Dus"} = ${form.isiSatuanAlt} ${form.satuan || "Pcs"}${packFromName(form.nama) ? ` @ ${packFromName(form.nama)?.ukuran}` : ""}. Stok ${form.stok} ${form.satuan || "Pcs"} = ${Math.floor(form.stok / form.isiSatuanAlt)} ${form.satuanAlt || "Dus"}${form.stok % form.isiSatuanAlt ? ` + ${form.stok % form.isiSatuanAlt} ${form.satuan || "Pcs"}` : ""}.`
                       : "Isi berapa pcs di dalam 1 dus. Penjualan dus akan mengurangi stok pcs sebanyak angka itu."}
                   </p>
                 </div>
@@ -259,7 +268,18 @@ function parseCsv(text: string) {
   if (headerIndex < 0 || headerIndex === lines.length - 1) return [];
   const headers = splitCsv(lines[headerIndex]);
   return lines.slice(headerIndex + 1).map((line) => {
-    const cells = splitCsv(line);
+    let cells = splitCsv(line);
+    if (cells.length > headers.length) {
+      const nameIndex = headers.findIndex((header) => {
+        const name = header.trim().toUpperCase();
+        return name === "NAMA SPAREPART" || name === "NAMA";
+      });
+      if (nameIndex >= 0) {
+        const extra = cells.length - headers.length;
+        const nama = cells.slice(nameIndex, nameIndex + 1 + extra).join(", ");
+        cells = [...cells.slice(0, nameIndex), nama, ...cells.slice(nameIndex + 1 + extra)];
+      }
+    }
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = cells[index] ?? "";

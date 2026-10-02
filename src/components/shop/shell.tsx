@@ -20,7 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { logout, searchProducts } from "@/lib/shop/api";
+import { logout, listMasters, searchProducts } from "@/lib/shop/api";
+import { setShopProfile } from "@/lib/shop/print";
 import type { Product, Staff } from "@/lib/shop/types";
 
 const ADMIN = [
@@ -111,10 +112,19 @@ export function Mark({ text, q }: { text: string; q: string }) {
 
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [brand, setBrand] = useState("MURIA JAYA SAKTI");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const groups = me.role === "Kasir" ? KASIR : ADMIN;
-  const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? "Muria Jaya Sakti";
+  const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
+  useEffect(() => {
+    void listMasters().then((res) => {
+      const profile = res.profile;
+      if (!profile?.nama) return;
+      setBrand(profile.nama);
+      setShopProfile(profile);
+    }).catch(() => undefined);
+  }, []);
 
   return (
     <div className="app-shell min-h-screen bg-paper text-ink md:grid md:grid-cols-[260px_1fr]">
@@ -122,7 +132,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
           <img src="/brand/logo.png" alt="" className="h-11 w-11 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/15" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-wide">MURIA JAYA SAKTI</p>
+            <p className="truncate text-sm font-bold tracking-wide">{brand}</p>
             <p className="text-[11px] text-white/45">Sistem Manajemen Stok</p>
           </div>
           <button className="ml-auto rounded-lg p-2 hover:bg-white/10 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup menu">
@@ -153,7 +163,9 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
             </div>
           ))}
         </nav>
-        <div className="border-t border-white/10 p-4 text-[11px] text-white/40">Jl. Raja Alam RT.13 No.22</div>
+        <div className="mt-auto border-t border-white/10 px-4 py-3">
+          <p className="text-[11px] leading-5 text-white/70">Developed by Rizky Dwi Maulana</p>
+        </div>
       </aside>
       {open ? <button className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup" /> : null}
       <div className="min-w-0">
@@ -192,6 +204,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
               <button
                 className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-medium text-danger"
                 onClick={() => {
+                  if (!confirm("Yakin keluar dari aplikasi?")) return;
                   void logout().then(() => {
                     window.location.href = "/";
                   });

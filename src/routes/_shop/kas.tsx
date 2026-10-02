@@ -33,12 +33,19 @@ function KasPage() {
       setDrawers(res.drawers);
       setStaff(res.staff.filter((item) => item.role === "Kasir" && item.status === "Aktif"));
       const active = res.shifts.find((s) => s.status === "AKTIF" && (me.role !== "Kasir" || s.username === me.username));
-      setSelected((prev) => prev || active?.id || res.shifts[0]?.id || "");
+      setSelected((prev) => {
+        const current = res.shifts.find((s) => s.id === prev);
+        if (current?.status === "AKTIF") return prev;
+        return active?.id || "";
+      });
     });
   }
   useEffect(() => { refresh(); }, []);
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setLedger(null);
+      return;
+    }
     void shiftLedger({ data: { shiftId: selected } }).then(setLedger);
   }, [selected]);
 
@@ -101,21 +108,6 @@ function KasPage() {
       .catch((err: Error) => toast.error(err.message));
   }
 
-  function tutupShift(id: string) {
-    const shift = shifts.find((item) => item.id === id);
-    if (!shift || shift.status !== "AKTIF") return toast.error("Tidak ada shift aktif yang dipilih.");
-    if (!confirm(`Tutup shift ${shift.shift} milik ${shift.cashierName}?`)) return;
-    setSelected(id);
-    void closeShift({ data: { id, countedCash: counted === "" ? null : digits(counted) } })
-      .then(async (res) => {
-        toast.success(`Shift ditutup. Kas akhir ${rupiah(res.kasAkhir)}`);
-        setCounted("");
-        try { await cetakShift(id); } catch (error) { toast.error(error instanceof Error ? error.message : "Laporan tidak terbuka. Izinkan popup."); }
-        refresh();
-      })
-      .catch((err: Error) => toast.error(err.message));
-  }
-
   async function cetakShift(id: string) {
     const data = await shiftLedger({ data: { shiftId: id } });
     const live = (data?.shift as Shift | undefined) ?? shifts.find((item) => item.id === id);
@@ -168,9 +160,9 @@ function KasPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" onClick={() => { refresh(); reloadLedger(); }}>Perbarui</button>
-          {shifts.length > 1 ? (
-            <select className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" value={selected} onChange={(e) => setSelected(e.target.value)}>
-              {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift} · {shift.cashierName} · {shift.status}</option>)}
+          {shifts.some((shift) => shift.status === "AKTIF") ? (
+            <select className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" value={shifts.some((shift) => shift.id === selected && shift.status === "AKTIF") ? selected : ""} onChange={(e) => { setArsip(null); setSelected(e.target.value); }}>
+              {shifts.filter((shift) => shift.status === "AKTIF").map((shift) => <option key={shift.id} value={shift.id}>{shift.shift} · {shift.cashierName} · AKTIF</option>)}
             </select>
           ) : null}
         </div>
@@ -191,11 +183,30 @@ function KasPage() {
                 </div>
                 {card.active ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">ONLINE</span> : null}
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-50" disabled={!card.latest} onClick={() => card.latest && pantau(card.latest.id)}>Pantau Shift</button>
-                <button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white" onClick={() => setTarget(card.name)}>Buka / Ganti</button>
-                {card.active ? <button className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700" onClick={() => tutupShift(card.active!.id)}>Tutup Shift</button> : null}
+              <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button type="button" className="bg-blue-600 text-white" onClick={() => {
+                  if (!card.active) {
+                    setSelected("");
+                    setArsip(null);
+                    setLedger(null);
+                    toast.success(`${card.name} belum aktif. Transaksi berjalan 0. Angka lama ada di arsip.`);
+                    return;
+                  }
+                  pantau(card.active.id);
+                  document.getElementById("arus-kas")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}>Pantau Shift</button>
+                <button type="button" className="bg-emerald-600 text-white" onClick={() => {
+                  setTarget(card.name);
+                  document.getElementById("buka-shift")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}>Buka / Ganti</button>
+                <button type="button" className="bg-red-600 text-white disabled:cursor-not-allowed" disabled={!card.active} onClick={() => {
+                  if (!card.active) return;
+                  setSelected(card.active.id);
+                  document.getElementById("tutup-shift")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  toast.success("Isi uang fisik, lalu klik Tutup dan arsip.");
+                }}>Tutup Shift</button>
               </div>
+              <p className="mt-3 text-xs text-muted">{card.active ? "Shift ini masih berjalan. Angka di bawah adalah transaksi shift aktif." : "Sudah ditutup. Transaksi berjalan 0 sampai shift baru dibuka."}</p>
             </Panel>
           ))}
         </div>
@@ -204,10 +215,10 @@ function KasPage() {
       {me.role !== "Kasir" ? (
         <Panel>
           <div className="grid gap-3 md:grid-cols-2">
-            <form className="space-y-2" onSubmit={(e) => {
+            <form id="buka-shift" className="space-y-2" onSubmit={(e) => {
               e.preventDefault();
               void openShift({ data: { shift: target, username: cashier, kasAwal: digits(kasAwal) } })
-                .then(() => { toast.success("Shift dibuka"); setKasAwal(""); refresh(); })
+                .then((res) => { toast.success("Shift dibuka. Transaksi mulai dari 0."); setKasAwal(""); if (res?.id) setSelected(res.id); refresh(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <h3 className="text-sm font-extrabold">Buka / Ganti Shift</h3>
@@ -222,21 +233,26 @@ function KasPage() {
               <input className={`${inputClass} num`} placeholder="Kas awal" value={kasAwal} onChange={(e) => setKasAwal(grouped(digits(e.target.value)))} />
               <PrimaryButton type="submit">Buka Shift</PrimaryButton>
             </form>
-            <form className="space-y-2" onSubmit={(e) => {
+            <form id="tutup-shift" className="space-y-2" onSubmit={(e) => {
               e.preventDefault();
-              if (!selected || !confirm("Tutup shift ini dan cetak laporannya?")) return;
-              void closeShift({ data: { id: selected, countedCash: counted === "" ? null : digits(counted) } })
-                .then(async (res) => {
-                  toast.success(`Ditutup. Kas akhir ${rupiah(res.kasAkhir)}`);
+              const aktif = shifts.find((item) => item.id === selected && item.status === "AKTIF");
+              if (!aktif) return toast.error("Tidak ada shift aktif untuk ditutup.");
+              if (!confirm(`Tutup ${aktif.shift} milik ${aktif.cashierName} dan arsipkan?`)) return;
+              void closeShift({ data: { id: aktif.id, countedCash: counted === "" ? null : digits(counted) } })
+                .then(async () => {
+                  toast.success("Shift ditutup dan diarsip. Transaksi berjalan kembali ke 0.");
                   setCounted("");
-                  try { await cetakShift(selected); } catch (error) { toast.error(error instanceof Error ? error.message : "Laporan tidak terbuka. Izinkan popup."); }
+                  setSelected("");
+                  setArsip(null);
+                  setLedger(null);
+                  try { await cetakShift(aktif.id); } catch (error) { toast.error(error instanceof Error ? error.message : "Laporan tidak terbuka. Izinkan popup."); }
                   refresh();
                 })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <h3 className="text-sm font-extrabold">Tutup Shift</h3>
               <input className={`${inputClass} num`} placeholder="Kas fisik yang dihitung" value={counted} onChange={(e) => setCounted(grouped(digits(e.target.value)))} />
-              <PrimaryButton type="submit" className="bg-red-600 hover:bg-red-700">Tutup dan arsip</PrimaryButton>
+              <PrimaryButton type="submit" className="w-full bg-red-600 hover:bg-red-700">Tutup dan arsip</PrimaryButton>
             </form>
           </div>
         </Panel>
@@ -305,7 +321,7 @@ function KasPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-extrabold">Arus Kas Shift</h3>
-            <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Pilih arsip atau shift aktif."} Semua pergerakan uang fisik yang memengaruhi laci kasir.</p>
+            <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Tidak ada shift aktif. Transaksi berjalan 0 sampai shift baru dibuka."} {ledger?.shift?.status === "SELESAI" ? "Ini arsip, bukan transaksi berjalan." : "Semua pergerakan uang fisik yang memengaruhi laci kasir."}</p>
           </div>
           {selected ? <button className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))}>Cetak PDF Shift</button> : null}
         </div>

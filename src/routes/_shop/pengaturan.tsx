@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { changeOwnPassword, listMasters, listStaff, saveBank, savePajak, saveStaff, updateOwnProfile } from "@/lib/shop/api";
+import { changeOwnPassword, listMasters, listStaff, saveBank, savePajak, saveShopProfile, saveStaff, updateOwnProfile } from "@/lib/shop/api";
+import { setShopProfile } from "@/lib/shop/print";
 import type { Bank, Pajak, Staff } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/pengaturan")({ component: SettingsPage });
@@ -14,6 +15,9 @@ function SettingsPage() {
   const [pajak, setPajak] = useState<Pajak[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [shop, setShop] = useState({ nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM" });
   const [bank, setBank] = useState({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" });
   const [account, setAccount] = useState(emptyAccount);
   const [current, setCurrent] = useState("");
@@ -23,7 +27,14 @@ function SettingsPage() {
   const [ownPhoto, setOwnPhoto] = useState(me.photo || "");
 
   function load() {
-    void listMasters().then((res) => { setPajak(res.pajak); setBanks(res.banks); });
+    void listMasters().then((res) => {
+      setPajak(res.pajak);
+      setBanks(res.banks);
+      if (res.profile) {
+        setShop(res.profile);
+        setShopProfile(res.profile);
+      }
+    });
     if (me.role !== "Kasir") void listStaff().then(setStaff);
   }
   useEffect(() => { load(); }, []);
@@ -33,6 +44,25 @@ function SettingsPage() {
       <Panel>
         <h2 className="text-lg font-extrabold">Pengaturan Sistem & Data</h2>
       </Panel>
+      {me.role !== "Kasir" ? (
+        <Panel>
+          <h2 className="font-extrabold">Identitas Toko</h2>
+          <p className="mt-1 text-xs text-muted">Nama, alamat, dan nomor ini langsung dipakai di struk kasir dan laporan cetak.</p>
+          <form className="mt-3 space-y-2" onSubmit={(e) => {
+            e.preventDefault();
+            void saveShopProfile({ data: shop }).then(() => {
+              setShopProfile(shop);
+              toast.success("Identitas toko disimpan. Struk berikutnya memakai data ini.");
+            }).catch((err: Error) => toast.error(err.message));
+          }}>
+            <Field label="Nama toko"><input className={inputClass} value={shop.nama} onChange={(e) => setShop({ ...shop, nama: e.target.value })} /></Field>
+            <Field label="Alamat"><input className={inputClass} value={shop.alamat} onChange={(e) => setShop({ ...shop, alamat: e.target.value })} /></Field>
+            <Field label="No. HP / telepon"><input className={inputClass} value={shop.telepon} onChange={(e) => setShop({ ...shop, telepon: e.target.value })} /></Field>
+            <Field label="Baris bawah nama"><input className={inputClass} value={shop.tagline} onChange={(e) => setShop({ ...shop, tagline: e.target.value })} /></Field>
+            <PrimaryButton type="submit">Simpan Identitas Toko</PrimaryButton>
+          </form>
+        </Panel>
+      ) : null}
       <Panel>
         <h2 className="font-extrabold">Master Persentase Pajak Internal</h2>
         <div className="mt-3 space-y-2">
@@ -48,7 +78,7 @@ function SettingsPage() {
       <Panel>
         <div className="flex items-center justify-between">
           <h2 className="font-extrabold">Master Bank / Rekening</h2>
-          {me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" })}>+ Tambah</button> : null}
+          {me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => { setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); setBankOpen(true); }}>+ Tambah</button> : null}
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -60,24 +90,12 @@ function SettingsPage() {
                   <td>{item.rekening || "-"}</td>
                   <td>{item.atasNama || "-"}</td>
                   <td>{item.aktif ? "Aktif" : "Nonaktif"}</td>
-                  <td>{me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => setBank(item)}>Edit</button> : null}</td>
+                  <td>{me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => { setBank(item); setBankOpen(true); }}>Edit</button> : null}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {me.role !== "Kasir" ? (
-          <form className="mt-3 grid gap-2 md:grid-cols-2" onSubmit={(e) => {
-            e.preventDefault();
-            void saveBank({ data: bank }).then(() => { toast.success("Bank disimpan"); setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); load(); }).catch((err: Error) => toast.error(err.message));
-          }}>
-            <input className={inputClass} placeholder="Nama bank" value={bank.nama} onChange={(e) => setBank({ ...bank, nama: e.target.value })} />
-            <input className={inputClass} placeholder="Rekening" value={bank.rekening} onChange={(e) => setBank({ ...bank, rekening: e.target.value })} />
-            <input className={inputClass} placeholder="Atas nama" value={bank.atasNama} onChange={(e) => setBank({ ...bank, atasNama: e.target.value })} />
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={bank.aktif} onChange={(e) => setBank({ ...bank, aktif: e.target.checked })} /> Aktif</label>
-            <PrimaryButton type="submit">{bank.id ? "Simpan Perubahan" : "Tambah"}</PrimaryButton>
-          </form>
-        ) : null}
       </Panel>
       <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
@@ -109,7 +127,7 @@ function SettingsPage() {
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">Manajemen Semua Akun</h2>
-            <button className="text-xs font-bold text-accent" onClick={() => setAccount(emptyAccount)}>+ Akun baru</button>
+            <button className="text-xs font-bold text-accent" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }}>+ Akun baru</button>
           </div>
           <p className="text-xs text-muted">Ubah nama, foto, dan password. Password baru tidak akan tertulis di halaman login.</p>
           <div className="mt-3 overflow-x-auto">
@@ -128,21 +146,46 @@ function SettingsPage() {
                     <td>{item.role}</td>
                     <td>{item.shift || "-"}</td>
                     <td>{item.status}</td>
-                    <td><button className="text-xs font-bold text-accent" onClick={() => setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true })}>Edit Akun</button></td>
+                    <td><button className="text-xs font-bold text-accent" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true }); setAccountOpen(true); }}>Edit Akun</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <form className="mt-4 space-y-2" onSubmit={(e) => {
+        </Panel>
+      ) : null}
+      {bankOpen && me.role !== "Kasir" ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
+          <form className="w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
+            e.preventDefault();
+            void saveBank({ data: bank }).then(() => { toast.success("Bank disimpan"); setBankOpen(false); setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); load(); }).catch((err: Error) => toast.error(err.message));
+          }}>
+            <h3 className="font-extrabold">{bank.id ? "Edit bank" : "Tambah bank"}</h3>
+            <div className="mt-3 grid gap-2">
+              <input className={inputClass} placeholder="Nama bank" value={bank.nama} onChange={(e) => setBank({ ...bank, nama: e.target.value })} />
+              <input className={inputClass} placeholder="Rekening" value={bank.rekening} onChange={(e) => setBank({ ...bank, rekening: e.target.value })} />
+              <input className={inputClass} placeholder="Atas nama" value={bank.atasNama} onChange={(e) => setBank({ ...bank, atasNama: e.target.value })} />
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={bank.aktif} onChange={(e) => setBank({ ...bank, aktif: e.target.checked })} /> Aktif</label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setBankOpen(false)}>Batal</button>
+              <PrimaryButton type="submit">Simpan</PrimaryButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {accountOpen && me.role !== "Kasir" ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
+          <form className="my-6 w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
             void saveStaff({ data: account }).then(() => {
               toast.success("Akun disimpan");
-              setAccount({ ...account, password: "" });
+              setAccountOpen(false);
               load();
             }).catch((err: Error) => toast.error(err.message));
           }}>
-            <p className="text-sm font-semibold">{account.existing ? "Perbarui akun" : "Tambah akun"}</p>
+            <h3 className="font-extrabold">{account.existing ? "Edit akun" : "Akun baru"}</h3>
+            <div className="mt-3 space-y-2">
             <div className="flex items-center gap-3">
               {account.photo ? <img src={account.photo} alt="" className="size-14 rounded-full object-cover" /> : <span className="grid size-14 place-items-center rounded-full bg-slate-100 font-bold">{(account.name || "?").slice(0, 1).toUpperCase()}</span>}
               <label className="cursor-pointer text-xs font-bold text-accent">
@@ -175,9 +218,13 @@ function SettingsPage() {
               </select>
             </Field>
             <Field label="Password baru"><input className={inputClass} type="password" placeholder={account.existing ? "Kosongkan jika tidak diganti" : "Wajib untuk akun baru"} value={account.password} onChange={(e) => setAccount({ ...account, password: e.target.value })} /></Field>
-            <PrimaryButton type="submit">Simpan Perubahan</PrimaryButton>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setAccountOpen(false)}>Batal</button>
+              <PrimaryButton type="submit">Simpan</PrimaryButton>
+            </div>
+            </div>
           </form>
-        </Panel>
+        </div>
       ) : null}
       <Panel>
         <h2 className="font-extrabold">Ubah Password</h2>

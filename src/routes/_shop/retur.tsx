@@ -5,7 +5,7 @@ import { Field, inputClass, Panel } from "@/components/shop/shell";
 import { deleteRetur, getInvoice, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, when } from "@/lib/shop/format";
-import { printReturSlip } from "@/lib/shop/print";
+import { printReturSlip, shopBrand } from "@/lib/shop/print";
 import type { Bank, Product, Shift } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/retur")({ component: ReturPage });
@@ -286,6 +286,6 @@ function printReturList(rows: Array<Record<string, unknown>>, start: string, end
     toast.error("Izinkan popup untuk mencetak.");
     return;
   }
-  win.document.write(`<!doctype html><html><head><title>Laporan Retur</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>MURIA JAYA SAKTI</h2><p>Laporan Retur ${start || "awal"} s/d ${end || "sekarang"}</p><table><thead><tr><th>No Retur</th><th>Invoice</th><th>Tanggal</th><th>Pelanggan</th><th>Selisih</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.write(`<!doctype html><html><head><title>Laporan Retur</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat} ${shopBrand().telepon}</p><p>Laporan Retur ${start || "awal"} s/d ${end || "sekarang"}</p><table><thead><tr><th>No Retur</th><th>Invoice</th><th>Tanggal</th><th>Pelanggan</th><th>Selisih</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
   win.document.close();
 }

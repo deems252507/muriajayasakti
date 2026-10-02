@@ -16,6 +16,15 @@ export function grouped(value: number | string) {
   return n.toLocaleString("id-ID");
 }
 
+export function packFromName(nama: string) {
+  const matches = [...String(nama).matchAll(/(?:^|[\s(])(\d{1,3})\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(ML|LTR|L)\b/gi)];
+  const found = matches.at(-1);
+  if (!found) return null;
+  const pcs = Number(found[1]);
+  if (!pcs || pcs > 100) return null;
+  return { pcs, ukuran: `${found[2].replace(",", ".")}${found[3].toUpperCase() === "LTR" ? "L" : found[3].toUpperCase()}` };
+}
+
 export function monthSpan(year: number, month: number) {
   const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const mm = String(month).padStart(2, "0");
