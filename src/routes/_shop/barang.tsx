@@ -132,6 +132,7 @@ function BarangPage() {
           <thead className="bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
             <tr>
               <th className="px-2 py-3">Nama Barang</th>
+              <th className="px-2 py-3">Kategori</th>
               <th className="hidden px-2 py-3 md:table-cell">Part Number</th>
               <th className="px-2 py-3 text-center">Stok Akhir</th>
               <th className="hidden px-2 py-3 text-right sm:table-cell">Harga Jual</th>
@@ -147,8 +148,9 @@ function BarangPage() {
               <tr key={item.id} className="border-t border-line">
                 <td className="py-3 pr-3">
                   <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
-                  <div className="text-[11px] text-muted">{item.kategori}{item.merek ? ` · ${item.merek}` : ""}</div>
+                  {item.merek ? <div className="text-[11px] text-muted">{item.merek}</div> : null}
                 </td>
+                <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
                 <td className="hidden font-mono text-xs md:table-cell">{item.partNumber || item.kode}</td>
                 <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>

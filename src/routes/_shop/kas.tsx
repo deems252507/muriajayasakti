@@ -23,6 +23,8 @@ function KasPage() {
   const [target, setTarget] = useState("Kasir Pagi");
   const [counted, setCounted] = useState("");
   const [jumlah, setJumlah] = useState("");
+  const [keluarJumlah, setKeluarJumlah] = useState("");
+  const [keluarKet, setKeluarKet] = useState("");
   const [ket, setKet] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -347,7 +349,7 @@ function KasPage() {
                 <td>Tunai</td>
                 <td className="num text-right text-emerald-700">{String(move.jenis) === "MASUK" ? `+ ${rupiah(Number(move.jumlah))}` : "-"}</td>
                 <td className="num text-right text-rose-600">{String(move.jenis) === "KELUAR" ? `- ${rupiah(Number(move.jumlah))}` : "-"}</td>
-                {me.role !== "Kasir" ? <td><button className="text-xs text-danger" onClick={() => void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); })}>Hapus</button></td> : null}
+                <td>{me.role !== "Kasir" ? <button className="btn-tight border border-red-200 bg-red-50 text-danger" onClick={() => void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); })}>Hapus</button> : null}</td>
               </tr>
             ))}
             {returs.map((retur) => {
@@ -380,7 +382,7 @@ function KasPage() {
                 .then(() => { toast.success("Kas masuk"); setJumlah(""); setKet(""); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
-              <input className={`${inputClass} num`} placeholder="Jumlah" value={jumlah} onChange={(e) => setJumlah(grouped(digits(e.target.value)))} />
+              <input className={`${inputClass} num`} placeholder="Jumlah, contoh 100.000" value={jumlah} onChange={(e) => setJumlah(grouped(digits(e.target.value)))} />
               <input className={inputClass} placeholder="Keterangan, contoh: tambahan dari owner" value={ket} onChange={(e) => setKet(e.target.value)} />
               <PrimaryButton type="submit">+ Tambah</PrimaryButton>
             </form>
@@ -390,16 +392,13 @@ function KasPage() {
             <p className="text-xs text-muted">Uang yang diambil dari laci.</p>
             <form className="mt-3 space-y-2" onSubmit={(e) => {
               e.preventDefault();
-              const form = e.currentTarget;
-              const nilai = digits((form.elements.namedItem("nilai") as HTMLInputElement).value);
-              const note = (form.elements.namedItem("note") as HTMLInputElement).value;
-              if (nilai <= 0 || !note.trim()) return toast.error("Isi jumlah dan keterangan, contoh: beli makan.");
-              void addCashMove({ data: { jenis: "KELUAR", jumlah: nilai, keterangan: note.trim(), shiftId: selected } })
-                .then(() => { toast.success("Pengeluaran tersimpan"); form.reset(); refresh(); reloadLedger(); })
+              if (digits(keluarJumlah) <= 0 || !keluarKet.trim()) return toast.error("Isi jumlah dan keterangan, contoh: beli makan.");
+              void addCashMove({ data: { jenis: "KELUAR", jumlah: digits(keluarJumlah), keterangan: keluarKet.trim(), shiftId: selected } })
+                .then(() => { toast.success("Pengeluaran tersimpan"); setKeluarJumlah(""); setKeluarKet(""); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
-              <input name="nilai" className={`${inputClass} num`} placeholder="Jumlah" />
-              <input name="note" className={inputClass} placeholder="Keterangan, contoh: beli makan" />
+              <input className={`${inputClass} num`} placeholder="Jumlah, contoh 10.000" value={keluarJumlah} onChange={(e) => setKeluarJumlah(grouped(digits(e.target.value)))} />
+              <input className={inputClass} placeholder="Keterangan, contoh: beli makan" value={keluarKet} onChange={(e) => setKeluarKet(e.target.value)} />
               <PrimaryButton type="submit" className="bg-red-600 hover:bg-red-700">+ Pengeluaran</PrimaryButton>
             </form>
           </Panel>

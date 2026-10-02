@@ -34,6 +34,7 @@ function KasirPage() {
   const me = Route.useRouteContext().me;
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [shiftId, setShiftId] = useState("");
+  const [drawers, setDrawers] = useState<Record<string, number>>({});
   const [partners, setPartners] = useState<Partner[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [q, setQ] = useState("");
@@ -52,14 +53,26 @@ function KasirPage() {
   const scanLock = useRef(false);
 
   useEffect(() => {
-    void listShifts().then((res) => {
-      const active = res.shifts.filter((s) => s.status === "AKTIF" && (me.role !== "Kasir" || s.username === me.username));
-      setShifts(active);
-      if (active[0]) setShiftId(active[0].id);
-    });
+    function loadShifts() {
+      void listShifts().then((res) => {
+        const active = res.shifts.filter((s) => {
+          if (s.status !== "AKTIF") return false;
+          if (me.role !== "Kasir") return true;
+          return s.username === me.username || s.shift === me.shift || s.cashierName === me.name;
+        });
+        setShifts(active);
+        setDrawers(res.drawers);
+        setShiftId((prev) => (active.some((s) => s.id === prev) ? prev : active[0]?.id || ""));
+      });
+    }
+    loadShifts();
+    const timer = setInterval(loadShifts, 8000);
+    return () => clearInterval(timer);
+  }, [me.role, me.username, me.shift, me.name]);
+  useEffect(() => {
     void listPartners().then(setPartners);
     void listMasters().then((res) => setBanks(res.banks.filter((b) => b.aktif)));
-  }, [me.role, me.username]);
+  }, []);
 
   useEffect(() => {
     if (q.trim().length < 1) {
@@ -233,16 +246,17 @@ function KasirPage() {
             const dusStok = dusOk ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
             const habis = item.stok <= 0;
             return (
-              <div key={item.id} className="flex min-h-28 flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50">
+              <div key={item.id} className="flex min-h-28 cursor-pointer flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50" onClick={() => addProduct(item, false, false)}>
                 <div>
                   <p className="line-clamp-2 text-xs font-semibold"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</p>
-                  <p className="mt-1 font-mono text-[10px] text-blue-600">PN: {item.partNumber || item.kode || "-"}</p>
+                  <p className="mt-1 text-[10px] font-bold text-slate-600">{item.kategori || "-"}</p>
+                  <p className="font-mono text-[10px] text-blue-600">PN: {item.partNumber || item.kode || "-"}</p>
                   {item.merek ? <p className="text-[10px] text-slate-500">{item.merek}</p> : null}
                 </div>
-                <div className="mt-2 flex items-center gap-1">
-                  <button className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700" onClick={() => addProduct(item, false, false)}>Pcs</button>
-                  <button className="rounded bg-blue-600 px-2 py-1 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!dusOk} title={dusOk ? "" : "Isi satuan dus lewat Ubah di Daftar Sparepart"} onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button>
-                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"}`}>{habis ? "HABIS" : "CUKUP"}</span>
+                <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="btn-tight bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}>Pcs</button>
+                  <button type="button" className="btn-tight bg-blue-700 text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-40" disabled={!dusOk} title={dusOk ? "" : "Isi satuan dus lewat Ubah di Daftar Sparepart"} onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button>
+                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-2">
                   <span className="text-[11px] font-bold text-green-600">
@@ -265,6 +279,11 @@ function KasirPage() {
             ))}
           </select>
         </Field>
+        <p className={`mt-2 rounded-lg px-3 py-2 text-xs ${shiftId ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+          {shiftId
+            ? `Terhubung ke laci ${shifts.find((s) => s.id === shiftId)?.shift || "shift"}. Penjualan ${me.role === "Kasir" ? "kasir" : "admin"} masuk ke kas shift ini. Kas laci ${rupiah(drawers[shiftId] ?? 0)}.`
+            : "Shift belum terhubung. Admin harus membuka shift untuk akun kasir ini dulu."}
+        </p>
         <div className="mt-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Keranjang Belanja</h3>
           <button className="text-[10px] text-red-500" onClick={() => setCart([])}>Kosongkan</button>
