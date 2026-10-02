@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { getMe, login } from "@/lib/shop/api";
+import { getMe, login, publicShop } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
@@ -17,6 +17,14 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [brand, setBrand] = useState({ nama: "MURIA JAYA SAKTI", tagline: "Integrated Business System", logo: "/brand/logo.png" });
+  useEffect(() => {
+    void publicShop().then((shop) => {
+      if (!shop?.nama) return;
+      setBrand({ nama: shop.nama, tagline: shop.tagline || "Integrated Business System", logo: shop.logo || "/brand/logo.png" });
+      document.title = shop.nama;
+    }).catch(() => undefined);
+  }, []);
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden p-3 sm:p-6">
@@ -28,12 +36,12 @@ function LoginPage() {
           <div>
             <div className="flex items-center gap-4">
               <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-white/10">
-                <img src="/brand/logo.png" alt="" className="h-8 w-8 object-contain" />
+                <img src={brand.logo} alt="" className="h-8 w-8 object-contain" />
               </div>
               <div>
-                <p className="text-xl font-extrabold tracking-wide">MURIA JAYA SAKTI</p>
+                <p className="text-xl font-extrabold tracking-wide">{brand.nama}</p>
                 <p className="mt-1 text-[11px] text-white/45">2026</p>
-                <p className="mt-1 text-xs tracking-[0.22em] text-white/60 uppercase">Integrated Business System</p>
+                <p className="mt-1 text-xs tracking-[0.22em] text-white/60 uppercase">{brand.tagline}</p>
               </div>
             </div>
             <div className="mt-14 max-w-xl">
@@ -83,9 +91,9 @@ function LoginPage() {
         >
           <div className="w-full">
             <div className="mb-6 h-1 w-12 rounded-full bg-accent lg:hidden" />
-            <p className="mb-2 text-lg font-extrabold tracking-wide lg:hidden">MURIA JAYA SAKTI</p>
+            <p className="mb-2 text-lg font-extrabold tracking-wide lg:hidden">{brand.nama}</p>
             <h2 className="text-3xl font-bold tracking-tight">Masuk ke Sistem</h2>
-            <p className="mt-2 text-sm text-muted">Gunakan akun Anda untuk mengakses sistem manajemen operasional Muria Jaya Sakti.</p>
+            <p className="mt-2 text-sm text-muted">Gunakan akun Anda untuk mengakses sistem manajemen operasional {brand.nama}.</p>
             <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-accent">
               <span className="size-1.5 rounded-full bg-accent" />
               Akses terverifikasi · Owner, Admin & Kasir
