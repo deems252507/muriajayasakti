@@ -256,6 +256,7 @@ function BarangPage() {
               <th className="px-2 py-3">Nama Barang</th>
               <th className="px-2 py-3">Kategori</th>
               <th className="hidden px-2 py-3 md:table-cell">Part Number</th>
+              <th className="hidden px-2 py-3 lg:table-cell">Part Number Alt</th>
               <th className="px-2 py-3 text-center">Stok Akhir</th>
               <th className="hidden px-2 py-3 text-right sm:table-cell">Harga Jual</th>
               <th className="px-2 py-3 text-center">Kode Pajak</th>
@@ -273,7 +274,7 @@ function BarangPage() {
               previousCategory = category;
               return (
                 <Fragment key={`group-${item.id}`}>
-                {showCategory ? <tr><td colSpan={8} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
+                {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
               <tr key={item.id} className="border-t border-line">
                 <td className="py-3 pr-3">
                   <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
@@ -281,6 +282,7 @@ function BarangPage() {
                 </td>
                 <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
                 <td className="hidden font-mono text-xs md:table-cell">{item.partNumber || item.kode}</td>
+                <td className="hidden font-mono text-xs lg:table-cell">{item.partNumbersAlt || "-"}</td>
                 <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>
                   {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
