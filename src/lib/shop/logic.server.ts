@@ -927,8 +927,15 @@ export async function deleteClosedShift(data: any) {
   const shift = rows[0];
   if (!shift) throw new Error("Shift tidak ditemukan.");
   if (shift.status === "AKTIF") throw new Error("Shift masih aktif. Tutup dulu, baru bisa dihapus.");
+
+  // Hapus semua transaksi kas (masuk & keluar) milik shift ini
+  // supaya tidak nyangkut di Laporan Kas Harian
+  await db.query(`delete from cash_moves where shift_id = $1`, [data.id]);
+
+  // Baru hapus arsip shift
   await db.query(`delete from shifts where id = $1`, [data.id]);
-  await audit(me, `Hapus arsip shift ${data.id}`);
+
+  await audit(me, `Hapus arsip shift ${data.id} beserta kas masuk/keluarnya`);
   return { ok: true };
 }
 
