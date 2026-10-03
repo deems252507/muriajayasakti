@@ -268,8 +268,18 @@ function GlobalSearch() {
           {items.length === 0 ? <p className="px-3 py-3 text-sm text-muted">Barang tidak ditemukan.</p> : null}
           {items.map((item) => (
             <button key={item.id} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-blue-50" onClick={() => pick(item)}>
-              <p className="text-sm font-semibold"><Mark text={item.nama} q={q} /></p>
-              <p className="text-[11px] text-muted">{item.partNumber || "-"} · {item.kategori || "-"} · stok {item.stok}</p>
+              <p className="text-sm font-semibold">
+                <Mark text={item.nama} q={q} />
+                {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
+              </p>
+              <p className="text-[11px] text-muted">
+                PN: <Mark text={item.partNumber || "-"} q={q} />
+                {item.partNumbersAlt ? <> · Alt: <Mark text={item.partNumbersAlt} q={q} /></> : null}
+                {" · "}
+                <Mark text={item.kategori || "-"} q={q} />
+                {item.merek ? <> · <Mark text={item.merek} q={q} /></> : null}
+                {" · stok "}{item.stok}
+              </p>
             </button>
           ))}
         </div>
