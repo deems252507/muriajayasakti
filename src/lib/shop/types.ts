@@ -72,19 +72,11 @@ export type Pajak = {
 
 export type SupplierReceiptItem = {
   productId: number;
-  kode: string;
   nama: string;
   partNumber: string;
-  partNumbersAlt: string;
   kategori: string;
-  merek: string;
-  stok: number;
-  satuan: string;
-  satuanAlt: string;
-  isiSatuanAlt: number;
-  hargaJual: number;
-  hargaJualAlt: number;
   qty: number;
+  satuan: string;
   qtyDasar: number;
   hargaBeli: number;
 };

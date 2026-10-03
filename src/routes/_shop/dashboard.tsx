@@ -12,19 +12,42 @@ function DashboardPage() {
   const me = Route.useRouteContext().me;
   const [data, setData] = useState<Awaited<ReturnType<typeof getDashboard>> | null>(null);
   const [error, setError] = useState("");
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const notice = sessionStorage.getItem("mjs-notice");
     if (notice) {
       sessionStorage.removeItem("mjs-notice");
       toast.success(notice);
     }
+    const timer = window.setTimeout(() => {
+      if (!cancelled) setError((prev) => prev || "Ringkasan terlalu lama dimuat. Periksa koneksi, lalu muat ulang.");
+    }, 20000);
     void getDashboard()
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
-  }, []);
+      .then((res) => {
+        if (cancelled) return;
+        setError("");
+        setData(res);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error && e.message ? e.message : "Gagal memuat ringkasan.");
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [tick]);
 
-  if (error) return <p className="text-danger">{error}</p>;
+  if (error && !data) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-white p-5">
+        <p className="text-danger">{error}</p>
+        <button className="mt-3" onClick={() => { setError(""); setData(null); setTick((n) => n + 1); }}>Muat ulang</button>
+      </div>
+    );
+  }
   if (!data) return <p className="text-muted">Memuat ringkasan...</p>;
 
   return me.role === "Kasir" ? <KasirDash data={data} name={me.name} /> : <AdminDash data={data} />;

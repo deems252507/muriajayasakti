@@ -40,7 +40,9 @@ function RiwayatPage() {
   } | null>(null);
 
   function load(next = page) {
-    void listInvoices({ data: { q, source, status, jenis, start, end, page: next } }).then((res) => setData(res as { total: number; perPage: number; items: Array<Record<string, unknown>> }));
+    void listInvoices({ data: { q, source, status, jenis, start, end, page: next } })
+      .then((res) => setData(res as { total: number; perPage: number; items: Array<Record<string, unknown>> }))
+      .catch((error: Error) => toast.error(error.message || "Gagal memuat riwayat."));
   }
   useEffect(() => { load(page); }, [q, source, status, jenis, start, end, page]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 12)));

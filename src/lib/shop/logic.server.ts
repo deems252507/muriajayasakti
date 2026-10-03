@@ -59,7 +59,6 @@ async function sql() {
 async function ensureStaff() {
   if (seeded) return;
   const db = await sql();
-  await db.query(`alter table staff add column if not exists photo text not null default ''`);
   const rows = await db.query<{ n: number }>("select count(*)::int as n from staff");
   if (Number(rows[0]?.n ?? 0) === 0) {
     const defaults: Array<[string, string, Role, string, string]> = [
@@ -228,120 +227,143 @@ export async function logout() {
 export async function getDashboard() {
   const me = await requireStaff();
   const db = await sql();
-  const [stats] = await db.query<{
-    products: number;
-    stock_pcs: number;
-    stock_value: number;
-    habis: number;
-    kritis: number;
-  }>(
-    `select
-       count(*)::int as products,
-       coalesce(sum(stok), 0)::int as stock_pcs,
-       coalesce(sum(stok::bigint * harga_beli), 0)::bigint as stock_value,
-       count(*) filter (where stok <= 0)::int as habis,
-       count(*) filter (where stok > 0 and stok_min > 0 and stok <= stok_min)::int as kritis
-     from products`,
-  );
-  const [today] = await db.query<{ sales: number; tunai: number; transfer: number; bon: number; masuk: number; trx: number }>(
-    `select
-       coalesce(sum(case when source = 'Kasir' then total else 0 end), 0)::bigint as sales,
-       coalesce(sum(case when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Tunai' then total else 0 end), 0)::bigint as tunai,
-       coalesce(sum(case
-         when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Transfer' then total
-         when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Split' then transfer_amount
-         else 0 end), 0)::bigint as transfer,
-       coalesce(sum(case when source = 'Kasir' and status_bayar = 'Bon' then total else 0 end), 0)::bigint as bon,
-       coalesce(sum(case when source = 'Manual' and exists (
-         select 1 from invoice_lines l where l.invoice_id = invoices.id and l.jenis = 'MASUK'
-       ) then 1 else 0 end), 0)::int as masuk,
-       count(*) filter (where source = 'Kasir')::int as trx
-     from invoices
-     where (timezone('Asia/Makassar', tanggal))::date = (timezone('Asia/Makassar', now()))::date`,
-  );
-  const [month] = await db.query<{ n: number; trx: number }>(
-    `select coalesce(sum(total), 0)::bigint as n,
-            count(*)::int as trx
-     from invoices
-     where source = 'Kasir'
-       and to_char(timezone('Asia/Makassar', tanggal), 'YYYY-MM') = to_char(timezone('Asia/Makassar', now()), 'YYYY-MM')`,
-  );
-  const weekRows = await db.query<{ d: string; n: number }>(
-    `with days as (
-       select generate_series(
-         (timezone('Asia/Makassar', now()))::date - 6,
-         (timezone('Asia/Makassar', now()))::date,
-         interval '1 day'
-       )::date as d
-     )
-     select to_char(days.d, 'YYYY-MM-DD') as d,
-            coalesce(sum(i.total), 0)::bigint as n
-     from days
-     left join invoices i
-       on i.source = 'Kasir'
-      and (timezone('Asia/Makassar', i.tanggal))::date = days.d
-     group by days.d
-     order by days.d`,
-  );
-  const lowRows = await db.query(
-    `select * from products
-     where stok <= 0 or (stok_min > 0 and stok <= stok_min)
-     order by stok asc, nama asc
-     limit 6`,
-  );
-  const shiftRows = await db.query(
-    me.role === "Kasir"
-      ? `select * from shifts where status = 'AKTIF' and username = $1 order by start_time desc limit 1`
-      : `select * from shifts where status = 'AKTIF' order by start_time desc limit 1`,
-    me.role === "Kasir" ? [me.username] : [],
-  );
+  const witaNow = `(now() at time zone 'UTC') + interval '8 hours'`;
+  const todayStart = `(((${witaNow})::date::timestamp - interval '8 hours') at time zone 'UTC')`;
+  const tomorrowStart = `(((${witaNow})::date::timestamp + interval '1 day' - interval '8 hours') at time zone 'UTC')`;
+  const weekStart = `(((${witaNow})::date::timestamp - interval '6 days' - interval '8 hours') at time zone 'UTC')`;
+  const monthStart = `((date_trunc('month', ${witaNow}) - interval '8 hours') at time zone 'UTC')`;
+  const nextMonth = `((date_trunc('month', ${witaNow}) + interval '1 month' - interval '8 hours') at time zone 'UTC')`;
+  const since30 = `(((${witaNow})::date::timestamp - interval '30 days' - interval '8 hours') at time zone 'UTC')`;
+
+  const [statsRows, todayRows, monthRows, weekRows, lowRows, shiftRows, cashRows, top, recentIn, monthInRows] = await Promise.all([
+    db.query<{
+      products: number;
+      stock_pcs: number;
+      stock_value: number | string;
+      habis: number;
+      kritis: number;
+    }>(
+      `select
+         count(*)::int as products,
+         coalesce(sum(stok), 0)::bigint as stock_pcs,
+         coalesce(sum(stok::numeric * harga_beli::numeric), 0) as stock_value,
+         count(*) filter (where stok <= 0)::int as habis,
+         count(*) filter (where stok > 0 and stok_min > 0 and stok <= stok_min)::int as kritis
+       from products`,
+    ),
+    db.query<{ sales: number; tunai: number; transfer: number; bon: number; masuk: number; trx: number }>(
+      `select
+         coalesce(sum(case when source = 'Kasir' then total else 0 end), 0)::bigint as sales,
+         coalesce(sum(case when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Tunai' then total else 0 end), 0)::bigint as tunai,
+         coalesce(sum(case
+           when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Transfer' then total
+           when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Split' then transfer_amount
+           else 0 end), 0)::bigint as transfer,
+         coalesce(sum(case when source = 'Kasir' and status_bayar = 'Bon' then total else 0 end), 0)::bigint as bon,
+         count(*) filter (where source = 'Manual')::int as masuk,
+         count(*) filter (where source = 'Kasir')::int as trx
+       from invoices
+       where tanggal >= ${todayStart} and tanggal < ${tomorrowStart}`,
+    ),
+    db.query<{ n: number; trx: number }>(
+      `select coalesce(sum(total), 0)::bigint as n,
+              count(*)::int as trx
+       from invoices
+       where source = 'Kasir'
+         and tanggal >= ${monthStart}
+         and tanggal < ${nextMonth}`,
+    ),
+    db.query<{ d: string; n: number }>(
+      `with days as (
+         select generate_series(
+           (${witaNow})::date - 6,
+           (${witaNow})::date,
+           interval '1 day'
+         )::date as d
+       ),
+       agg as (
+         select ((i.tanggal at time zone 'UTC') + interval '8 hours')::date as d,
+                sum(i.total)::bigint as n
+         from invoices i
+         where i.source = 'Kasir'
+           and i.tanggal >= ${weekStart}
+           and i.tanggal < ${tomorrowStart}
+         group by 1
+       )
+       select to_char(days.d, 'YYYY-MM-DD') as d,
+              coalesce(agg.n, 0)::bigint as n
+       from days
+       left join agg on agg.d = days.d
+       order by days.d`,
+    ),
+    db.query(
+      `select * from products
+       where stok <= 0 or (stok_min > 0 and stok <= stok_min)
+       order by stok asc, nama asc
+       limit 6`,
+    ),
+    db.query(
+      me.role === "Kasir"
+        ? `select * from shifts where status = 'AKTIF' and username = $1 order by start_time desc limit 1`
+        : `select * from shifts where status = 'AKTIF' order by start_time desc limit 1`,
+      me.role === "Kasir" ? [me.username] : [],
+    ),
+    db.query<{ masuk: number; keluar: number }>(
+      `select
+         coalesce(sum(case when jenis = 'MASUK' then jumlah else 0 end), 0)::bigint as masuk,
+         coalesce(sum(case when jenis = 'KELUAR' then jumlah else 0 end), 0)::bigint as keluar
+       from cash_moves
+       where tanggal >= ${todayStart} and tanggal < ${tomorrowStart}`,
+    ),
+    db.query<{ nama: string; satuan: string; qty: number; total: number }>(
+      `select coalesce(p.nama, l.custom_item, 'Barang') as nama,
+              l.satuan,
+              sum(l.jumlah)::bigint as qty,
+              sum(l.jumlah::numeric * l.harga_satuan::numeric) as total
+       from invoices i
+       join invoice_lines l on l.invoice_id = i.id and l.jenis = 'KELUAR'
+       left join products p on p.id = l.product_id
+       where i.source = 'Kasir'
+         and i.tanggal >= ${since30}
+       group by 1, 2
+       order by sum(l.jumlah::numeric * l.harga_satuan::numeric) desc
+       limit 6`,
+    ),
+    db.query<{ nama: string; satuan: string; qty: number; tujuan: string; tanggal: string }>(
+      `select coalesce(p.nama, 'Barang') as nama, l.satuan, l.jumlah::int as qty, i.tujuan, i.tanggal::text as tanggal
+       from invoices i
+       join invoice_lines l on l.invoice_id = i.id and l.jenis = 'MASUK'
+       left join products p on p.id = l.product_id
+       where i.source = 'Manual'
+         and i.tanggal >= ${monthStart}
+         and i.tanggal < ${nextMonth}
+       order by i.tanggal desc
+       limit 4`,
+    ),
+    db.query<{ qty: number; nilai: number | string; nota: number }>(
+      `select coalesce(sum(l.jumlah_dasar), 0)::bigint as qty,
+              coalesce(sum(l.jumlah_dasar::numeric * coalesce(p.harga_beli, 0)), 0) as nilai,
+              count(distinct i.id)::int as nota
+       from invoices i
+       join invoice_lines l on l.invoice_id = i.id and l.jenis = 'MASUK'
+       left join products p on p.id = l.product_id
+       where i.source = 'Manual'
+         and i.tanggal >= ${monthStart}
+         and i.tanggal < ${nextMonth}`,
+    ),
+  ]);
+
+  const stats = statsRows[0];
+  const today = todayRows[0];
+  const month = monthRows[0];
+  const cashToday = cashRows[0];
+  const monthIn = monthInRows[0];
   const shift = shiftRows[0] ? mapShift(shiftRows[0] as Record<string, unknown>) : null;
   let drawer: number | null = null;
   if (shift) {
     const [d] = await db.query<{ n: number }>(`select shift_drawer($1)::bigint as n`, [shift.id]);
     drawer = Number(d?.n ?? 0);
   }
-  const [cashToday] = await db.query<{ masuk: number; keluar: number }>(
-    `select
-       coalesce(sum(case when jenis = 'MASUK' then jumlah else 0 end), 0)::bigint as masuk,
-       coalesce(sum(case when jenis = 'KELUAR' then jumlah else 0 end), 0)::bigint as keluar
-     from cash_moves
-     where (timezone('Asia/Makassar', tanggal))::date = (timezone('Asia/Makassar', now()))::date`,
-  );
-  const top = await db.query<{ nama: string; satuan: string; qty: number; total: number }>(
-    `select coalesce(p.nama, l.custom_item, 'Barang') as nama,
-            l.satuan,
-            sum(l.jumlah)::int as qty,
-            sum(l.jumlah * l.harga_satuan)::bigint as total
-     from invoice_lines l
-     join invoices i on i.id = l.invoice_id
-     left join products p on p.id = l.product_id
-     where i.source = 'Kasir' and l.jenis = 'KELUAR'
-       and i.tanggal >= (timezone('Asia/Makassar', now()) - interval '30 days')
-     group by 1, 2
-     order by total desc
-     limit 6`,
-  );
-  const recentIn = await db.query<{ nama: string; satuan: string; qty: number; tujuan: string; tanggal: string }>(
-    `select coalesce(p.nama, 'Barang') as nama, l.satuan, l.jumlah::int as qty, i.tujuan, i.tanggal::text as tanggal
-     from invoice_lines l
-     join invoices i on i.id = l.invoice_id
-     left join products p on p.id = l.product_id
-     where i.source = 'Manual' and l.jenis = 'MASUK'
-       and to_char(timezone('Asia/Makassar', i.tanggal), 'YYYY-MM') = to_char(timezone('Asia/Makassar', now()), 'YYYY-MM')
-     order by i.tanggal desc
-     limit 4`,
-  );
-  const [monthIn] = await db.query<{ qty: number; nilai: number; nota: number }>(
-    `select coalesce(sum(l.jumlah_dasar), 0)::int as qty,
-            coalesce(sum(l.jumlah_dasar::bigint * coalesce(p.harga_beli, 0)), 0)::bigint as nilai,
-            count(distinct i.id)::int as nota
-     from invoice_lines l
-     join invoices i on i.id = l.invoice_id
-     left join products p on p.id = l.product_id
-     where i.source = 'Manual' and l.jenis = 'MASUK'
-       and to_char(timezone('Asia/Makassar', i.tanggal), 'YYYY-MM') = to_char(timezone('Asia/Makassar', now()), 'YYYY-MM')`,
-  );
   return {
     products: Number(stats?.products ?? 0),
     stockPcs: Number(stats?.stock_pcs ?? 0),
@@ -455,7 +477,12 @@ export async function listProducts(data: any) {
       params,
     );
     const cats = await db.query<{ kategori: string }>(
-      `select distinct btrim(kategori) as kategori from products where btrim(kategori) <> '' order by lower(btrim(kategori))`,
+      `select kategori from (
+         select distinct btrim(kategori) as kategori
+         from products
+         where btrim(kategori) <> ''
+       ) cats
+       order by lower(kategori)`,
     );
     return {
       total: Number(countRow?.n ?? 0),
@@ -1195,63 +1222,6 @@ export async function createSupplierReceipt(data: any) {
   }
 }
 
-export async function updateSupplierReceipt(data: any) {
-  const me = await requireStaff();
-  assertAdmin(me);
-  const db = await sql();
-  const id = Number(data.id);
-  const invoiceNo = String(data.invoiceNo ?? "").trim();
-  const supplierId = Number(data.supplierId);
-  const receivedAt = String(data.receivedAt ?? "").trim();
-  const items = Array.isArray(data.items) ? data.items : [];
-  if (!Number.isInteger(id) || id <= 0) throw new Error("Penerimaan tidak ditemukan.");
-  if (!invoiceNo) throw new Error("Nomor invoice barang masuk wajib diisi.");
-  if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error("Pemasok wajib dipilih.");
-  if (!items.length) throw new Error("Minimal satu barang harus dimasukkan.");
-  try {
-    const [row] = await db.query<{ shop_update_supplier_receipt: unknown }>(
-      `select shop_update_supplier_receipt($1::jsonb) as shop_update_supplier_receipt`,
-      [JSON.stringify({
-        id,
-        invoiceNo,
-        supplierId,
-        receivedAt: receivedAt ? `${receivedAt}T12:00:00+08:00` : "",
-        notes: String(data.notes ?? "").trim(),
-        items: items.map((item: any) => ({
-          productId: Number(item.productId),
-          qty: Number(item.qty),
-          satuan: String(item.satuan ?? "Pcs"),
-          hargaBeli: Number(item.hargaBeli ?? 0),
-        })),
-      })],
-    );
-    const result = row?.shop_update_supplier_receipt as { id?: number; invoiceNo?: string };
-    await audit(me, `Ubah barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
-    return { ok: true, id: Number(result?.id ?? id), invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
-  } catch (error) {
-    throw new Error(cleanError(error));
-  }
-}
-
-export async function deleteSupplierReceipt(data: any) {
-  const me = await requireStaff();
-  assertAdmin(me);
-  const db = await sql();
-  const id = Number(data.id);
-  if (!Number.isInteger(id) || id <= 0) throw new Error("Penerimaan tidak ditemukan.");
-  try {
-    const [row] = await db.query<{ shop_delete_supplier_receipt: unknown }>(
-      `select shop_delete_supplier_receipt($1::jsonb) as shop_delete_supplier_receipt`,
-      [JSON.stringify({ id })],
-    );
-    const result = row?.shop_delete_supplier_receipt as { invoiceNo?: string };
-    await audit(me, `Hapus barang masuk pemasok ${result?.invoiceNo ?? id}`);
-    return { ok: true, invoiceNo: String(result?.invoiceNo ?? "") };
-  } catch (error) {
-    throw new Error(cleanError(error));
-  }
-}
-
 export async function listSupplierReceipts(data: any) {
   await requireStaff();
   const db = await sql();
@@ -1282,8 +1252,8 @@ export async function listSupplierReceipts(data: any) {
       coalesce((select sum(l.qty_dasar) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_qty,
       coalesce((select sum(l.harga_beli * l.qty) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_value,
       coalesce((select json_agg(json_build_object(
-        'productId', l.product_id, 'kode', pr.kode, 'nama', pr.nama, 'partNumber', pr.part_number, 'partNumbersAlt', pr.part_numbers_alt, 'kategori', pr.kategori, 'merek', pr.merek, 'stok', pr.stok, 'satuan', l.satuan, 'satuanAlt', pr.satuan_alt, 'isiSatuanAlt', pr.isi_satuan_alt, 'hargaJual', pr.harga_jual, 'hargaJualAlt', pr.harga_jual_alt,
-        'qty', l.qty, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli
+        'productId', l.product_id, 'nama', pr.nama, 'partNumber', pr.part_number, 'kategori', pr.kategori,
+        'qty', l.qty, 'satuan', l.satuan, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli
       ) order by lower(pr.nama)) from supplier_receipt_lines l join products pr on pr.id = l.product_id where l.receipt_id = r.id), '[]'::json) as items
      from supplier_receipts r join partners p on p.id = r.supplier_id
      where ${clause}

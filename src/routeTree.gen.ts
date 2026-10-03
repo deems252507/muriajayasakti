@@ -20,8 +20,8 @@ import { Route as ShopKasirRouteImport } from './routes/_shop/kasir'
 import { Route as ShopLaporanKasRouteImport } from './routes/_shop/laporan-kas'
 import { Route as ShopManualRouteImport } from './routes/_shop/manual'
 import { Route as ShopMitraRouteImport } from './routes/_shop/mitra'
-import { Route as ShopPemasokRouteImport } from './routes/_shop/pemasok'
 import { Route as ShopPajakRouteImport } from './routes/_shop/pajak'
+import { Route as ShopPemasokRouteImport } from './routes/_shop/pemasok'
 import { Route as ShopPengaturanRouteImport } from './routes/_shop/pengaturan'
 import { Route as ShopReturRouteImport } from './routes/_shop/retur'
 import { Route as ShopRiwayatRouteImport } from './routes/_shop/riwayat'
@@ -123,8 +123,8 @@ export interface FileRoutesByFullPath {
   '/laporan-kas': typeof ShopLaporanKasRoute
   '/manual': typeof ShopManualRoute
   '/mitra': typeof ShopMitraRoute
-  '/pemasok': typeof ShopPemasokRoute
   '/pajak': typeof ShopPajakRoute
+  '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
   '/riwayat': typeof ShopRiwayatRoute
@@ -141,8 +141,8 @@ export interface FileRoutesByTo {
   '/laporan-kas': typeof ShopLaporanKasRoute
   '/manual': typeof ShopManualRoute
   '/mitra': typeof ShopMitraRoute
-  '/pemasok': typeof ShopPemasokRoute
   '/pajak': typeof ShopPajakRoute
+  '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
   '/riwayat': typeof ShopRiwayatRoute
@@ -161,8 +161,8 @@ export interface FileRoutesById {
   '/_shop/laporan-kas': typeof ShopLaporanKasRoute
   '/_shop/manual': typeof ShopManualRoute
   '/_shop/mitra': typeof ShopMitraRoute
-  '/_shop/pemasok': typeof ShopPemasokRoute
   '/_shop/pajak': typeof ShopPajakRoute
+  '/_shop/pemasok': typeof ShopPemasokRoute
   '/_shop/pengaturan': typeof ShopPengaturanRoute
   '/_shop/retur': typeof ShopReturRoute
   '/_shop/riwayat': typeof ShopRiwayatRoute
@@ -182,6 +182,7 @@ export interface FileRouteTypes {
     | '/manual'
     | '/mitra'
     | '/pajak'
+    | '/pemasok'
     | '/pengaturan'
     | '/retur'
     | '/riwayat'
@@ -199,6 +200,7 @@ export interface FileRouteTypes {
     | '/manual'
     | '/mitra'
     | '/pajak'
+    | '/pemasok'
     | '/pengaturan'
     | '/retur'
     | '/riwayat'
@@ -216,8 +218,8 @@ export interface FileRouteTypes {
     | '/_shop/laporan-kas'
     | '/_shop/manual'
     | '/_shop/mitra'
-    | '/_shop/pemasok'
     | '/_shop/pajak'
+    | '/_shop/pemasok'
     | '/_shop/pengaturan'
     | '/_shop/retur'
     | '/_shop/riwayat'
@@ -308,18 +310,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShopMitraRouteImport
       parentRoute: typeof ShopRoute
     }
-    '/_shop/pemasok': {
-      id: '/_shop/pemasok'
-      path: '/pemasok'
-      fullPath: '/pemasok'
-      preLoaderRoute: typeof ShopPemasokRouteImport
-      parentRoute: typeof ShopRoute
-    }
     '/_shop/pajak': {
       id: '/_shop/pajak'
       path: '/pajak'
       fullPath: '/pajak'
       preLoaderRoute: typeof ShopPajakRouteImport
+      parentRoute: typeof ShopRoute
+    }
+    '/_shop/pemasok': {
+      id: '/_shop/pemasok'
+      path: '/pemasok'
+      fullPath: '/pemasok'
+      preLoaderRoute: typeof ShopPemasokRouteImport
       parentRoute: typeof ShopRoute
     }
     '/_shop/pengaturan': {
@@ -363,8 +365,8 @@ interface ShopRouteChildren {
   ShopLaporanKasRoute: typeof ShopLaporanKasRoute
   ShopManualRoute: typeof ShopManualRoute
   ShopMitraRoute: typeof ShopMitraRoute
-  ShopPemasokRoute: typeof ShopPemasokRoute
   ShopPajakRoute: typeof ShopPajakRoute
+  ShopPemasokRoute: typeof ShopPemasokRoute
   ShopPengaturanRoute: typeof ShopPengaturanRoute
   ShopReturRoute: typeof ShopReturRoute
   ShopRiwayatRoute: typeof ShopRiwayatRoute
@@ -381,8 +383,8 @@ const ShopRouteChildren: ShopRouteChildren = {
   ShopLaporanKasRoute: ShopLaporanKasRoute,
   ShopManualRoute: ShopManualRoute,
   ShopMitraRoute: ShopMitraRoute,
-  ShopPemasokRoute: ShopPemasokRoute,
   ShopPajakRoute: ShopPajakRoute,
+  ShopPemasokRoute: ShopPemasokRoute,
   ShopPengaturanRoute: ShopPengaturanRoute,
   ShopReturRoute: ShopReturRoute,
   ShopRiwayatRoute: ShopRiwayatRoute,

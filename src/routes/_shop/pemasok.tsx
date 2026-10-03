@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
-import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
+import { createSupplierReceipt, listPartners, listSupplierReceipts, searchProducts } from "@/lib/shop/api";
 import { rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
@@ -23,7 +23,6 @@ function PemasokPage() {
   const [total, setTotal] = useState(0);
   const [perPage, setPerPage] = useState(15);
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [productQ, setProductQ] = useState("");
   const [hits, setHits] = useState<Product[]>([]);
   const [items, setItems] = useState<Draft[]>([]);
@@ -55,7 +54,6 @@ function PemasokPage() {
   const grandTotal = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.hargaBeli, 0), [items]);
 
   function resetForm() {
-    setEditingId(null);
     setInvoiceNo("");
     setReceivedAt(todayInput());
     setFormSupplierId("");
@@ -63,42 +61,6 @@ function PemasokPage() {
     setProductQ("");
     setHits([]);
     setItems([]);
-  }
-
-  function openEdit(row: SupplierReceipt) {
-    setEditingId(row.id);
-    setInvoiceNo(row.invoiceNo);
-    setReceivedAt(row.receivedAt.slice(0, 10));
-    setFormSupplierId(String(row.supplierId));
-    setNotes(row.notes);
-    setProductQ("");
-    setHits([]);
-    setItems(row.items.map((item) => ({
-      product: {
-        id: item.productId,
-        kode: item.kode,
-        partNumber: item.partNumber,
-        partNumbersAlt: item.partNumbersAlt,
-        nama: item.nama,
-        kategori: item.kategori,
-        merek: item.merek,
-        satuan: item.satuan,
-        stokMin: 0,
-        stok: item.stok,
-        hargaBeli: item.hargaBeli,
-        hargaJual: item.hargaJual,
-        satuanAlt: item.satuanAlt,
-        isiSatuanAlt: item.isiSatuanAlt,
-        hargaJualAlt: item.hargaJualAlt,
-        pajakStatus: "Non Pajak",
-        kodePajak: "",
-        keterangan: "",
-      },
-      qty: item.qty,
-      satuan: item.satuan,
-      hargaBeli: item.hargaBeli,
-    })));
-    setOpen(true);
   }
 
   function addProduct(product: Product) {
@@ -146,10 +108,10 @@ function PemasokPage() {
       <Panel className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3 text-right">Aksi</th></tr>
+            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th></tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan={7} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-line align-top">
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
@@ -159,19 +121,6 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                <td className="px-2 py-3 text-right whitespace-nowrap">
-                  {canEdit ? (
-                    <>
-                      <button className="mr-1 h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => openEdit(row)}>Ubah</button>
-                      <button className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => {
-                        if (!confirm(`Hapus penerimaan ${row.invoiceNo}? Stok yang ditambahkan oleh penerimaan ini akan dikurangi kembali.`)) return;
-                        void deleteSupplierReceipt({ data: { id: row.id } })
-                          .then(() => { toast.success("Barang masuk dihapus dan stok dikembalikan."); setPage(1); load(1); })
-                          .catch((error: Error) => toast.error(error.message));
-                      }}>Hapus</button>
-                    </>
-                  ) : null}
-                </td>
               </tr>
             ))}
           </tbody>
@@ -185,7 +134,7 @@ function PemasokPage() {
       {open ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-4">
           <div className="mx-auto my-4 w-full max-w-5xl rounded-2xl bg-panel p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Perubahan stok akan dihitung otomatis dari selisih penerimaan lama dan baru." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => setOpen(false)}>Tutup</button></div>
+            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">Penerimaan Barang dari Pemasok</h3><p className="text-xs text-muted">Simpan penerimaan untuk menambah stok secara otomatis.</p></div><button className="h-10 px-3" onClick={() => setOpen(false)}>Tutup</button></div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <Field label="Pemasok *"><select className={inputClass} value={formSupplierId} onChange={(e) => setFormSupplierId(e.target.value)}><option value="">Pilih pemasok</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.nama}</option>)}</select></Field>
               <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
@@ -203,13 +152,11 @@ function PemasokPage() {
                 <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-line"><th className="py-2 text-left">Barang</th><th className="py-2">Satuan</th><th className="py-2">Qty</th><th className="py-2">Harga Beli</th><th></th></tr></thead><tbody>{items.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-muted">Belum ada barang.</td></tr> : items.map((item, index) => <tr key={item.product.id} className="border-b border-line"><td className="py-2 pr-2"><b>{item.product.nama}</b><span className="block text-[11px] text-muted">{item.product.partNumber || item.product.kode}</span></td><td className="px-1 text-center">{item.satuan}</td><td className="px-1"><input className="num h-10 w-20 rounded-lg border border-line text-center" type="number" min="1" value={item.qty} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, qty: Math.max(1, Number(e.target.value) || 1) } : row))} /></td><td className="px-1"><input className="num h-10 w-28 rounded-lg border border-line text-right" type="number" min="0" value={item.hargaBeli} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, hargaBeli: Math.max(0, Number(e.target.value) || 0) } : row))} /></td><td className="pl-2"><button className="text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>Hapus</button></td></tr>)}</tbody></table></div>
               </Panel>
             </div>
-            <div className="mt-4 flex justify-end gap-2"><button className="h-11 rounded-lg border border-line px-4" onClick={() => { setOpen(false); resetForm(); }}>Batal</button><PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
-              const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
-              const request = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
-              void request
-                .then(() => { toast.success(editingId ? "Barang masuk berhasil diubah dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
+            <div className="mt-4 flex justify-end gap-2"><button className="h-11 rounded-lg border border-line px-4" onClick={() => setOpen(false)}>Batal</button><PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
+              void createSupplierReceipt({ data: { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) } })
+                .then(() => { toast.success("Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
                 .catch((error: Error) => toast.error(error.message));
-            }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton></div>
+            }}>Simpan Barang Masuk</PrimaryButton></div>
           </div>
         </div>
       ) : null}
