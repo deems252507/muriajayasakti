@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { inputClass, Panel } from "@/components/shop/shell";
+import { inputClass, Mark, Panel } from "@/components/shop/shell";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
@@ -27,7 +27,7 @@ function StokPage() {
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
-        <input className={inputClass} placeholder="Cari nama atau part number" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <input className={inputClass} placeholder="Cari nama, part number, merek, atau kategori" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
         <details className="relative min-w-[240px]" id="kategori-dropdown">
           <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
             <span className="truncate">
@@ -197,17 +197,23 @@ function StokPage() {
                 <Fragment key={`stock-${item.id}`}>
                 {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
                 <tr key={item.id} className="border-t border-line">
-                  <td className="px-2 py-3 font-medium">{item.nama}</td>
-                  <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
-                  <td className="px-2 font-mono text-xs">{item.partNumber || "-"}</td>
-                  <td className="hidden px-2 font-mono text-xs md:table-cell">{item.partNumbersAlt || "-"}</td>
+                  <td className="px-2 py-3">
+                    <div className="font-medium">
+                      <Mark text={item.nama} q={q} />
+                      {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
+                    </div>
+                    {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
+                  </td>
+                  <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
+                  <td className="px-2 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
+                  <td className="hidden px-2 font-mono text-xs md:table-cell"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
                   <td className="num px-2 text-center">{item.stokMin}</td>
                   <td className="num px-2 text-center font-semibold">
                     <div>{item.stok} {item.satuan}</div>
                     {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}</div> : null}
                   </td>
                   <td className="num hidden px-2 text-right sm:table-cell">{rupiah(item.hargaJual)}</td>
-                  <td className="px-2 text-center text-xs">{item.kodePajak || "-"}</td>
+                  <td className="px-2 text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
                   <td className="px-2 text-center">
                     <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{label}</span>
                   </td>

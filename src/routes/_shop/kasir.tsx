@@ -273,10 +273,14 @@ function KasirPage() {
             return (
               <div key={item.id} className="flex min-h-28 cursor-pointer flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50" onClick={() => addProduct(item, false, false)}>
                 <div>
-                  <p className="line-clamp-2 text-xs font-semibold"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</p>
-                  <p className="mt-1 text-[10px] font-bold text-slate-600">{item.kategori || "-"}</p>
-                  <p className="font-mono text-[10px] text-blue-600">PN: {item.partNumber || item.kode || "-"}</p>
-                  {item.merek ? <p className="text-[10px] text-slate-500">{item.merek}</p> : null}
+                  <p className="line-clamp-2 text-xs font-semibold">
+                    <Mark text={item.nama} q={q} />
+                    {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
+                  </p>
+                  <p className="mt-1 text-[10px] font-bold text-slate-600"><Mark text={item.kategori || "-"} q={q} /></p>
+                  <p className="font-mono text-[10px] text-blue-600">PN: <Mark text={item.partNumber || item.kode || "-"} q={q} /></p>
+                  {item.partNumbersAlt ? <p className="font-mono text-[10px] text-blue-500">Alt: <Mark text={item.partNumbersAlt} q={q} /></p> : null}
+                  {item.merek ? <p className="text-[10px] text-slate-500"><Mark text={item.merek} q={q} /></p> : null}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="btn-tight bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}>Pcs</button>

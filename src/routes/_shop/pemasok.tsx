@@ -187,7 +187,7 @@ function PemasokPage() {
       {open ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-4">
           <div className="mx-auto my-4 w-full max-w-5xl rounded-2xl bg-panel p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => { setOpen(false); resetForm(); }}>Tutup</button></div>
+            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button></div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <Field label="Pemasok *"><select className={inputClass} value={formSupplierId} onChange={(e) => setFormSupplierId(e.target.value)}><option value="">Pilih pemasok</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.nama}</option>)}</select></Field>
               <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
@@ -198,59 +198,20 @@ function PemasokPage() {
               <Panel className="bg-slate-50">
                 <h4 className="font-extrabold">Tambah Barang</h4>
                 <input className={`${inputClass} mt-3`} placeholder="Cari nama / part number" value={productQ} onChange={(e) => setProductQ(e.target.value)} />
-                <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-line bg-white">{hits.map((product) => <button key={product.id} type="button" className="block w-full border-b border-line px-3 py-3 text-left hover:bg-blue-50" onClick={() => addProduct(product)}><p className="font-semibold"><Mark text={product.nama} q={productQ} /></p><p className="text-[11px] text-muted">{product.partNumber || product.kode} · Kategori: {product.kategori} · Stok sekarang: {product.stok} {product.satuan}</p></button>)}</div>
+                <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-line bg-white">{hits.map((product) => <button key={product.id} type="button" className="block w-full border-b border-line px-3 py-3 text-left hover:bg-blue-50" onClick={() => addProduct(product)}><p className="font-semibold"><Mark text={product.nama} q={productQ} /></p><p className="text-[11px] text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · <Mark text={product.kategori || "-"} q={productQ} /> · Stok: {product.stok} {product.satuan}</p></button>)}</div>
               </Panel>
               <Panel>
                 <div className="flex items-center justify-between"><h4 className="font-extrabold">Isi Penerimaan</h4><span className="text-sm font-bold">{rupiah(grandTotal)}</span></div>
                 <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-line"><th className="py-2 text-left">Barang</th><th className="py-2">Satuan</th><th className="py-2">Qty</th><th className="py-2">Harga Beli</th><th></th></tr></thead><tbody>{items.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-muted">Belum ada barang.</td></tr> : items.map((item, index) => <tr key={item.product.id} className="border-b border-line"><td className="py-2 pr-2"><b>{item.product.nama}</b><span className="block text-[11px] text-muted">{item.product.partNumber || item.product.kode}</span></td><td className="px-1 text-center">{item.satuan}</td><td className="px-1"><input className="num h-10 w-20 rounded-lg border border-line text-center" type="number" min="1" value={item.qty} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, qty: Math.max(1, Number(e.target.value) || 1) } : row))} /></td><td className="px-1"><input className="num h-10 w-28 rounded-lg border border-line text-right" type="number" min="0" value={item.hargaBeli} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, hargaBeli: Math.max(0, Number(e.target.value) || 0) } : row))} /></td><td className="pl-2"><button className="text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>Hapus</button></td></tr>)}</tbody></table></div>
               </Panel>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="h-11 rounded-lg border border-line px-4"
-                onClick={() => {
-                  setOpen(false);
-                  resetForm();
-                }}
-              >
-                Batal
-              </button>
-              <PrimaryButton
-                disabled={!invoiceNo.trim() || !formSupplierId || !items.length}
-                onClick={() => {
-                  const payload = {
-                    invoiceNo,
-                    supplierId: Number(formSupplierId),
-                    receivedAt,
-                    notes,
-                    items: items.map((item) => ({
-                      productId: item.product.id,
-                      qty: item.qty,
-                      satuan: item.satuan,
-                      hargaBeli: item.hargaBeli,
-                    })),
-                  };
-                  const run = editingId
-                    ? updateSupplierReceipt({ data: { id: editingId, ...payload } })
-                    : createSupplierReceipt({ data: payload });
-                  void run
-                    .then(() => {
-                      toast.success(
-                        editingId
-                          ? "Penerimaan diperbarui dan stok disesuaikan."
-                          : "Barang masuk tersimpan dan stok bertambah."
-                      );
-                      setOpen(false);
-                      resetForm();
-                      setPage(1);
-                      load(1);
-                    })
-                    .catch((error: Error) => toast.error(error.message));
-                }}
-              >
-                {editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}
-              </PrimaryButton>
-            </div>
+            <div className="mt-4 flex justify-end gap-2"><button className="h-11 rounded-lg border border-line px-4" onClick={() => setOpen(false)}>Batal</button><PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
+              const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
+              const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
+              void run
+                .then(() => { toast.success(editingId ? "Penerimaan diperbarui dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
+                .catch((error: Error) => toast.error(error.message));
+            }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton></div>
           </div>
         </div>
       ) : null}
