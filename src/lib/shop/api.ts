@@ -62,9 +62,9 @@ export const searchProducts = createServerFn({ method: "GET" })
   });
 
 export const listProducts = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; kategori?: string; page?: number; sort?: string; status?: string; all?: boolean }) => ({
+  .validator((input: { q?: string; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
-    kategori: String(input?.kategori ?? ""),
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : String(input?.kategori ?? "").trim(),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
     sort: String(input?.sort ?? "nama"),
     status: String(input?.status ?? ""),
@@ -285,6 +285,33 @@ export const getInvoice = createServerFn({ method: "GET" })
   .validator((input: { nomor: string }) => ({ nomor: String(input?.nomor ?? "").trim() }))
   .handler(async ({ data }) => {
     const { getInvoice: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const createSupplierReceipt = createServerFn({ method: "POST" })
+  .validator((input: { invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number }> }) => ({
+    invoiceNo: String(input?.invoiceNo ?? "").trim(),
+    supplierId: Number(input?.supplierId),
+    receivedAt: String(input?.receivedAt ?? "").trim(),
+    notes: String(input?.notes ?? "").trim(),
+    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0) })) : [],
+  }))
+  .handler(async ({ data }) => {
+    const { createSupplierReceipt: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const listSupplierReceipts = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; supplierId?: number | string; start?: string; end?: string; page?: number; all?: boolean }) => ({
+    q: String(input?.q ?? "").trim(),
+    supplierId: input?.supplierId ? Number(input.supplierId) : 0,
+    start: String(input?.start ?? "").trim(),
+    end: String(input?.end ?? "").trim(),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+    all: Boolean(input?.all),
+  }))
+  .handler(async ({ data }) => {
+    const { listSupplierReceipts: run } = await import("./logic.server");
     return run(data);
   });
 

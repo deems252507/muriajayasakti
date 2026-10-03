@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
@@ -116,7 +116,7 @@ function BarangPage() {
               {data?.categories.map((item) => <option key={item} value={item} />)}
             </datalist>
             <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="nama">Nama (A - Z)</option>
+              <option value="nama">Kategori, Nama (A - Z)</option>
               <option value="nama_desc">Nama (Z - A)</option>
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
@@ -150,9 +150,16 @@ function BarangPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((item) => {
+            {(() => {
+              let previousCategory = "";
+              return data?.items.map((item) => {
               const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "AMAN";
+              const category = (item.kategori || "TANPA KATEGORI").trim();
+              const showCategory = category.toLowerCase() !== previousCategory.toLowerCase();
+              previousCategory = category;
               return (
+                <Fragment key={`group-${item.id}`}>
+                {showCategory ? <tr><td colSpan={8} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
               <tr key={item.id} className="border-t border-line">
                 <td className="py-3 pr-3">
                   <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
@@ -179,8 +186,10 @@ function BarangPage() {
                   ) : null}
                 </td>
               </tr>
+              </Fragment>
               );
-            })}
+            });
+            })()}
           </tbody>
         </table>
         <div className="mt-3 flex items-center justify-between text-sm">

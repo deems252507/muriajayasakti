@@ -7,6 +7,7 @@ import {
   LogOut,
   Menu,
   Package,
+  PackagePlus,
   Percent,
   Receipt,
   RefreshCw,
@@ -43,6 +44,7 @@ const ADMIN = [
       { to: "/manual", label: "Transaksi Manual", icon: ArrowLeftRight },
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/pemasok", label: "Barang Masuk Pemasok", icon: PackagePlus },
     ],
   },
   {

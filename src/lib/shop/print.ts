@@ -614,3 +614,37 @@ export function printHistoryReport(rows: Array<Record<string, unknown>>, start: 
     true,
   );
 }
+
+export function printSupplierReceiptReport(rows: Array<{
+  invoiceNo: string;
+  receivedAt: string;
+  supplierName: string;
+  notes?: string;
+  totalQty: number;
+  totalValue: number;
+  items: Array<{ nama: string; partNumber?: string; kategori?: string; qty: number; satuan: string; qtyDasar: number; hargaBeli: number }>;
+}>, info?: { start?: string; end?: string }) {
+  if (!rows.length) throw new Error("Tidak ada data barang masuk pemasok untuk dicetak.");
+  const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+  const period = `${info?.start || "Awal"} s/d ${info?.end || "Sekarang"}`;
+  const totalValue = rows.reduce((sum, row) => sum + Number(row.totalValue || 0), 0);
+  const totalQty = rows.reduce((sum, row) => sum + Number(row.totalQty || 0), 0);
+  let no = 1;
+  const body = rows.map((row) => {
+    const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID") : "-";
+    const itemRows = row.items.map((item) => `<tr><td>${no++}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.partNumber || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td class="center">${esc(item.qty)} ${esc(item.satuan)}</td><td class="center">${esc(item.qtyDasar)}</td><td class="right">${money(item.hargaBeli)}</td><td class="right bold">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td></tr>`).join("");
+    return `<tr class="invoice-head"><td colspan="7">INVOICE ${esc(row.invoiceNo)} · ${esc(date)} · PEMASOK: ${esc(row.supplierName)}${row.notes ? ` · ${esc(row.notes)}` : ""}</td></tr>${itemRows}<tr class="invoice-total"><td colspan="4" class="right">TOTAL INVOICE</td><td class="center">${esc(row.totalQty)}</td><td></td><td class="right">${money(row.totalValue)}</td></tr>`;
+  }).join("");
+  openPrint(
+    "Laporan Barang Masuk Pemasok",
+    `<h2>LAPORAN BARANG MASUK PEMASOK</h2>
+    <p style="text-align:center;margin:0 0 12px;color:#555">Periode penerimaan: ${esc(period)} · ${rows.length} invoice</p>
+    <div class="summary" style="display:flex;justify-content:space-around;border:1px solid #222;margin-bottom:12px;padding:10px;text-align:center">
+      <div><span>Total Invoice</span><strong style="display:block;font-size:15px">${rows.length}</strong></div>
+      <div><span>Total Qty Dasar</span><strong style="display:block;font-size:15px">${totalQty.toLocaleString("id-ID")}</strong></div>
+      <div><span>Total Nilai Pembelian</span><strong style="display:block;font-size:15px">${money(totalValue)}</strong></div>
+    </div>
+    <table><thead><tr><th>No</th><th>Barang</th><th>Kategori</th><th class="center">Qty</th><th class="center">Qty Dasar</th><th class="right">Harga Beli</th><th class="right">Subtotal</th></tr></thead><tbody>${body}</tbody></table>`,
+    true,
+  );
+}

@@ -68,3 +68,28 @@ export type Pajak = {
   persentase: number;
   aktif: boolean;
 };
+
+
+export type SupplierReceiptItem = {
+  productId: number;
+  nama: string;
+  partNumber: string;
+  kategori: string;
+  qty: number;
+  satuan: string;
+  qtyDasar: number;
+  hargaBeli: number;
+};
+
+export type SupplierReceipt = {
+  id: number;
+  invoiceNo: string;
+  receivedAt: string;
+  supplierId: number;
+  supplierName: string;
+  notes: string;
+  createdBy: string;
+  totalQty: number;
+  totalValue: number;
+  items: SupplierReceiptItem[];
+};

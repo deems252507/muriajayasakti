@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { listProducts } from "@/lib/shop/api";
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
 function StokPage() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("nama");
-  const [kategori, setKategori] = useState("");
+  const [kategori, setKategori] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
@@ -24,10 +24,22 @@ function StokPage() {
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
         <input className={inputClass} placeholder="Cari nama atau part number" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-        <input className={inputClass} list="kategori-stok" placeholder="Kategori persis, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
-        <datalist id="kategori-stok">
-          {data?.categories.map((item) => <option key={item} value={item} />)}
-        </datalist>
+        <details className="relative min-w-[220px]">
+          <summary className="flex h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-line bg-white px-3 text-sm">
+            <span>{kategori.length ? `${kategori.length} kategori dipilih` : "Semua Kategori"}</span><span className="text-muted">▾</span>
+          </summary>
+          <div className="absolute left-0 top-12 z-20 max-h-72 w-full min-w-[260px] overflow-y-auto rounded-xl border border-line bg-white p-3 shadow-xl">
+            <button type="button" className="mb-2 w-full rounded-lg border border-line px-3 py-2 text-left text-sm font-bold" onClick={() => { setPage(1); setKategori([]); }}>☑ Semua Kategori</button>
+            <div className="space-y-1">
+              {data?.categories.map((item) => (
+                <label key={item} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                  <input type="checkbox" checked={kategori.some((value) => value.toLowerCase() === item.toLowerCase())} onChange={(e) => { setPage(1); setKategori((prev) => e.target.checked ? [...prev, item] : prev.filter((value) => value.toLowerCase() !== item.toLowerCase())); }} />
+                  <span>{item}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </details>
         <select className={inputClass} value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
           <option value="">Semua Status</option>
           <option value="Aman">Aman</option>
@@ -35,17 +47,17 @@ function StokPage() {
           <option value="Habis">Habis</option>
         </select>
         <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="nama">Nama (A - Z)</option>
+          <option value="nama">Kategori, Nama (A - Z)</option>
           <option value="nama_desc">Nama (Z - A)</option>
           <option value="stok_desc">Stok Terbesar</option>
           <option value="stok_asc">Stok Terkecil</option>
         </select>
-        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
           void listProducts({ data: { q, sort, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-              printStockReport(res.items, { kategori: kategori || "Semua Kategori", tanggal });
+              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal });
             } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
         }}>Cetak PDF</button>
@@ -66,10 +78,17 @@ function StokPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-muted">Tidak ada barang di kategori ini.</td></tr> : null}
-            {data?.items.map((item) => {
+            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-muted">Tidak ada barang pada filter yang dipilih.</td></tr> : null}
+            {(() => {
+              let previousCategory = "";
+              return data?.items.map((item) => {
               const label = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "MENIPIS" : "AMAN";
+              const category = (item.kategori || "TANPA KATEGORI").trim();
+              const showCategory = category.toLowerCase() !== previousCategory.toLowerCase();
+              previousCategory = category;
               return (
+                <Fragment key={`stock-${item.id}`}>
+                {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
                 <tr key={item.id} className="border-t border-line">
                   <td className="px-2 py-3 font-medium">{item.nama}</td>
                   <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
@@ -86,8 +105,10 @@ function StokPage() {
                     <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{label}</span>
                   </td>
                 </tr>
+                </Fragment>
               );
-            })}
+            });
+            })()}
           </tbody>
         </table>
       </div>

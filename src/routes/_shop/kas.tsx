@@ -356,7 +356,7 @@ function KasPage() {
                 <td>Tunai</td>
                 <td className="num text-right text-emerald-700">{String(move.jenis) === "MASUK" ? `+ ${rupiah(Number(move.jumlah))}` : "-"}</td>
                 <td className="num text-right text-rose-600">{String(move.jenis) === "KELUAR" ? `- ${rupiah(Number(move.jumlah))}` : "-"}</td>
-                <td>{me.role !== "Kasir" ? <button className="btn-tight border border-red-200 bg-red-50 text-danger" onClick={() => void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); })}>Hapus</button> : null}</td>
+                <td>{me.role !== "Kasir" ? <button className="btn-tight border border-red-200 bg-red-50 text-danger" onClick={() => { if (!confirm(`Hapus transaksi kas ${move.keterangan || "ini"}? Laporan kas akan ikut menyesuaikan.`)) return; void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); }).catch((error: Error) => toast.error(error.message)); }}>Hapus</button> : null}</td>
               </tr>
             ))}
             {returs.map((retur) => {
