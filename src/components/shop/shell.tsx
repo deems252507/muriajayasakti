@@ -69,6 +69,29 @@ const ADMIN = [
   },
 ] as const;
 
+
+const OWNER = [
+  { label: "Utama", items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+  {
+    label: "Laporan",
+    items: [
+      { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
+      { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
+      { to: "/bon", label: "Bon / Piutang", icon: Receipt },
+      { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
+      { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
+    ],
+  },
+  {
+    label: "Data (lihat saja)",
+    items: [
+      { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/mitra", label: "Pelanggan & Supplier", icon: Users },
+      { to: "/jejak", label: "Riwayat Aktivitas", icon: ScrollText },
+    ],
+  },
+] as const;
+
 const KASIR = [
   { label: "Utama", items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
   {
@@ -117,7 +140,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const groups = me.role === "Kasir" ? KASIR : ADMIN;
+  const groups = me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
   useEffect(() => {
