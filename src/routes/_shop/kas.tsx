@@ -99,10 +99,10 @@ function KasPage() {
   }
 
   function hapusArsip(shift: Shift) {
-    if (!confirm(`Hapus arsip ${shift.shift} milik ${shift.cashierName}? Nota, kas, retur, dan laporan harian tidak ikut dihapus.`)) return;
+    if (!confirm(`Hapus arsip ${shift.shift} milik ${shift.cashierName}?\n\nSemua kas masuk & kas keluar milik shift ini juga akan dihapus dari Laporan Kas Harian.`)) return;
     void deleteClosedShift({ data: { id: shift.id } })
       .then(() => {
-        toast.success("Arsip shift dihapus");
+        toast.success("Arsip shift beserta kas-nya dihapus");
         if (selected === shift.id) setSelected("");
         if (arsip?.id === shift.id) setArsip(null);
         refresh();
