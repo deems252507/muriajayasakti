@@ -301,6 +301,27 @@ export const createSupplierReceipt = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const updateSupplierReceipt = createServerFn({ method: "POST" })
+  .validator((input: { id: number; invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number }> }) => ({
+    id: Number(input?.id),
+    invoiceNo: String(input?.invoiceNo ?? "").trim(),
+    supplierId: Number(input?.supplierId),
+    receivedAt: String(input?.receivedAt ?? "").trim(),
+    notes: String(input?.notes ?? "").trim(),
+    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0) })) : [],
+  }))
+  .handler(async ({ data }) => {
+    const { updateSupplierReceipt: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const deleteSupplierReceipt = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { deleteSupplierReceipt: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const listSupplierReceipts = createServerFn({ method: "GET" })
   .validator((input: { q?: string; supplierId?: number | string; start?: string; end?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),

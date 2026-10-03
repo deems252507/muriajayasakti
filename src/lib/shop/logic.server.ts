@@ -1222,6 +1222,63 @@ export async function createSupplierReceipt(data: any) {
   }
 }
 
+export async function updateSupplierReceipt(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data.id);
+  const invoiceNo = String(data.invoiceNo ?? '').trim();
+  const supplierId = Number(data.supplierId);
+  const receivedAt = String(data.receivedAt ?? '').trim();
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Penerimaan tidak ditemukan.');
+  if (!invoiceNo) throw new Error('Nomor invoice barang masuk wajib diisi.');
+  if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
+  if (!items.length) throw new Error('Minimal satu barang harus dimasukkan.');
+  try {
+    const [row] = await db.query<{ shop_update_supplier_receipt: unknown }>(
+      `select shop_update_supplier_receipt($1::jsonb) as shop_update_supplier_receipt`,
+      [JSON.stringify({
+        id,
+        invoiceNo,
+        supplierId,
+        receivedAt: receivedAt ? `${receivedAt}T12:00:00+08:00` : '',
+        notes: String(data.notes ?? '').trim(),
+        items: items.map((item: any) => ({
+          productId: Number(item.productId),
+          qty: Number(item.qty),
+          satuan: String(item.satuan ?? 'Pcs'),
+          hargaBeli: Number(item.hargaBeli ?? 0),
+        })),
+      })],
+    );
+    const result = row?.shop_update_supplier_receipt as { invoiceNo?: string };
+    await audit(me, `Ubah barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
+    return { ok: true, id, invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+export async function deleteSupplierReceipt(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Penerimaan tidak ditemukan.');
+  try {
+    const [row] = await db.query<{ shop_delete_supplier_receipt: unknown }>(
+      `select shop_delete_supplier_receipt($1::bigint) as shop_delete_supplier_receipt`,
+      [id],
+    );
+    const result = row?.shop_delete_supplier_receipt as { invoiceNo?: string };
+    await audit(me, `Hapus barang masuk pemasok ${result?.invoiceNo ?? id}`);
+    return { ok: true, id };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 export async function listSupplierReceipts(data: any) {
   await requireStaff();
   const db = await sql();
