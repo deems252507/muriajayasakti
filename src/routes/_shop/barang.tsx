@@ -39,7 +39,8 @@ function BarangPage() {
     sessionStorage.removeItem("mjs-find");
     setQ(saved);
   }, []);
-  const [kategori, setKategori] = useState("");
+  const [kategori, setKategori] = useState<string[]>([]);
+  const [kategoriQ, setKategoriQ] = useState("");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("nama");
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
@@ -114,17 +115,126 @@ function BarangPage() {
           </div>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-            <input className={inputClass} list="kategori-barang" placeholder="Ketik kategori, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
-            <datalist id="kategori-barang">
-              {data?.categories.map((item) => <option key={item} value={item} />)}
-            </datalist>
+            <details className="relative min-w-[240px]" id="kategori-barang-dropdown">
+              <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
+                <span className="truncate">
+                  {kategori.length === 0
+                    ? "Semua Kategori"
+                    : kategori.length <= 2
+                      ? kategori.join(", ")
+                      : `${kategori.length} kategori dipilih`}
+                </span>
+                <span className="shrink-0 text-muted">▾</span>
+              </summary>
+              <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
+                <div className="space-y-2 border-b border-line bg-white p-3">
+                  <input
+                    className="h-10 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-blue-500"
+                    placeholder="Cari nama kategori..."
+                    value={kategoriQ}
+                    onChange={(e) => setKategoriQ(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-lg border border-line px-3 py-2 text-left text-sm font-bold hover:bg-slate-50"
+                      onClick={() => { setPage(1); setKategori([]); setKategoriQ(""); }}
+                    >
+                      ☑ Semua Kategori
+                    </button>
+                    {kategori.length > 0 && (
+                      <button
+                        type="button"
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-danger hover:bg-red-100"
+                        onClick={() => { setPage(1); setKategori([]); }}
+                      >
+                        Hapus semua
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {kategori.length > 0 && (
+                  <div className="border-b border-line bg-blue-50/60 px-3 py-2">
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">Dipilih ({kategori.length})</p>
+                    <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                      {kategori.map((item) => (
+                        <button
+                          key={`sel-${item}`}
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700"
+                          onClick={() => { setPage(1); setKategori((prev) => prev.filter((v) => v.toLowerCase() !== item.toLowerCase())); }}
+                          title="Klik untuk batal pilih"
+                        >
+                          {item} <span className="opacity-80">×</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="max-h-52 space-y-0.5 overflow-y-auto p-2">
+                  {(() => {
+                    const all = data?.categories ?? [];
+                    const qq = kategoriQ.trim().toLowerCase();
+                    const filtered = qq ? all.filter((item) => item.toLowerCase().includes(qq)) : all;
+                    const selectedSet = new Set(kategori.map((v) => v.toLowerCase()));
+                    const ordered = [
+                      ...filtered.filter((item) => selectedSet.has(item.toLowerCase())),
+                      ...filtered.filter((item) => !selectedSet.has(item.toLowerCase())),
+                    ];
+                    if (ordered.length === 0) {
+                      return <p className="px-2 py-4 text-center text-xs text-muted">Tidak ada kategori cocok</p>;
+                    }
+                    return ordered.map((item) => {
+                      const checked = selectedSet.has(item.toLowerCase());
+                      return (
+                        <label
+                          key={item}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50 ${checked ? "bg-blue-50 font-semibold text-blue-800" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setPage(1);
+                              setKategori((prev) =>
+                                e.target.checked
+                                  ? [...prev, item]
+                                  : prev.filter((value) => value.toLowerCase() !== item.toLowerCase())
+                              );
+                            }}
+                          />
+                          <span>{item}</span>
+                        </label>
+                      );
+                    });
+                  })()}
+                </div>
+
+                <div className="border-t border-line bg-slate-50 p-3">
+                  <button
+                    type="button"
+                    className="h-10 w-full rounded-lg bg-slate-800 text-sm font-bold text-white hover:bg-slate-900"
+                    onClick={() => {
+                      const el = document.getElementById("kategori-barang-dropdown") as HTMLDetailsElement | null;
+                      if (el) el.open = false;
+                      setKategoriQ("");
+                    }}
+                  >
+                    OK — Terapkan ({kategori.length || "Semua"})
+                  </button>
+                </div>
+              </div>
+            </details>
             <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="nama">Kategori, Nama (A - Z)</option>
               <option value="nama_desc">Nama (Z - A)</option>
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
             </select>
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori(""); setSort("nama"); setPage(1); }}>Reset</button>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
           </div>
         </div>
         {canEdit ? (
