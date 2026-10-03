@@ -150,7 +150,11 @@ async function requireStaff() {
 }
 
 function assertAdmin(me: Staff) {
-  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Hanya Admin atau Owner yang dapat mengubah data ini.");
+  if (me.role !== "Admin") throw new Error("Hanya Admin yang dapat mengubah data ini. Owner hanya melihat laporan.");
+}
+
+function assertNotOwner(me: Staff) {
+  if (me.role === "Owner") throw new Error("Owner hanya dapat melihat laporan, tidak dapat menyimpan atau menghapus.");
 }
 
 async function audit(me: Staff, action: string) {
@@ -943,6 +947,7 @@ export async function deleteClosedShift(data: any) {
 
 export async function addCashMove(data: any) {
     const me = await requireStaff();
+    assertNotOwner(me);
     const jumlah = Number(data.jumlah) || 0;
     if (jumlah <= 0 || !data.keterangan?.trim()) throw new Error("Isi jumlah dan keterangan.");
     if (data.jenis === "KELUAR") assertAdmin(me);
@@ -982,6 +987,7 @@ export async function deleteCashMove(data: any) {
 
 export async function checkout(data: any): Promise<any> {
     const me = await requireStaff();
+    assertNotOwner(me);
     const db = await sql();
     try {
       const [row] = await db.query<{ shop_checkout: unknown }>(`select shop_checkout($1::jsonb) as shop_checkout`, [
@@ -1016,6 +1022,7 @@ export async function manualNota(data: any): Promise<any> {
 
 export async function returNota(data: any): Promise<any> {
     const me = await requireStaff();
+    assertNotOwner(me);
     const db = await sql();
     try {
       const [row] = await db.query<{ shop_retur: unknown }>(`select shop_retur($1::jsonb) as shop_retur`, [
