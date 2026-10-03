@@ -277,8 +277,11 @@ function BarangPage() {
                 {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
               <tr key={item.id} className="border-t border-line">
                 <td className="py-3 pr-3">
-                  <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
-                  {item.merek ? <div className="text-[11px] text-muted">{item.merek}</div> : null}
+                  <div className="font-medium">
+                    <Mark text={item.nama} q={q} />
+                    {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
+                  </div>
+                  {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
                 </td>
                 <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
                 <td className="hidden font-mono text-xs md:table-cell"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
@@ -288,7 +291,7 @@ function BarangPage() {
                   {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
                 </td>
                 <td className="num hidden text-right sm:table-cell">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
-                <td className="text-center text-xs">{item.kodePajak || "-"}</td>
+                <td className="text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
                 <td className="text-center">
                   <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status === "HABIS" ? "bg-red-50 text-danger" : status === "KRITIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{status}</span>
                 </td>
