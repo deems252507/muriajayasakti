@@ -280,9 +280,9 @@ function BarangPage() {
                   <div className="font-medium"><Mark text={item.nama} q={q} />{item.kodePajak ? ` (${item.kodePajak})` : ""}</div>
                   {item.merek ? <div className="text-[11px] text-muted">{item.merek}</div> : null}
                 </td>
-                <td className="px-2 text-xs font-bold">{item.kategori || "-"}</td>
-                <td className="hidden font-mono text-xs md:table-cell">{item.partNumber || item.kode}</td>
-                <td className="hidden font-mono text-xs lg:table-cell">{item.partNumbersAlt || "-"}</td>
+                <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
+                <td className="hidden font-mono text-xs md:table-cell"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
+                <td className="hidden font-mono text-xs lg:table-cell"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
                 <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>
                   {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
