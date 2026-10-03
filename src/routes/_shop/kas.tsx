@@ -153,6 +153,7 @@ function KasPage() {
     if (selected) void shiftLedger({ data: { shiftId: selected } }).then(setLedger);
   }
 
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

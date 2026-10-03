@@ -21,7 +21,7 @@ function MitraPage() {
       <Panel>
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-extrabold">Data Pelanggan & Supplier</h2>
-          {me.role !== "Kasir" ? <PrimaryButton onClick={() => { setForm({ id: null, nama: "", tipe: "Pelanggan", telp: "", alamat: "" }); setOpen(true); }}>Tambah Data</PrimaryButton> : null}
+          {me.role === "Admin" ? <PrimaryButton onClick={() => { setForm({ id: null, nama: "", tipe: "Pelanggan", telp: "", alamat: "" }); setOpen(true); }}>Tambah Data</PrimaryButton> : null}
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -34,7 +34,7 @@ function MitraPage() {
                   <td>{row.telp || "-"}</td>
                   <td>{row.alamat || "-"}</td>
                   <td className="text-right">
-                    {me.role !== "Kasir" ? (
+                    {me.role === "Admin" ? (
                       <>
                         <button className="h-11 px-2 text-sm" onClick={() => { setForm(row); setOpen(true); }}>Edit</button>
                         <button className="h-11 px-2 text-sm text-danger" onClick={() => void deletePartner({ data: { id: row.id } }).then(load)}>Hapus</button>
@@ -47,7 +47,7 @@ function MitraPage() {
           </table>
         </div>
       </Panel>
-      {open && me.role !== "Kasir" ? (
+      {open && me.role === "Admin" ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
           <form className="w-full max-w-md space-y-3 rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();

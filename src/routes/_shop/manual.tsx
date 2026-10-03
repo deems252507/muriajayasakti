@@ -31,6 +31,7 @@ function ManualPage() {
     setItems((prev) => [...prev, { product, jenis, qty: 1, isAlt, tujuan, keterangan: ket }]);
   }
 
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   if (me.role === "Kasir") return <p>Halaman ini untuk Admin.</p>;
 
   return (

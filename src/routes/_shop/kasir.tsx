@@ -225,6 +225,7 @@ function KasirPage() {
     }
   }
 
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Panel className="lg:col-span-2">

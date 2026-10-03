@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_shop/bon")({ component: BonPage });
 
 function BonPage() {
   const me = Route.useRouteContext().me;
-  const canEdit = me.role !== "Kasir";
+  const canEdit = me.role === "Admin";
   const [status, setStatus] = useState("Bon");
   const [customer, setCustomer] = useState("");
   const [start, setStart] = useState("");

@@ -137,7 +137,7 @@ function RiwayatPage() {
                 ))}
                 <p className="mt-2 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
                 {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
-                {me.role !== "Kasir" && String(inv.source) === "Kasir" && detail ? (
+                {me.role === "Admin" && String(inv.source) === "Kasir" && detail ? (
                   <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => {
                     const invoice = detail.invoice;
                     void listMasters().then((res) => setBanks(res.banks.filter((bank) => bank.aktif).map((bank) => bank.nama)));
@@ -162,7 +162,7 @@ function RiwayatPage() {
                     });
                   }}>Ubah Nota</button>
                 ) : null}
-                {me.role !== "Kasir" && String(inv.source) === "Manual" ? (
+                {me.role === "Admin" && String(inv.source) === "Manual" ? (
                   <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => setManual({
                     nomor: String(inv.nomor),
                     tujuan: String(inv.tujuan || ""),
@@ -178,7 +178,7 @@ function RiwayatPage() {
                     })),
                   })}>Ubah Nota</button>
                 ) : null}
-                {me.role !== "Kasir" ? (
+                {me.role === "Admin" ? (
                   <button className="mt-2 text-sm font-bold text-danger" onClick={() => {
                     if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
                     void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success("Nota dihapus"); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));

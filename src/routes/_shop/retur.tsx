@@ -82,6 +82,7 @@ function ReturPage() {
     return true;
   });
 
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   return (
     <Panel>
       <h2 className="text-lg font-extrabold">Proses Retur / Tukar Barang</h2>

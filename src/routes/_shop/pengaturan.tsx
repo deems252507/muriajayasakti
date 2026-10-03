@@ -35,10 +35,11 @@ function SettingsPage() {
         setShopProfile(res.profile);
       }
     });
-    if (me.role !== "Kasir") void listStaff().then(setStaff);
+    if (me.role === "Admin") void listStaff().then(setStaff);
   }
   useEffect(() => { load(); }, []);
 
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Panel>

@@ -31,7 +31,7 @@ const empty = {
 
 function BarangPage() {
   const me = Route.useRouteContext().me;
-  const canEdit = me.role !== "Kasir";
+  const canEdit = me.role === "Admin";
   const [q, setQ] = useState("");
   useEffect(() => {
     const saved = sessionStorage.getItem("mjs-find");

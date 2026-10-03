@@ -31,7 +31,7 @@ function PemasokPage() {
   const [receivedAt, setReceivedAt] = useState(todayInput());
   const [formSupplierId, setFormSupplierId] = useState("");
   const [notes, setNotes] = useState("");
-  const canEdit = me.role !== "Kasir";
+  const canEdit = me.role === "Admin";
 
   function load(nextPage = page) {
     void listSupplierReceipts({ data: { q, supplierId: supplierId ? Number(supplierId) : 0, start, end, page: nextPage } })
@@ -125,7 +125,8 @@ function PemasokPage() {
     setHits([]);
   }
 
-  if (me.role === "Kasir") return <Panel><p>Halaman Barang Masuk Pemasok hanya untuk Owner/Admin.</p></Panel>;
+  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
+  if (me.role === "Kasir") return <Panel><p>Halaman Barang Masuk Pemasok hanya untuk Admin.</p></Panel>;
 
   return (
     <div className="space-y-4">

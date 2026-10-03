@@ -50,7 +50,7 @@ function DashboardPage() {
   }
   if (!data) return <p className="text-muted">Memuat ringkasan...</p>;
 
-  return me.role === "Kasir" ? <KasirDash data={data} name={me.name} /> : <AdminDash data={data} />;
+  return me.role === "Kasir" ? <KasirDash data={data} name={me.name} /> : <AdminDash data={data} readOnly={me.role === "Owner"} />;
 }
 
 function dayLabel(dateText: string) {
@@ -111,7 +111,7 @@ function KasirDash({ data, name }: { data: NonNullable<Awaited<ReturnType<typeof
   );
 }
 
-function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>> }) {
+function AdminDash({ data, readOnly = false }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; readOnly?: boolean }) {
   const max = Math.max(1, ...data.week.map((day) => day.total));
   return (
     <div className="space-y-4">
@@ -122,10 +122,12 @@ function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDa
             <h2 className="text-2xl font-black tracking-tight sm:text-3xl">Ringkasan Bisnis</h2>
             <p className="mt-2 text-sm text-blue-100/70">Pantau penjualan, stok, barang masuk, dan kondisi operasional dari satu halaman.</p>
           </div>
+          {readOnly ? <p className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-bold text-blue-100">Mode Owner: lihat laporan saja, tanpa tambah, simpan, atau hapus.</p> : (
           <div className="flex flex-wrap gap-2">
             <Link to="/kasir" className="rounded-xl bg-white px-4 py-2.5 text-xs font-extrabold text-blue-700">+ Transaksi Penjualan</Link>
             <Link to="/manual" className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-extrabold text-white">Barang Masuk</Link>
           </div>
+          )}
         </div>
       </section>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
@@ -134,11 +136,11 @@ function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDa
         <Stat label="Tunai Hari Ini" value={rupiah(data.today.tunai)} hint="Penjualan cash" tone="ok" />
         <Stat label="Transfer Hari Ini" value={rupiah(data.today.transfer)} hint="Transfer / Split" />
         <Stat label="Bon / Piutang" value={rupiah(data.today.bon)} hint="Hari ini" tone="danger" />
-        <Link to="/manual" className="rounded-xl border border-line bg-panel p-4 text-left shadow-sm">
+        <div className="rounded-xl border border-line bg-panel p-4 text-left shadow-sm">
           <p className="text-[9px] font-bold tracking-wider text-muted uppercase">Barang Masuk</p>
           <p className="num mt-2 text-xl font-black text-amber-600">{data.monthIn.qty} item</p>
-          <p className="mt-1 text-[9px] text-muted">Bulan berjalan · Buka Transaksi Manual</p>
-        </Link>
+          <p className="mt-1 text-[9px] text-muted">Bulan berjalan{readOnly ? "" : " · lihat di Transaksi Manual"}</p>
+        </div>
         <Stat label="Stok Kritis" value={String(data.kritis)} hint="Perlu perhatian" tone="warn" />
         <Stat label="Stok Habis" value={String(data.habis)} hint="Segera restock" tone="danger" />
       </div>
@@ -163,7 +165,7 @@ function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDa
               <h3 className="font-extrabold">Barang Masuk</h3>
               <p className="mt-1 text-[11px] text-muted">Mengikuti transaksi manual jenis MASUK pada periode berjalan</p>
             </div>
-            <Link to="/manual" className="text-xs font-bold text-accent">Buka Transaksi</Link>
+            {readOnly ? null : <Link to="/manual" className="text-xs font-bold text-accent">Buka Transaksi</Link>}
           </div>
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-slate-50 p-3">
@@ -212,7 +214,7 @@ function AdminDash({ data }: { data: NonNullable<Awaited<ReturnType<typeof getDa
               <h3 className="font-extrabold">Stok Menipis & Perlu Perhatian</h3>
               <p className="mt-1 text-[11px] text-muted">Barang yang sebaiknya segera diperiksa / dibeli</p>
             </div>
-            <Link to="/barang" className="text-xs font-bold text-accent">Kelola Stok</Link>
+            <Link to="/barang" className="text-xs font-bold text-accent">Lihat Stok</Link>
           </div>
           {data.low.length === 0 ? <p className="py-6 text-center text-xs font-semibold text-emerald-600">Semua stok dalam kondisi aman.</p> : (
             <div className="grid gap-2 md:grid-cols-2">
