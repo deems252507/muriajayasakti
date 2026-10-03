@@ -180,7 +180,6 @@ function KasirPage() {
   async function pay() {
     if (!shiftId) return toast.error("Shift belum aktif.");
     if (cart.length === 0) return toast.error("Keranjang kosong.");
-    if (cart.some((line) => line.harga <= 0)) return toast.error("Isi harga satuan.");
     setBusy(true);
     try {
       const result = (await checkout({
@@ -331,9 +330,6 @@ function KasirPage() {
               <option value="Umum">Umum / Cash</option>
               <optgroup label="Pelanggan">
                 {partners.filter((partner) => partner.tipe === "Pelanggan").map((partner) => <option key={partner.id} value={partner.nama}>{partner.nama}</option>)}
-              </optgroup>
-              <optgroup label="Supplier">
-                {partners.filter((partner) => partner.tipe === "Supplier").map((partner) => <option key={partner.id} value={partner.nama}>{partner.nama}</option>)}
               </optgroup>
               <option value="__new__">+ Tambah Pelanggan Baru...</option>
             </select>
