@@ -16,8 +16,11 @@ function StokPage() {
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
+  const [loadError, setLoadError] = useState("");
   useEffect(() => {
-    void listProducts({ data: { q, sort, page, kategori, status } }).then(setData);
+    void listProducts({ data: { q, sort, page, kategori, status } })
+      .then((result) => { setData(result); setLoadError(""); })
+      .catch((error: Error) => setLoadError(error.message));
   }, [q, sort, page, kategori, status]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
   return (
@@ -53,6 +56,7 @@ function StokPage() {
           <option value="stok_asc">Stok Terkecil</option>
         </select>
         <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setPage(1); void listProducts({ data: { q, sort, page: 1, kategori, status } }).then((result) => { setData(result); setLoadError(""); }).catch((error: Error) => setLoadError(error.message)); }}>↻ Refresh</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
           void listProducts({ data: { q, sort, page: 1, kategori, status, all: true } }).then((res) => {
             try {
@@ -62,6 +66,7 @@ function StokPage() {
           });
         }}>Cetak PDF</button>
       </div>
+      {loadError ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-danger">Gagal memuat laporan stok: {loadError}. Tekan refresh browser setelah memastikan koneksi database.</div> : null}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] tracking-wide text-muted uppercase">

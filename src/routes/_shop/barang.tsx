@@ -39,7 +39,8 @@ function BarangPage() {
     sessionStorage.removeItem("mjs-find");
     setQ(saved);
   }, []);
-  const [kategori, setKategori] = useState("");
+  const [kategori, setKategori] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("nama");
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
@@ -49,7 +50,9 @@ function BarangPage() {
   const [replaceStock, setReplaceStock] = useState(true);
 
   function load(next = page) {
-    void listProducts({ data: { q, page: next, sort, kategori } }).then(setData);
+    void listProducts({ data: { q, page: next, sort, kategori } })
+      .then((result) => { setData(result); setLoadError(""); })
+      .catch((error: Error) => setLoadError(error.message));
   }
   useEffect(() => {
     load(page);
@@ -70,7 +73,8 @@ function BarangPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             {canEdit ? <PrimaryButton onClick={() => { setForm(empty); setUseDus(false); setOpen(true); }}>+ Tambah</PrimaryButton> : null}
-            {canEdit ? (
+            {loadError ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-danger">Gagal memuat daftar sparepart: {loadError}. Tekan refresh browser setelah memastikan koneksi database.</div> : null}
+        {canEdit ? (
               <label className="inline-flex h-11 cursor-pointer items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700">
                 Import CSV
                 <input
@@ -111,19 +115,33 @@ function BarangPage() {
           </div>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-            <input className={inputClass} list="kategori-barang" placeholder="Ketik kategori, contoh Oli" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }} />
-            <datalist id="kategori-barang">
-              {data?.categories.map((item) => <option key={item} value={item} />)}
-            </datalist>
+            <details className="relative min-w-[220px]">
+              <summary className="flex h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-line bg-white px-3 text-sm">
+                <span>{kategori.length ? `${kategori.length} kategori dipilih` : "Semua Kategori"}</span><span className="text-muted">▾</span>
+              </summary>
+              <div className="absolute right-0 top-12 z-20 max-h-72 w-full min-w-[260px] overflow-y-auto rounded-xl border border-line bg-white p-3 shadow-xl">
+                <button type="button" className="mb-2 w-full rounded-lg border border-line px-3 py-2 text-left text-sm font-bold" onClick={() => { setPage(1); setKategori([]); }}>☑ Semua Kategori</button>
+                <div className="space-y-1">
+                  {data?.categories.map((item) => (
+                    <label key={item} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                      <input type="checkbox" checked={kategori.some((value) => value.toLowerCase() === item.toLowerCase())} onChange={(e) => { setPage(1); setKategori((prev) => e.target.checked ? [...prev, item] : prev.filter((value) => value.toLowerCase() !== item.toLowerCase())); }} />
+                      <span>{item}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </details>
             <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="nama">Kategori, Nama (A - Z)</option>
               <option value="nama_desc">Nama (Z - A)</option>
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
             </select>
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori(""); setSort("nama"); setPage(1); }}>Reset</button>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setSort("nama"); setPage(1); }}>Reset</button>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => load(page)}>↻ Refresh</button>
           </div>
         </div>
+        {loadError ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-danger">Gagal memuat daftar sparepart: {loadError}. Tekan refresh browser setelah memastikan koneksi database.</div> : null}
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={replaceStock} onChange={(e) => setReplaceStock(e.target.checked)} />
@@ -178,7 +196,8 @@ function BarangPage() {
                 </td>
                 <td className="whitespace-nowrap text-right">
                   <button className="h-11 px-2 text-sm" onClick={() => void printBarcode(item)}>Barcode</button>
-                  {canEdit ? (
+                  {loadError ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-danger">Gagal memuat daftar sparepart: {loadError}. Tekan refresh browser setelah memastikan koneksi database.</div> : null}
+        {canEdit ? (
                     <>
                       <button className="h-11 px-2 text-sm" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>Ubah</button>
                       <button className="h-11 px-2 text-sm text-danger" onClick={() => { if (confirm("Hapus barang ini?")) void deleteProduct({ data: { id: item.id } }).then(() => load()).catch((e: Error) => toast.error(e.message)); }}>Hapus</button>

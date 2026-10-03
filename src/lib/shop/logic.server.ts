@@ -1195,6 +1195,63 @@ export async function createSupplierReceipt(data: any) {
   }
 }
 
+export async function updateSupplierReceipt(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data.id);
+  const invoiceNo = String(data.invoiceNo ?? "").trim();
+  const supplierId = Number(data.supplierId);
+  const receivedAt = String(data.receivedAt ?? "").trim();
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Penerimaan tidak ditemukan.");
+  if (!invoiceNo) throw new Error("Nomor invoice barang masuk wajib diisi.");
+  if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error("Pemasok wajib dipilih.");
+  if (!items.length) throw new Error("Minimal satu barang harus dimasukkan.");
+  try {
+    const [row] = await db.query<{ shop_update_supplier_receipt: unknown }>(
+      `select shop_update_supplier_receipt($1::jsonb) as shop_update_supplier_receipt`,
+      [JSON.stringify({
+        id,
+        invoiceNo,
+        supplierId,
+        receivedAt: receivedAt ? `${receivedAt}T12:00:00+08:00` : "",
+        notes: String(data.notes ?? "").trim(),
+        items: items.map((item: any) => ({
+          productId: Number(item.productId),
+          qty: Number(item.qty),
+          satuan: String(item.satuan ?? "Pcs"),
+          hargaBeli: Number(item.hargaBeli ?? 0),
+        })),
+      })],
+    );
+    const result = row?.shop_update_supplier_receipt as { id?: number; invoiceNo?: string };
+    await audit(me, `Ubah barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
+    return { ok: true, id: Number(result?.id ?? id), invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+export async function deleteSupplierReceipt(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Penerimaan tidak ditemukan.");
+  try {
+    const [row] = await db.query<{ shop_delete_supplier_receipt: unknown }>(
+      `select shop_delete_supplier_receipt($1::jsonb) as shop_delete_supplier_receipt`,
+      [JSON.stringify({ id })],
+    );
+    const result = row?.shop_delete_supplier_receipt as { invoiceNo?: string };
+    await audit(me, `Hapus barang masuk pemasok ${result?.invoiceNo ?? id}`);
+    return { ok: true, invoiceNo: String(result?.invoiceNo ?? "") };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 export async function listSupplierReceipts(data: any) {
   await requireStaff();
   const db = await sql();
@@ -1225,8 +1282,8 @@ export async function listSupplierReceipts(data: any) {
       coalesce((select sum(l.qty_dasar) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_qty,
       coalesce((select sum(l.harga_beli * l.qty) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_value,
       coalesce((select json_agg(json_build_object(
-        'productId', l.product_id, 'nama', pr.nama, 'partNumber', pr.part_number, 'kategori', pr.kategori,
-        'qty', l.qty, 'satuan', l.satuan, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli
+        'productId', l.product_id, 'kode', pr.kode, 'nama', pr.nama, 'partNumber', pr.part_number, 'partNumbersAlt', pr.part_numbers_alt, 'kategori', pr.kategori, 'merek', pr.merek, 'stok', pr.stok, 'satuan', l.satuan, 'satuanAlt', pr.satuan_alt, 'isiSatuanAlt', pr.isi_satuan_alt, 'hargaJual', pr.harga_jual, 'hargaJualAlt', pr.harga_jual_alt,
+        'qty', l.qty, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli
       ) order by lower(pr.nama)) from supplier_receipt_lines l join products pr on pr.id = l.product_id where l.receipt_id = r.id), '[]'::json) as items
      from supplier_receipts r join partners p on p.id = r.supplier_id
      where ${clause}
