@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
-import { createSupplierReceipt, listPartners, listSupplierReceipts, searchProducts } from "@/lib/shop/api";
+import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
 import { rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
@@ -23,6 +23,7 @@ function PemasokPage() {
   const [total, setTotal] = useState(0);
   const [perPage, setPerPage] = useState(15);
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [productQ, setProductQ] = useState("");
   const [hits, setHits] = useState<Product[]>([]);
   const [items, setItems] = useState<Draft[]>([]);
@@ -54,6 +55,7 @@ function PemasokPage() {
   const grandTotal = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.hargaBeli, 0), [items]);
 
   function resetForm() {
+    setEditingId(null);
     setInvoiceNo("");
     setReceivedAt(todayInput());
     setFormSupplierId("");
@@ -61,6 +63,56 @@ function PemasokPage() {
     setProductQ("");
     setHits([]);
     setItems([]);
+  }
+
+  function dateInput(iso: string) {
+    if (!iso) return todayInput();
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return todayInput();
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  }
+
+  function openEdit(row: SupplierReceipt) {
+    setEditingId(row.id);
+    setInvoiceNo(row.invoiceNo);
+    setReceivedAt(dateInput(row.receivedAt));
+    setFormSupplierId(String(row.supplierId));
+    setNotes(row.notes || "");
+    setItems(row.items.map((item) => ({
+      product: {
+        id: item.productId,
+        kode: "",
+        partNumber: item.partNumber,
+        partNumbersAlt: "",
+        nama: item.nama,
+        kategori: item.kategori || "",
+        merek: "",
+        satuan: item.satuan || "Pcs",
+        stokMin: 0,
+        stok: 0,
+        hargaBeli: item.hargaBeli,
+        hargaJual: 0,
+        satuanAlt: "",
+        isiSatuanAlt: 0,
+        hargaJualAlt: 0,
+        pajakStatus: "",
+        kodePajak: "",
+        keterangan: "",
+      },
+      qty: item.qty,
+      satuan: item.satuan,
+      hargaBeli: item.hargaBeli,
+    })));
+    setProductQ("");
+    setHits([]);
+    setOpen(true);
+  }
+
+  function removeReceipt(row: SupplierReceipt) {
+    if (!window.confirm(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi.`)) return;
+    void deleteSupplierReceipt({ data: { id: row.id } })
+      .then(() => { toast.success("Penerimaan dihapus dan stok dikurangi."); load(page); })
+      .catch((error: Error) => toast.error(error.message));
   }
 
   function addProduct(product: Product) {
@@ -108,10 +160,10 @@ function PemasokPage() {
       <Panel className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th></tr>
+            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={7} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-line align-top">
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
@@ -121,6 +173,7 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
+                <td className="px-2 py-3 whitespace-nowrap">{canEdit ? <><button className="mr-2 text-xs font-bold text-blue-700" onClick={() => openEdit(row)}>Edit</button><button className="text-xs font-bold text-danger" onClick={() => removeReceipt(row)}>Hapus</button></> : null}</td>
               </tr>
             ))}
           </tbody>
@@ -134,7 +187,7 @@ function PemasokPage() {
       {open ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-4">
           <div className="mx-auto my-4 w-full max-w-5xl rounded-2xl bg-panel p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">Penerimaan Barang dari Pemasok</h3><p className="text-xs text-muted">Simpan penerimaan untuk menambah stok secara otomatis.</p></div><button className="h-10 px-3" onClick={() => setOpen(false)}>Tutup</button></div>
+            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button></div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <Field label="Pemasok *"><select className={inputClass} value={formSupplierId} onChange={(e) => setFormSupplierId(e.target.value)}><option value="">Pilih pemasok</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.nama}</option>)}</select></Field>
               <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
@@ -153,10 +206,12 @@ function PemasokPage() {
               </Panel>
             </div>
             <div className="mt-4 flex justify-end gap-2"><button className="h-11 rounded-lg border border-line px-4" onClick={() => setOpen(false)}>Batal</button><PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
-              void createSupplierReceipt({ data: { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) } })
-                .then(() => { toast.success("Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
+              const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
+              const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
+              void run
+                .then(() => { toast.success(editingId ? "Penerimaan diperbarui dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
                 .catch((error: Error) => toast.error(error.message));
-            }}>Simpan Barang Masuk</PrimaryButton></div>
+            }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton></div>
           </div>
         </div>
       ) : null}
