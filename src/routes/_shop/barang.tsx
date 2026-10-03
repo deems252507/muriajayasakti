@@ -132,8 +132,7 @@ function BarangPage() {
         ) : null}
         <p className="mt-2 text-xs text-muted">
           File Google Sheet: kolom KODE SPAREPART, NAMA SPAREPART, JENIS BARANG, STOK, HARGA.
-          Kode pajak hanya dibaca kalau nama berpola `101584 / BEARING PINION DYNA 125HT/130HT - KOYO JP`: pajak 101584, nama BEARING PINION DYNA 125HT/130HT, merek KOYO JP, part number dari kolom kode (06NU0721VHC3).
-          Nama seperti `322310 - KOYO` atau `28584/21 - KOYO` bukan kode pajak: 322310 / 28584/21 tetap nama barang, KOYO merek.
+          Contoh nama `101486 / ACTUATOR IDLE SPEED AVANZA, XENIA - DAIHATSU (G)` dibaca sebagai kode pajak 101486, nama barang, merek DAIHATSU (G). Part number tetap 89690-BZ010-001. Kode SP- untuk barcode dibuat otomatis.
         </p>
       </Panel>
       <Panel className="overflow-x-auto">

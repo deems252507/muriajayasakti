@@ -16,31 +16,6 @@ export function grouped(value: number | string) {
   return n.toLocaleString("id-ID");
 }
 
-
-export function splitCatalogName(raw: string) {
-  let nama = String(raw ?? "").trim();
-  let kodePajak = "";
-  let merek = "";
-  // Kode pajak hanya angka 5-7 digit yang dipisah " / " dari nama.
-  // 101584 / BEARING PINION DYNA 125HT/130HT - KOYO JP
-  // Bukan: 322310 - KOYO, 28584/21 - KOYO, 25V14625 - KOYO
-  const tax = nama.match(/^(\d{5,7})\s+\/\s+(.+)$/);
-  if (tax) {
-    kodePajak = tax[1];
-    nama = tax[2].trim();
-  }
-  const dash = nama.lastIndexOf(" - ");
-  if (dash > 0) {
-    const left = nama.slice(0, dash).trim();
-    const right = nama.slice(dash + 3).trim();
-    if (left && right && right.length <= 48 && !/^\d+$/.test(right)) {
-      nama = left;
-      merek = right;
-    }
-  }
-  return { nama, merek, kodePajak };
-}
-
 export function packFromName(nama: string) {
   const matches = [...String(nama).matchAll(/(?:^|[\s(])(\d{1,3})\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(ML|LTR|L)\b/gi)];
   const found = matches.at(-1);

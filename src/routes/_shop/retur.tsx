@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Panel } from "@/components/shop/shell";
-import { deleteRetur, getInvoice, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
+import { deleteRetur, getInvoice, listInvoices, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, when } from "@/lib/shop/format";
 import { printReturSlip, shopBrand } from "@/lib/shop/print";
@@ -27,6 +27,12 @@ function ReturPage() {
   const [shiftId, setShiftId] = useState("");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [nomor, setNomor] = useState("");
+  const [searchMode, setSearchMode] = useState<"invoice" | "transaksi">("invoice");
+  const [transactionQuery, setTransactionQuery] = useState("");
+  const [transactionStart, setTransactionStart] = useState("");
+  const [transactionEnd, setTransactionEnd] = useState("");
+  const [transactionHits, setTransactionHits] = useState<Array<Record<string, unknown>>>([]);
+  const [searchingTransactions, setSearchingTransactions] = useState(false);
   const [customer, setCustomer] = useState("");
   const [tanggal, setTanggal] = useState("");
   const [found, setFound] = useState(false);
@@ -87,35 +93,95 @@ function ReturPage() {
               {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift} · {shift.cashierName}</option>)}
             </select>
           </Field>
-          <form className="mt-3 flex gap-2" onSubmit={(event) => {
-            event.preventDefault();
-            setFound(false);
-            void getInvoice({ data: { nomor } }).then((res) => {
-              if (!res || (res.invoice as { source: string }).source !== "Kasir") {
-                toast.error("Invoice belum dicari atau tidak ditemukan.");
-                setLines([]);
-                setCustomer("");
-                return;
-              }
-              const inv = res.invoice as { tujuan: string; tanggal: string };
-              setCustomer(inv.tujuan);
-              setTanggal(inv.tanggal);
-              setFound(true);
-              setLines((res.lines as Array<Record<string, unknown>>).map((line) => ({
-                id: Number(line.id),
-                nama: String(line.custom_item || line.product_nama || "Barang"),
-                jumlah: Number(line.jumlah),
-                returned_qty: Number(line.returned_qty ?? 0),
-                satuan: String(line.satuan),
-                harga_satuan: Number(line.harga_satuan),
-                qty: 0,
-                tanggal: inv.tanggal,
-              })));
-            });
-          }}>
-            <input className={inputClass} placeholder="Nomor invoice, contoh INV.123456" value={nomor} onChange={(e) => setNomor(e.target.value)} />
-            <button className="h-11 rounded-lg bg-accent px-4 text-sm font-bold text-white" type="submit">Cari</button>
-          </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={`rounded-lg px-3 py-2 text-xs font-bold ${searchMode === "invoice" ? "bg-accent text-white" : "border border-line bg-white"}`} onClick={() => setSearchMode("invoice")}>Ada Invoice</button>
+            <button type="button" className={`rounded-lg px-3 py-2 text-xs font-bold ${searchMode === "transaksi" ? "bg-accent text-white" : "border border-line bg-white"}`} onClick={() => setSearchMode("transaksi")}>Tidak Bawa Invoice</button>
+          </div>
+          {searchMode === "invoice" ? (
+            <form className="mt-3 flex gap-2" onSubmit={(event) => {
+              event.preventDefault();
+              setFound(false);
+              void getInvoice({ data: { nomor } }).then((res) => {
+                if (!res || (res.invoice as { source: string }).source !== "Kasir") {
+                  toast.error("Invoice kasir tidak ditemukan.");
+                  setLines([]);
+                  setCustomer("");
+                  return;
+                }
+                const inv = res.invoice as { tujuan: string; tanggal: string };
+                setCustomer(inv.tujuan);
+                setTanggal(inv.tanggal);
+                setFound(true);
+                setLines((res.lines as Array<Record<string, unknown>>).map((line) => ({
+                  id: Number(line.id),
+                  nama: String(line.custom_item || line.product_nama || "Barang"),
+                  jumlah: Number(line.jumlah),
+                  returned_qty: Number(line.returned_qty ?? 0),
+                  satuan: String(line.satuan),
+                  harga_satuan: Number(line.harga_satuan),
+                  qty: 0,
+                  tanggal: inv.tanggal,
+                })));
+              }).catch((error: Error) => toast.error(error.message));
+            }}>
+              <input className={inputClass} placeholder="Nomor invoice, contoh INV.123456" value={nomor} onChange={(e) => setNomor(e.target.value)} />
+              <button className="h-11 rounded-lg bg-accent px-4 text-sm font-bold text-white" type="submit">Cari</button>
+            </form>
+          ) : (
+            <div className="mt-3 rounded-xl border border-line bg-white p-3">
+              <p className="text-xs text-muted">Cari transaksi penjualan tanpa harus mengetahui nomor invoice. Gunakan tanggal dan kata kunci barang, pelanggan, kasir, atau nominal.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <input className={inputClass} type="date" value={transactionStart} onChange={(e) => setTransactionStart(e.target.value)} aria-label="Tanggal mulai" />
+                <input className={inputClass} type="date" value={transactionEnd} onChange={(e) => setTransactionEnd(e.target.value)} aria-label="Tanggal akhir" />
+              </div>
+              <form className="mt-2 flex gap-2" onSubmit={(event) => {
+                event.preventDefault();
+                setSearchingTransactions(true);
+                void listInvoices({ data: { q: transactionQuery, source: "Kasir", start: transactionStart, end: transactionEnd, all: true } })
+                  .then((res) => setTransactionHits((res?.items as Array<Record<string, unknown>>) ?? []))
+                  .catch((error: Error) => toast.error(error.message))
+                  .finally(() => setSearchingTransactions(false));
+              }}>
+                <input className={inputClass} placeholder="Cari barang / pelanggan / kasir / nomor invoice" value={transactionQuery} onChange={(e) => setTransactionQuery(e.target.value)} />
+                <button className="h-11 shrink-0 rounded-lg bg-accent px-4 text-sm font-bold text-white" type="submit">{searchingTransactions ? "..." : "Cari"}</button>
+              </form>
+              {transactionHits.length > 0 ? (
+                <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-line">
+                  {transactionHits.map((row) => (
+                    <button key={String(row.nomor)} type="button" className="block w-full border-b border-line px-3 py-3 text-left last:border-b-0 hover:bg-slate-50" onClick={() => {
+                      const selected = String(row.nomor ?? "");
+                      setNomor(selected);
+                      setSearchMode("invoice");
+                      setTransactionHits([]);
+                      void getInvoice({ data: { nomor: selected } }).then((res) => {
+                        if (!res || (res.invoice as { source: string }).source !== "Kasir") return;
+                        const inv = res.invoice as { tujuan: string; tanggal: string };
+                        setCustomer(inv.tujuan);
+                        setTanggal(inv.tanggal);
+                        setFound(true);
+                        setLines((res.lines as Array<Record<string, unknown>>).map((line) => ({
+                          id: Number(line.id),
+                          nama: String(line.custom_item || line.product_nama || "Barang"),
+                          jumlah: Number(line.jumlah),
+                          returned_qty: Number(line.returned_qty ?? 0),
+                          satuan: String(line.satuan),
+                          harga_satuan: Number(line.harga_satuan),
+                          qty: 0,
+                          tanggal: inv.tanggal,
+                        })));
+                      }).catch((error: Error) => toast.error(error.message));
+                    }}>
+                      <span className="font-bold">{String(row.nomor ?? "-")}</span>
+                      <span className="mt-1 block text-xs text-muted">{when(String(row.tanggal ?? ""))} · {String(row.tujuan || "Pelanggan umum")} · Kasir: {String(row.kasir || "-")}</span>
+                      <span className="mt-1 block text-xs">Total: {rupiah(Number(row.total ?? 0))}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : transactionQuery || transactionStart || transactionEnd ? (
+                <p className="mt-3 text-center text-xs text-muted">Belum ada transaksi Kasir yang cocok. Perlebar tanggal atau ubah kata kunci.</p>
+              ) : null}
+            </div>
+          )}
           {found ? (
             <div className="mt-3 space-y-3">
               <p className="text-sm">Pelanggan: <b>{customer}</b></p>
@@ -145,7 +211,7 @@ function ReturPage() {
                 </table>
               </div>
             </div>
-          ) : nomor ? <p className="mt-4 py-8 text-center text-sm text-muted">Invoice belum dicari atau tidak ditemukan.</p> : null}
+          ) : searchMode === "invoice" && nomor ? <p className="mt-4 py-8 text-center text-sm text-muted">Invoice belum dicari atau tidak ditemukan.</p> : null}
         </div>
         <div>
           <h3 className="font-semibold">Tukar Dengan Barang (Opsional)</h3>

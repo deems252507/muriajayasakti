@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { packFromName, splitCatalogName } from "@/lib/shop/format";
+import { packFromName } from "@/lib/shop/format";
 import type { Bank, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
@@ -590,6 +590,27 @@ function moneyId(raw: string) {
   return Number(compact.replace(/[^\d]/g, "")) || 0;
 }
 
+function splitCatalogName(raw: string) {
+  let nama = raw.trim();
+  let kodePajak = "";
+  let merek = "";
+  const slash = nama.match(/^([^/\s]{1,24})\s*\/\s*(.+)$/);
+  if (slash) {
+    kodePajak = slash[1].trim();
+    nama = slash[2].trim();
+  }
+  const dash = nama.lastIndexOf(" - ");
+  if (dash > 0) {
+    const left = nama.slice(0, dash).trim();
+    const right = nama.slice(dash + 3).trim();
+    if (left && right && right.length <= 48) {
+      nama = left;
+      merek = right;
+    }
+  }
+  return { nama, merek, kodePajak };
+}
+
 export async function importProducts(data: any) {
     const me = await requireStaff();
     assertAdmin(me);
@@ -600,12 +621,9 @@ export async function importProducts(data: any) {
       for (const [key, value] of Object.entries(raw)) row[key.trim().toUpperCase()] = String(value ?? "").trim();
       const partNumber = row["KODE SPAREPART"] || row["PART NUMBER"] || row["KODE"] || "";
       const parsed = splitCatalogName(row["NAMA SPAREPART"] || row["NAMA"] || "");
-      const explicitPajak = row["KODE PAJAK"] || "";
-      let kodePajak = explicitPajak || parsed.kodePajak;
+      const kodePajak = row["KODE PAJAK"] || parsed.kodePajak;
       const merek = row["MEREK"] || parsed.merek;
       const nama = parsed.nama;
-      const partKey = partNumber.replace(/\s+/g, "").toLowerCase();
-      if (!explicitPajak && kodePajak && partKey && kodePajak.toLowerCase() === partKey) kodePajak = "";
       if (!partNumber && !nama) continue;
       const status = kodePajak || (row["STATUS PAJAK"] || "").toLowerCase() === "pajak" ? "Pajak" : "Non Pajak";
       const harga = moneyId(row["HARGA"] || row["HARGA JUAL"] || "0");
@@ -1158,7 +1176,7 @@ export async function listInvoices(data: any): Promise<any> {
     }
     if (data.q) {
       params.push(`%${data.q}%`);
-      where.push(`(nomor ilike $${params.length} or tujuan ilike $${params.length} or kasir ilike $${params.length})`);
+      where.push(`(nomor ilike $${params.length} or tujuan ilike $${params.length} or kasir ilike $${params.length} or exists (select 1 from invoice_lines lq left join products pq on pq.id = lq.product_id where lq.invoice_id = invoices.id and (coalesce(pq.nama, '') ilike $${params.length} or coalesce(pq.part_number, '') ilike $${params.length} or coalesce(lq.custom_item, '') ilike $${params.length})))`);
     }
     if (data.jenis === "MASUK" || data.jenis === "KELUAR") {
       params.push(data.jenis);
