@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Barcode, Pencil, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
@@ -251,17 +252,17 @@ function BarangPage() {
       <Panel className="overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
+          <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold tracking-wide text-slate-700 uppercase shadow-[0_1px_0_#0f172a]">
             <tr>
-              <th className="px-2 py-3">Nama Barang</th>
-              <th className="px-2 py-3">Kategori</th>
-              <th className="hidden px-2 py-3 md:table-cell">Part Number</th>
-              <th className="hidden px-2 py-3 lg:table-cell">Part Number Alt</th>
-              <th className="px-2 py-3 text-center">Stok Akhir</th>
-              <th className="hidden px-2 py-3 text-right sm:table-cell">Harga Jual</th>
-              <th className="px-2 py-3 text-center">Kode Pajak</th>
-              <th className="px-2 py-3 text-center">Status Stok</th>
-              <th className="px-2 py-3"></th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number Alt</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Stok Akhir</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap">Harga Jual</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Kode Pajak</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Status Stok</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -275,7 +276,7 @@ function BarangPage() {
               return (
                 <Fragment key={`group-${item.id}`}>
                 {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
-              <tr key={item.id} className="border-t border-line">
+              <tr key={item.id} className="cursor-pointer border-t border-line" title="Klik baris untuk membuka detail dan ubah sparepart" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
                 <td className="py-3 pr-3">
                   <div className="font-medium">
                     <Mark text={item.nama} q={q} />
@@ -284,25 +285,33 @@ function BarangPage() {
                   {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
                 </td>
                 <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                <td className="hidden font-mono text-xs md:table-cell"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
-                <td className="hidden font-mono text-xs lg:table-cell"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
+                <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
+                <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
                 <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>
                   {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
                 </td>
-                <td className="num hidden text-right sm:table-cell">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
+                <td className="num px-3 text-right">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
                 <td className="text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
                 <td className="text-center">
                   <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status === "HABIS" ? "bg-red-50 text-danger" : status === "KRITIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{status}</span>
                 </td>
-                <td className="whitespace-nowrap text-right">
-                  <button className="h-11 px-2 text-sm" onClick={() => void printBarcode(item)}>Barcode</button>
-                  {canEdit ? (
-                    <>
-                      <button className="h-11 px-2 text-sm" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>Ubah</button>
-                      <button className="h-11 px-2 text-sm text-danger" onClick={() => { if (confirm("Hapus barang ini?")) void deleteProduct({ data: { id: item.id } }).then(() => load()).catch((e: Error) => toast.error(e.message)); }}>Hapus</button>
-                    </>
-                  ) : null}
+                <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
+                  <div className="inline-flex items-center justify-center gap-1">
+                    <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
+                      <Barcode className="h-4 w-4" />
+                    </button>
+                    {canEdit ? (
+                      <>
+                        <button type="button" title="Ubah" aria-label="Ubah" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button type="button" title="Hapus" aria-label="Hapus" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-red-200 bg-white text-danger hover:bg-red-50" onClick={() => { if (confirm("Hapus barang ini?")) void deleteProduct({ data: { id: item.id } }).then(() => load()).catch((e: Error) => toast.error(e.message)); }}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
               </Fragment>
