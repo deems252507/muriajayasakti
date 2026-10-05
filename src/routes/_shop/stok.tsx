@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Eye } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel } from "@/components/shop/shell";
@@ -18,6 +19,7 @@ function StokPage() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [detail, setDetail] = useState<Product | null>(null);
   useEffect(() => {
     void listProducts({ data: { q, sort, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
@@ -40,7 +42,6 @@ function StokPage() {
             <span className="shrink-0 text-muted">▾</span>
           </summary>
           <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
-            {/* Header: search + clear */}
             <div className="space-y-2 border-b border-line bg-white p-3">
               <input
                 className="h-10 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-blue-500"
@@ -68,8 +69,6 @@ function StokPage() {
                 )}
               </div>
             </div>
-
-            {/* Selected items on top */}
             {kategori.length > 0 && (
               <div className="border-b border-line bg-blue-50/60 px-3 py-2">
                 <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">Dipilih ({kategori.length})</p>
@@ -88,14 +87,11 @@ function StokPage() {
                 </div>
               </div>
             )}
-
-            {/* Checkbox list – selected ones first, then filtered */}
             <div className="max-h-52 space-y-0.5 overflow-y-auto p-2">
               {(() => {
                 const all = data?.categories ?? [];
                 const q = kategoriQ.trim().toLowerCase();
                 const filtered = q ? all.filter((item) => item.toLowerCase().includes(q)) : all;
-                // selected first, then the rest
                 const selectedSet = new Set(kategori.map((v) => v.toLowerCase()));
                 const ordered = [
                   ...filtered.filter((item) => selectedSet.has(item.toLowerCase())),
@@ -129,8 +125,6 @@ function StokPage() {
                 });
               })()}
             </div>
-
-            {/* Footer: OK button to close */}
             <div className="border-t border-line bg-slate-50 p-3">
               <button
                 type="button"
@@ -171,17 +165,17 @@ function StokPage() {
       <div className="mt-3 overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
+          <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold tracking-wide text-slate-700 uppercase shadow-[0_1px_0_#0f172a]">
             <tr>
-              <th className="px-2 py-3">Nama Barang</th>
-              <th className="px-2 py-3">Kategori</th>
-              <th className="px-2 py-3">Part Number</th>
-              <th className="hidden px-2 py-3 md:table-cell">Part Number Alt</th>
-              <th className="px-2 py-3 text-center">Stok Min</th>
-              <th className="px-2 py-3 text-center">Stok Akhir</th>
-              <th className="hidden px-2 py-3 text-right sm:table-cell">Harga Jual</th>
-              <th className="px-2 py-3 text-center">Kode Pajak</th>
-              <th className="px-2 py-3 text-center">Status Stok</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number Alt</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Stok Akhir</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap">Harga Jual</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Kode Pajak</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Status Stok</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -196,26 +190,36 @@ function StokPage() {
               return (
                 <Fragment key={`stock-${item.id}`}>
                 {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
-                <tr key={item.id} className="border-t border-line">
-                  <td className="px-2 py-3">
+                <tr key={item.id} className="cursor-pointer border-t border-line" title="Klik baris untuk melihat detail stok" onClick={() => setDetail(item)}>
+                  <td className="px-3 py-3">
                     <div className="font-medium">
                       <Mark text={item.nama} q={q} />
                       {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
                     </div>
                     {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
                   </td>
-                  <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                  <td className="px-2 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
-                  <td className="hidden px-2 font-mono text-xs md:table-cell"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
-                  <td className="num px-2 text-center">{item.stokMin}</td>
-                  <td className="num px-2 text-center font-semibold">
+                  <td className="px-3 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
+                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
+                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
+                  <td className="num px-3 text-center font-semibold">
                     <div>{item.stok} {item.satuan}</div>
                     {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}</div> : null}
                   </td>
-                  <td className="num hidden px-2 text-right sm:table-cell">{rupiah(item.hargaJual)}</td>
-                  <td className="px-2 text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
-                  <td className="px-2 text-center">
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{label}</span>
+                  <td className="num px-3 text-right">{rupiah(item.hargaJual)}</td>
+                  <td className="px-3 text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
+                  <td className="px-3 text-center">
+                    <button
+                      type="button"
+                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}
+                      onClick={(event) => { event.stopPropagation(); setDetail(item); }}
+                    >
+                      {label}
+                    </button>
+                  </td>
+                  <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
+                    <button type="button" title="Detail" aria-label="Detail" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setDetail(item)}>
+                      <Eye className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
                 </Fragment>
@@ -233,6 +237,70 @@ function StokPage() {
           <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
         </div>
       </div>
+      {detail ? <StockDetail item={detail} onClose={() => setDetail(null)} /> : null}
     </Panel>
+  );
+}
+
+function stockLabel(item: Product) {
+  if (item.stok <= 0) return "HABIS";
+  if (item.stokMin > 0 && item.stok <= item.stokMin) return "MENIPIS";
+  return "AMAN";
+}
+
+function StockDetail({ item, onClose }: { item: Product; onClose: () => void }) {
+  const label = stockLabel(item);
+  const dus = item.satuanAlt && item.isiSatuanAlt > 0 ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
+  const sisa = item.satuanAlt && item.isiSatuanAlt > 0 ? item.stok % item.isiSatuanAlt : 0;
+  const tone = label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-panel p-4 sm:max-w-xl sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Detail sparepart</h2>
+            <p className="text-sm text-muted">Informasi barang dan kondisi stok laporan</p>
+          </div>
+          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${tone}`}>{label}</span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Info label="Nama barang" value={item.nama} />
+          <Info label="Kategori" value={item.kategori || "-"} />
+          <Info label="Merek" value={item.merek || "-"} />
+          <Info label="Part number" value={item.partNumber || "-"} />
+          <Info label="Part number alt" value={item.partNumbersAlt || "-"} />
+          <Info label="Kode pajak" value={item.kodePajak || "-"} />
+          <Info label="Status pajak" value={item.pajakStatus || "-"} />
+          <Info label="Status stok" value={label} />
+          <Info label="Stok akhir" value={`${item.stok} ${item.satuan || "Pcs"}`} />
+          <Info label="Stok minimum" value={`${item.stokMin} ${item.satuan || "Pcs"}`} />
+          <Info label="Konversi dus" value={item.satuanAlt && item.isiSatuanAlt > 0 ? `${dus} ${item.satuanAlt}${sisa ? ` + ${sisa} ${item.satuan}` : ""} · 1 ${item.satuanAlt} = ${item.isiSatuanAlt} ${item.satuan}` : "Pcs saja"} />
+          <Info label="Harga jual" value={rupiah(item.hargaJual)} />
+          <Info label="Harga jual dus" value={item.hargaJualAlt ? rupiah(item.hargaJualAlt) : "-"} />
+          <Info label="Harga beli" value={rupiah(item.hargaBeli)} />
+        </div>
+        <div className="mt-4 rounded-xl border border-line bg-slate-50 p-3 text-sm">
+          <p className="font-semibold">Status di laporan ini</p>
+          <ul className="mt-2 space-y-1 text-muted">
+            <li className={label === "HABIS" ? "font-bold text-danger" : ""}>Habis — stok akhir 0</li>
+            <li className={label === "MENIPIS" ? "font-bold text-warn" : ""}>Menipis — stok akhir menyentuh atau di bawah stok minimum</li>
+            <li className={label === "AMAN" ? "font-bold text-ok" : ""}>Aman — stok akhir di atas stok minimum</li>
+          </ul>
+        </div>
+        {item.keterangan ? <p className="mt-3 text-sm text-muted">{item.keterangan}</p> : null}
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="h-11 rounded-lg border border-line px-4 text-sm font-semibold" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line px-3 py-2">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-1 text-sm font-medium">{value}</div>
+    </div>
   );
 }
