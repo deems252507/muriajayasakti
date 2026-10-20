@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
-import { rupiah, todayInput } from "@/lib/shop/format";
+import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 
@@ -68,6 +68,10 @@ function PemasokPage() {
   const [receivedAt, setReceivedAt] = useState(todayInput());
   const [formSupplierId, setFormSupplierId] = useState("");
   const [notes, setNotes] = useState("");
+  const [activeHit, setActiveHit] = useState(0);
+  const [justAdded, setJustAdded] = useState<{ id: number; n: number } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const canEdit = me.role === "Admin";
 
   function load(nextPage = page) {
@@ -84,9 +88,17 @@ function PemasokPage() {
 
   useEffect(() => {
     if (!productQ.trim()) return setHits([]);
-    const timer = setTimeout(() => void searchProducts({ data: { q: productQ } }).then((res) => setHits(res.items)).catch((error: Error) => toast.error(error.message)), 160);
+    const timer = setTimeout(() => void searchProducts({ data: { q: productQ, limit: 20 } }).then((res) => setHits(res.items)).catch((error: Error) => toast.error(error.message)), 160);
     return () => clearTimeout(timer);
   }, [productQ]);
+
+  useEffect(() => { setActiveHit(0); }, [hits]);
+  useEffect(() => {
+    if (!justAdded) return;
+    const el = cellRefs.current[`q-${justAdded.id}`];
+    el?.focus();
+    el?.select();
+  }, [justAdded]);
 
   const pages = Math.max(1, Math.ceil(total / perPage));
   const grandTotal = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.hargaBeli, 0), [items]);
@@ -100,6 +112,7 @@ function PemasokPage() {
     setProductQ("");
     setHits([]);
     setItems([]);
+    setJustAdded(null);
   }
 
   function dateInput(iso: string) {
@@ -160,6 +173,7 @@ function PemasokPage() {
     });
     setProductQ("");
     setHits([]);
+    setJustAdded({ id: product.id, n: Date.now() });
   }
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
@@ -220,33 +234,123 @@ function PemasokPage() {
       </Panel>
 
       {open ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-4">
-          <div className="mx-auto my-4 w-full max-w-5xl rounded-2xl bg-panel p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button></div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <Field label="Pemasok *"><SupplierPicker suppliers={suppliers} value={formSupplierId} onChange={setFormSupplierId} placeholder="Ketik nama pemasok" /></Field>
-              <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
-              <Field label="Tanggal Penerimaan *"><input className={inputClass} type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} /></Field>
+        <div className="fixed inset-0 z-50 flex bg-ink/40 p-2 sm:p-4">
+          <div className="mx-auto flex h-full max-h-[96vh] w-full max-w-[1500px] flex-col rounded-2xl bg-panel shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
+              <div>
+                <h3 className="text-xl font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3>
+                <p className="text-sm text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p>
+              </div>
+              <button className="h-11 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button>
             </div>
-            <Field label="Keterangan"><input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsional" /></Field>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.5fr]">
-              <Panel className="bg-slate-50">
-                <h4 className="font-extrabold">Tambah Barang</h4>
-                <input className={`${inputClass} mt-3`} placeholder="Cari nama / part number" value={productQ} onChange={(e) => setProductQ(e.target.value)} />
-                <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-line bg-white">{hits.map((product) => <button key={product.id} type="button" className="block w-full border-b border-line px-3 py-3 text-left hover:bg-blue-50" onClick={() => addProduct(product)}><p className="font-semibold"><Mark text={product.nama} q={productQ} /></p><p className="text-[11px] text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · <Mark text={product.kategori || "-"} q={productQ} /> · Stok: {product.stok} {product.satuan}</p></button>)}</div>
-              </Panel>
-              <Panel>
-                <div className="flex items-center justify-between"><h4 className="font-extrabold">Isi Penerimaan</h4><span className="text-sm font-bold">{rupiah(grandTotal)}</span></div>
-                <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-line"><th className="py-2 text-left">Barang</th><th className="py-2">Satuan</th><th className="py-2">Qty</th><th className="py-2">Harga Beli</th><th></th></tr></thead><tbody>{items.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-muted">Belum ada barang.</td></tr> : items.map((item, index) => <tr key={item.product.id} className="border-b border-line"><td className="py-2 pr-2"><b>{item.product.nama}</b><span className="block text-[11px] text-muted">{item.product.partNumber || item.product.kode}</span></td><td className="px-1 text-center">{item.satuan}</td><td className="px-1"><input className="num h-10 w-20 rounded-lg border border-line text-center" type="number" min="1" value={item.qty} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, qty: Math.max(1, Number(e.target.value) || 1) } : row))} /></td><td className="px-1"><input className="num h-10 w-28 rounded-lg border border-line text-right" type="number" min="0" value={item.hargaBeli} onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, hargaBeli: Math.max(0, Number(e.target.value) || 0) } : row))} /></td><td className="pl-2"><button className="text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>Hapus</button></td></tr>)}</tbody></table></div>
-              </Panel>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <Field label="Pemasok *"><SupplierPicker suppliers={suppliers} value={formSupplierId} onChange={setFormSupplierId} placeholder="Ketik nama pemasok" /></Field>
+                <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
+                <Field label="Tanggal Penerimaan *"><input className={inputClass} type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} /></Field>
+                <Field label="Keterangan"><input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsional" /></Field>
+              </div>
+
+              <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(340px,1fr)_2fr]">
+                <section className="rounded-xl border border-line bg-slate-50 p-4">
+                  <h4 className="text-base font-extrabold">1. Cari & Tambah Barang</h4>
+                  <input
+                    ref={searchRef}
+                    className="mt-3 h-12 w-full rounded-lg border border-line bg-white px-3 text-base outline-none focus:border-blue-500"
+                    placeholder="Ketik nama / part number, lalu Enter"
+                    value={productQ}
+                    onChange={(e) => setProductQ(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") { e.preventDefault(); setActiveHit((i) => Math.min(hits.length - 1, i + 1)); }
+                      else if (e.key === "ArrowUp") { e.preventDefault(); setActiveHit((i) => Math.max(0, i - 1)); }
+                      else if (e.key === "Enter" && hits[activeHit]) { e.preventDefault(); addProduct(hits[activeHit]); }
+                    }}
+                  />
+                  <p className="mt-2 text-xs text-muted">Tips: panah atas/bawah untuk memilih, Enter untuk menambah. Kursor langsung pindah ke kolom Qty.</p>
+                  <div className="mt-3 max-h-[52vh] overflow-y-auto rounded-lg border border-line bg-white">
+                    {!productQ.trim() ? <p className="px-3 py-6 text-center text-sm text-muted">Hasil pencarian muncul di sini.</p> : null}
+                    {productQ.trim() && hits.length === 0 ? <p className="px-3 py-6 text-center text-sm text-muted">Barang tidak ditemukan.</p> : null}
+                    {hits.map((product, index) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        className={`block w-full border-b border-line px-3 py-3 text-left ${index === activeHit ? "bg-blue-50" : "hover:bg-blue-50"}`}
+                        onMouseEnter={() => setActiveHit(index)}
+                        onClick={() => addProduct(product)}
+                      >
+                        <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} /></p>
+                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-line bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-base font-extrabold">2. Isi Penerimaan <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{items.length} barang</span></h4>
+                    <span className="text-base font-extrabold">{rupiah(grandTotal)}</span>
+                  </div>
+                  <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
+                        <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
+                      </thead>
+                      <tbody>
+                        {items.length === 0 ? <tr><td colSpan={7} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => (
+                          <tr key={item.product.id} className={`border-t border-line ${justAdded?.id === item.product.id ? "bg-yellow-50" : ""}`}>
+                            <td className="px-2 py-2 text-muted">{index + 1}</td>
+                            <td className="px-2 py-2"><b className="text-sm">{item.product.nama}</b><span className="block text-xs text-muted">{item.product.partNumber || item.product.kode}</span></td>
+                            <td className="px-2 text-center">{item.satuan}</td>
+                            <td className="px-2">
+                              <input
+                                ref={(el) => { cellRefs.current[`q-${item.product.id}`] = el; }}
+                                className="num h-12 w-24 rounded-lg border border-line text-center text-base"
+                                inputMode="numeric"
+                                value={item.qty}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const el = cellRefs.current[`h-${item.product.id}`]; el?.focus(); el?.select(); } }}
+                                onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, qty: Math.max(1, digits(e.target.value)) } : row))}
+                              />
+                            </td>
+                            <td className="px-2">
+                              <input
+                                ref={(el) => { cellRefs.current[`h-${item.product.id}`] = el; }}
+                                className="num h-12 w-36 rounded-lg border border-line text-right text-base"
+                                inputMode="numeric"
+                                value={grouped(item.hargaBeli)}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchRef.current?.focus(); } }}
+                                onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, hargaBeli: digits(e.target.value) } : row))}
+                              />
+                            </td>
+                            <td className="num px-2 text-right font-semibold">{rupiah(item.qty * item.hargaBeli)}</td>
+                            <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>Hapus</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2"><button className="h-11 rounded-lg border border-line px-4" onClick={() => setOpen(false)}>Batal</button><PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
-              const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
-              const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
-              void run
-                .then(() => { toast.success(editingId ? "Penerimaan diperbarui dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
-                .catch((error: Error) => toast.error(error.message));
-            }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton></div>
+
+            <div className="flex shrink-0 flex-col gap-3 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm">
+                <span className="text-muted">{items.length} barang · {items.reduce((sum, item) => sum + item.qty, 0)} qty · Total</span>
+                <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>Batal</button>
+                <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
+                  const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
+                  const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
+                  void run
+                    .then(() => { toast.success(editingId ? "Penerimaan diperbarui dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
+                    .catch((error: Error) => toast.error(error.message));
+                }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
