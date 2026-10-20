@@ -95,12 +95,12 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INTERVAL, identity);
     const pool = new Pool({
       connectionString: databaseUrl,
-      max: 1,
-      connectionTimeoutMillis: 8_000,
+      max: 4,
+      connectionTimeoutMillis: 25_000,
       idleTimeoutMillis: 5_000,
       allowExitOnIdle: true,
-      statement_timeout: 20_000,
-      query_timeout: 20_000,
+      statement_timeout: 45_000,
+      query_timeout: 45_000,
     });
     pool.on("error", (err) => {
       console.error("[db] idle client error", err);
