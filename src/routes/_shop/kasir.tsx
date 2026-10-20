@@ -26,6 +26,7 @@ type CartLine = {
   isi: number;
   harga: number;
   konv: number;
+  stok: number;
   kodePajak: string;
   custom?: string;
 };
@@ -138,14 +139,26 @@ function KasirPage() {
     };
   }, [camera]);
 
+  /** Total pcs dari satu barang yang sudah ada di keranjang (selain baris `exceptKey`). */
+  function usedPcs(productId: number | null, exceptKey = "") {
+    if (productId == null) return 0;
+    return cart.reduce((sum, item) => (item.productId === productId && item.key !== exceptKey ? sum + item.qty * item.konv : sum), 0);
+  }
+  /** Jumlah maksimal (dalam satuan baris) yang masih boleh dibeli untuk baris ini. */
+  function maxQty(line: CartLine, konv = line.konv) {
+    if (line.productId == null) return Number.POSITIVE_INFINITY;
+    return Math.floor((line.stok - usedPcs(line.productId, line.key)) / konv);
+  }
+
   function addProduct(product: Product, isAlt: boolean, locked: boolean) {
     if (isAlt && (!product.satuanAlt || product.isiSatuanAlt <= 0)) {
       toast.error("Barang ini tidak punya satuan dus.");
       return;
     }
-    const available = isAlt ? Math.floor(product.stok / product.isiSatuanAlt) : product.stok;
+    const konvBaru = isAlt ? product.isiSatuanAlt : 1;
+    const available = Math.floor((product.stok - usedPcs(product.id)) / konvBaru);
     if (available <= 0) {
-      toast.error(isAlt ? "Stok dus tidak cukup." : "Stok pcs habis.");
+      toast.error(isAlt ? "Stok dus tidak cukup (sudah habis di keranjang)." : "Stok pcs habis (sudah habis di keranjang).");
       return;
     }
     setCart((prev) => [
@@ -165,6 +178,7 @@ function KasirPage() {
         isi: product.isiSatuanAlt,
         harga: isAlt ? product.hargaJualAlt : product.hargaJual,
         konv: isAlt ? product.isiSatuanAlt : 1,
+        stok: product.stok,
         kodePajak: product.kodePajak,
       },
     ]);
@@ -180,6 +194,8 @@ function KasirPage() {
   async function pay() {
     if (!shiftId) return toast.error("Shift belum aktif.");
     if (cart.length === 0) return toast.error("Keranjang kosong.");
+    const over = cart.find((line) => line.productId != null && line.qty * line.konv + usedPcs(line.productId, line.key) > line.stok);
+    if (over) return toast.error(`Stok ${over.nama} tidak cukup. Tersedia ${over.stok} pcs.`);
     setBusy(true);
     try {
       const result = (await checkout({
@@ -348,7 +364,13 @@ function KasirPage() {
                       value={line.isAlt ? "alt" : "base"}
                       onChange={(e) => {
                         const isAlt = e.target.value === "alt";
-                        setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, isAlt, satuan: isAlt ? item.satuanAlt : item.satuanBase, harga: isAlt ? item.hargaAlt : item.hargaBase, konv: isAlt ? item.isi : 1 } : item));
+                        const maxBaru = maxQty(line, isAlt ? line.isi : 1);
+                        if (maxBaru < 1) {
+                          toast.error(`Stok ${isAlt ? line.satuanAlt : line.satuanBase} tidak cukup.`);
+                          return;
+                        }
+                        if (line.qty > maxBaru) toast.error(`Stok hanya cukup ${maxBaru} ${isAlt ? line.satuanAlt : line.satuanBase}, jumlah disesuaikan.`);
+                        setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: Math.min(item.qty, maxBaru), isAlt, satuan: isAlt ? item.satuanAlt : item.satuanBase, harga: isAlt ? item.hargaAlt : item.hargaBase, konv: isAlt ? item.isi : 1 } : item));
                       }}
                     >
                       <option value="base">{line.satuanBase}</option>
@@ -356,6 +378,11 @@ function KasirPage() {
                     </select>
                   ) : <p className="mt-0.5 text-[10px] font-bold text-indigo-600">{line.satuan}{line.isAlt ? ` · 1 ${line.satuan} = ${line.isi} pcs` : ""}</p>}
                   <p className="text-[10px] text-slate-500">Stok berkurang {line.qty * line.konv} pcs</p>
+                  {line.productId != null ? (
+                    maxQty(line) <= line.qty
+                      ? <p className="text-[10px] font-bold text-red-600">Stok mentok: maksimal {Math.max(0, maxQty(line))} {line.satuan}</p>
+                      : null
+                  ) : null}
                 </div>
                 <button aria-label="Hapus" onClick={() => setCart((prev) => prev.filter((item) => item.key !== line.key))}><Trash2 className="size-3 text-red-400" /></button>
               </div>
@@ -363,10 +390,22 @@ function KasirPage() {
                 <div className="flex items-center gap-1">
                   <button className="qty-btn bg-slate-200" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: Math.max(1, item.qty - 1) } : item))}>-</button>
                   <input className="num w-10 rounded border border-slate-200 p-0.5 text-center text-xs" value={line.qty} onChange={(e) => {
-                    const qty = Math.max(1, Number(e.target.value) || 1);
+                    let qty = Math.max(1, Number(e.target.value) || 1);
+                    const max = maxQty(line);
+                    if (qty > max) {
+                      toast.error(`Stok tidak cukup. Maksimal ${Math.max(1, max)} ${line.satuan}.`);
+                      qty = Math.max(1, max);
+                    }
                     setCart((prev) => prev.map((item) => (item.key === line.key ? { ...item, qty } : item)));
                   }} />
-                  <button className="qty-btn bg-slate-200" onClick={() => setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: item.qty + 1 } : item))}>+</button>
+                  <button className="qty-btn bg-slate-200" onClick={() => {
+                    const max = maxQty(line);
+                    if (line.qty + 1 > max) {
+                      toast.error(`Stok tidak cukup. Maksimal ${Math.max(0, max)} ${line.satuan}.`);
+                      return;
+                    }
+                    setCart((prev) => prev.map((item) => item.key === line.key ? { ...item, qty: item.qty + 1 } : item));
+                  }}>+</button>
                 </div>
                 <label className="text-[10px] text-slate-500">
                   Harga {line.satuan}
@@ -466,7 +505,7 @@ function KasirPage() {
         <CustomItem
           onClose={() => setCustomOpen(false)}
           onAdd={(nama, harga) => {
-            setCart((prev) => [...prev, { key: `c-${Date.now()}`, productId: null, nama, qty: 1, isAlt: false, locked: true, satuan: "Item", satuanBase: "Item", hargaBase: harga, satuanAlt: "", hargaAlt: 0, isi: 1, harga, konv: 1, kodePajak: "", custom: nama }]);
+            setCart((prev) => [...prev, { key: `c-${Date.now()}`, productId: null, nama, qty: 1, isAlt: false, locked: true, satuan: "Item", satuanBase: "Item", hargaBase: harga, satuanAlt: "", hargaAlt: 0, isi: 1, harga, konv: 1, stok: 0, kodePajak: "", custom: nama }]);
             setCustomOpen(false);
           }}
         />
