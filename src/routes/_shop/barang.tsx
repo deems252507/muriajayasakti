@@ -96,7 +96,7 @@ function BarangPage() {
                       setImporting(true);
                       let created = 0;
                       let updated = 0;
-                      const size = 150;
+                      const size = 40;
                       const id = toast.loading(`Mengimpor 0 / ${rows.length} baris...`);
                       try {
                         for (let i = 0; i < rows.length; i += size) {
