@@ -11,6 +11,43 @@ export const Route = createFileRoute("/_shop/pemasok")({ component: PemasokPage 
 
 type Draft = { product: Product; qty: number; satuan: string; hargaBeli: number };
 
+/** Kolom pemasok yang bisa diketik; daftar baru muncul setelah ada huruf yang diketik. */
+function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers: Partner[]; value: string; onChange: (id: string) => void; placeholder: string }) {
+  const selected = suppliers.find((row) => String(row.id) === value);
+  const [text, setText] = useState("");
+  const [focus, setFocus] = useState(false);
+  useEffect(() => { setText(selected?.nama ?? ""); }, [value, suppliers]);
+  const needle = text.trim().toLowerCase();
+  const showList = focus && needle !== "" && text !== (selected?.nama ?? "");
+  const matches = showList ? suppliers.filter((row) => row.nama.toLowerCase().includes(needle)).slice(0, 8) : [];
+  return (
+    <div className="relative">
+      <input
+        className={inputClass}
+        placeholder={placeholder}
+        value={text}
+        onFocus={() => setFocus(true)}
+        onBlur={() => { setFocus(false); setText(selected?.nama ?? ""); }}
+        onChange={(e) => { setText(e.target.value); if (!e.target.value.trim() && value) onChange(""); }}
+      />
+      {showList ? (
+        <div className="absolute left-0 top-12 z-30 max-h-64 w-full overflow-auto rounded-xl border border-line bg-white shadow-xl">
+          {matches.length ? matches.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
+              onMouseDown={(e) => { e.preventDefault(); onChange(String(row.id)); setText(row.nama); setFocus(false); }}
+            >
+              {row.nama}
+            </button>
+          )) : <div className="px-3 py-2 text-sm text-muted">Pemasok tidak ditemukan</div>}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PemasokPage() {
   const me = Route.useRouteContext().me;
   const [suppliers, setSuppliers] = useState<Partner[]>([]);
@@ -141,10 +178,7 @@ function PemasokPage() {
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
           <input className={inputClass} placeholder="Cari invoice, supplier, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
-          <select className={inputClass} value={supplierId} onChange={(e) => { setPage(1); setSupplierId(e.target.value); }}>
-            <option value="">Semua Pemasok</option>
-            {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.nama}</option>)}
-          </select>
+          <SupplierPicker suppliers={suppliers} value={supplierId} onChange={(id) => { setPage(1); setSupplierId(id); }} placeholder="Ketik nama pemasok" />
           <input className={inputClass} type="date" value={start} onChange={(e) => { setPage(1); setStart(e.target.value); }} />
           <input className={inputClass} type="date" value={end} onChange={(e) => { setPage(1); setEnd(e.target.value); }} />
           <div className="flex gap-2">
@@ -190,7 +224,7 @@ function PemasokPage() {
           <div className="mx-auto my-4 w-full max-w-5xl rounded-2xl bg-panel p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3><p className="text-xs text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p></div><button className="h-10 px-3" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button></div>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <Field label="Pemasok *"><select className={inputClass} value={formSupplierId} onChange={(e) => setFormSupplierId(e.target.value)}><option value="">Pilih pemasok</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.nama}</option>)}</select></Field>
+              <Field label="Pemasok *"><SupplierPicker suppliers={suppliers} value={formSupplierId} onChange={setFormSupplierId} placeholder="Ketik nama pemasok" /></Field>
               <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
               <Field label="Tanggal Penerimaan *"><input className={inputClass} type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} /></Field>
             </div>
