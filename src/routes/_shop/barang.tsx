@@ -373,7 +373,7 @@ function BarangPage() {
                 const pack = packFromName(nama);
                 if (pack && form.isiSatuanAlt <= 0) {
                   setUseDus(true);
-                  setForm({ ...form, nama, satuanAlt: form.satuanAlt || "Dus", isiSatuanAlt: pack.pcs, hargaJualAlt: form.hargaJualAlt || form.hargaJual * pack.pcs });
+                  setForm({ ...form, nama, satuanAlt: form.satuanAlt || "Dus", isiSatuanAlt: pack.pcs });
                   return;
                 }
                 setForm({ ...form, nama });
