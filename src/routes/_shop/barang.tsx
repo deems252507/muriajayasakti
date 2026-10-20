@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Barcode, Pencil, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
@@ -50,6 +50,8 @@ function BarangPage() {
   const [useDus, setUseDus] = useState(false);
   const [open, setOpen] = useState(false);
   const [replaceStock, setReplaceStock] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const importingRef = useRef(false);
 
   function load(next = page) {
     void listProducts({ data: { q, page: next, sort, kategori } })
@@ -58,8 +60,8 @@ function BarangPage() {
   }
   useEffect(() => {
     load(page);
-    const timer = setInterval(() => load(page), 4000);
-    const onFocus = () => load(page);
+    const timer = setInterval(() => { if (!importingRef.current) load(page); }, 4000);
+    const onFocus = () => { if (!importingRef.current) load(page); };
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(timer);
@@ -76,7 +78,7 @@ function BarangPage() {
           <div className="flex flex-wrap gap-2">
             {canEdit ? <PrimaryButton onClick={() => { setForm(empty); setUseDus(false); setOpen(true); }}>+ Tambah</PrimaryButton> : null}
             {canEdit ? (
-              <label className="inline-flex h-11 cursor-pointer items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700">
+              <label className={`inline-flex h-11 cursor-pointer items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700 ${importing ? "pointer-events-none opacity-50" : ""}`}>
                 Import CSV
                 <input
                   className="hidden"
@@ -89,8 +91,27 @@ function BarangPage() {
                     void file.text().then(async (text) => {
                       const rows = parseCsv(text);
                       if (!rows.length) throw new Error("CSV tidak dikenali. Pastikan ada kolom KODE SPAREPART dan NAMA SPAREPART.");
-                      const result = await importProducts({ data: { rows, replaceStock } });
-                      toast.success(`${result.created} baru, ${result.updated} diperbarui`);
+                      if (importingRef.current) throw new Error("Impor sedang berjalan, mohon tunggu.");
+                      importingRef.current = true;
+                      setImporting(true);
+                      let created = 0;
+                      let updated = 0;
+                      const size = 150;
+                      const id = toast.loading(`Mengimpor 0 / ${rows.length} baris...`);
+                      try {
+                        for (let i = 0; i < rows.length; i += size) {
+                          const result = await importProducts({ data: { rows: rows.slice(i, i + size), replaceStock } });
+                          created += result.created;
+                          updated += result.updated;
+                          toast.loading(`Mengimpor ${Math.min(i + size, rows.length)} / ${rows.length} baris...`, { id });
+                        }
+                        toast.success(`${created} baru, ${updated} diperbarui`, { id });
+                      } catch (error) {
+                        toast.error(`${(error as Error).message} (sudah masuk: ${created} baru, ${updated} diperbarui — impor ulang aman)`, { id });
+                      } finally {
+                        importingRef.current = false;
+                        setImporting(false);
+                      }
                       load(1);
                     }).catch((error: Error) => toast.error(error.message));
                   }}
