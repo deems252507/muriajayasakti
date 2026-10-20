@@ -10,7 +10,7 @@ import type { Product } from "@/lib/shop/types";
 export const Route = createFileRoute("/_shop/manual")({ component: ManualPage });
 
 type Jenis = "MASUK" | "KELUAR";
-type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean };
+type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean; own?: boolean };
 
 const konvOf = (item: Draft) => (item.isAlt && item.product.isiSatuanAlt > 0 ? item.product.isiSatuanAlt : 1);
 const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * konvOf(item);
@@ -48,6 +48,12 @@ function ManualPage() {
     return product.stok + list.filter((row) => row.product.id === product.id).reduce((sum, row) => sum + deltaOf(row), 0);
   }
   const melebihi = items.filter((row) => row.jenis === "KELUAR" && stokSetelah(row.product) < 0);
+
+  /** Tombol Masuk/Keluar: baris yang belum diatur sendiri ikut berubah. */
+  function pilihJenis(next: Jenis) {
+    setJenis(next);
+    setItems((prev) => prev.map((row) => (row.own ? row : { ...row, jenis: next })));
+  }
 
   function addItem(product: Product, isAlt: boolean) {
     if (isAlt && !(product.satuanAlt && product.isiSatuanAlt > 0)) return toast.error("Barang ini tidak punya satuan dus.");
@@ -129,10 +135,10 @@ function ManualPage() {
         <Panel>
           <h3 className="text-base font-extrabold">1. Pilih jenis, lalu cari barang</h3>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setJenis("MASUK")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "MASUK" ? "border-emerald-600 bg-emerald-600 text-white" : "border-line bg-white text-slate-600"}`}>+ MASUK</button>
-            <button type="button" onClick={() => setJenis("KELUAR")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "KELUAR" ? "border-red-600 bg-red-600 text-white" : "border-line bg-white text-slate-600"}`}>− KELUAR</button>
+            <button type="button" onClick={() => pilihJenis("MASUK")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "MASUK" ? "border-emerald-600 bg-emerald-600 text-white" : "border-line bg-white text-slate-600"}`}>+ MASUK</button>
+            <button type="button" onClick={() => pilihJenis("KELUAR")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "KELUAR" ? "border-red-600 bg-red-600 text-white" : "border-line bg-white text-slate-600"}`}>− KELUAR</button>
           </div>
-          <p className="mt-1 text-xs text-muted">Barang yang ditambahkan berikutnya akan berjenis <b>{jenis === "MASUK" ? "Masuk" : "Keluar"}</b>. Jenis tiap baris bisa diubah di tabel.</p>
+          <p className="mt-1 text-xs text-muted">Semua barang di nota ikut berjenis <b>{jenis === "MASUK" ? "Masuk" : "Keluar"}</b>. Kalau perlu campuran, klik tombol jenis di baris tertentu; baris itu tidak ikut berubah lagi.</p>
           <input
             ref={searchRef}
             className="mt-3 h-12 w-full rounded-lg border border-line bg-white px-3 text-base outline-none focus:border-blue-500"
@@ -189,7 +195,7 @@ function ManualPage() {
                           type="button"
                           title="Klik untuk mengubah Masuk/Keluar"
                           className={`h-10 w-24 rounded-lg text-xs font-extrabold text-white ${item.jenis === "MASUK" ? "bg-emerald-600" : "bg-red-600"}`}
-                          onClick={() => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, jenis: row.jenis === "MASUK" ? "KELUAR" : "MASUK" } : row)))}
+                          onClick={() => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, own: true, jenis: row.jenis === "MASUK" ? "KELUAR" : "MASUK" } : row)))}
                         >{item.jenis}</button>
                       </td>
                       <td className="px-2 py-2"><b>{item.product.nama}</b><span className="block text-xs text-muted">{item.product.partNumber || item.product.kode} · Stok saat ini: {item.product.stok} {item.product.satuan}</span></td>
