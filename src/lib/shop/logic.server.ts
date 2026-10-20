@@ -676,7 +676,7 @@ export async function importProducts(data: any) {
         satuan: row["SATUAN"] || "Pcs",
         satuanAlt,
         isiAlt,
-        hargaAlt: hargaDus ? moneyId(hargaDus) : pack && isiAlt > 0 ? harga * isiAlt : 0,
+        hargaAlt: hargaDus ? moneyId(hargaDus) : 0, // harga dus hanya dari kolom HARGA DUS, tidak dihitung otomatis
         status,
         kodePajak,
       });
