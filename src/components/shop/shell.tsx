@@ -22,7 +22,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
 import { setShopProfile } from "@/lib/shop/print";
 import type { Product, Staff } from "@/lib/shop/types";
@@ -180,15 +181,74 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
+  const pathRef = useRef(path);
+  pathRef.current = path;
   useEffect(() => {
     let alive = true;
-    const tick = () => { if (!document.hidden) void chatUnread().then((res) => { if (alive) setChatBadge(res.unread); }).catch(() => undefined); };
+    let lastSeen = -1; // waktu (ms) pesan terbaru yang sudah diberi notifikasi (-1 = belum ada acuan)
+    const baseTitle = document.title.replace(/^\(\d+\)\s*/, "");
+    const beep = () => {
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1175, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.36);
+        window.setTimeout(() => void ctx.close(), 600);
+      } catch { /* browser menolak suara sebelum ada interaksi */ }
+    };
+    const tick = () => {
+      void chatUnread().then((res) => {
+        if (!alive) return;
+        setChatBadge(res.unread);
+        document.title = res.unread > 0 ? `(${res.unread}) ${baseTitle}` : baseTitle;
+        const latest = res.latest;
+        if (!latest) { if (lastSeen < 0) lastSeen = 0; return; }
+        if (lastSeen < 0) { lastSeen = latest.ts; return; } // pertama kali dimuat: jangan bunyikan pesan lama
+        if (latest.ts <= lastSeen) return;
+        lastSeen = latest.ts;
+        if (pathRef.current === "/chat" && !document.hidden) return; // sedang di halaman chat
+        beep();
+        const preview = latest.body.length > 80 ? `${latest.body.slice(0, 80)}...` : latest.body;
+        if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
+          try {
+            const n = new Notification(`Pesan dari ${latest.title}`, { body: preview, tag: "mjs-chat" });
+            n.onclick = () => { window.focus(); sessionStorage.setItem("mjs-chat-with", latest.target); window.location.href = "/chat"; };
+          } catch { /* abaikan */ }
+        } else {
+          toast(`Pesan dari ${latest.title}`, {
+            description: preview,
+            duration: 8000,
+            action: { label: "Buka", onClick: () => { sessionStorage.setItem("mjs-chat-with", latest.target); window.location.href = "/chat"; } },
+          });
+        }
+      }).catch(() => undefined);
+    };
     tick();
-    const timer = window.setInterval(tick, 8000);
+    const timer = window.setInterval(tick, 6000);
     const onChat = () => tick();
+    const askPermission = () => {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") void Notification.requestPermission();
+    };
     window.addEventListener("mjs-chat", onChat);
     window.addEventListener("focus", tick);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("mjs-chat", onChat); window.removeEventListener("focus", tick); };
+    window.addEventListener("click", askPermission, { once: true });
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener("mjs-chat", onChat);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener("click", askPermission);
+      document.title = baseTitle;
+    };
   }, []);
   const groups = me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;

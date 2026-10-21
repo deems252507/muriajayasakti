@@ -550,3 +550,72 @@ export const chatSend = createServerFn({ method: "POST" })
     const { chatSend: run } = await import("./logic.server");
     return run(data);
   });
+
+export const groupList = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { groupList: run } = await import("./logic.server");
+    return run();
+  });
+
+export const groupInfo = createServerFn({ method: "GET" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { groupInfo: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupCreate = createServerFn({ method: "POST" })
+  .validator((input: { id?: number; nama: string; deskripsi?: string; members: string[] }) => ({ id: Number(input?.id ?? 0), nama: String(input?.nama ?? ""), deskripsi: String(input?.deskripsi ?? ""), members: Array.isArray(input?.members) ? input.members.map((v) => String(v)) : [] }))
+  .handler(async ({ data }) => {
+    const { groupCreate: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupUpdate = createServerFn({ method: "POST" })
+  .validator((input: { id?: number; nama: string; deskripsi?: string; members: string[] }) => ({ id: Number(input?.id ?? 0), nama: String(input?.nama ?? ""), deskripsi: String(input?.deskripsi ?? ""), members: Array.isArray(input?.members) ? input.members.map((v) => String(v)) : [] }))
+  .handler(async ({ data }) => {
+    const { groupUpdate: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupDelete = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { groupDelete: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupMessages = createServerFn({ method: "GET" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { groupMessages: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupSend = createServerFn({ method: "POST" })
+  .validator((input: { id: number; body: string }) => ({ id: Number(input?.id), body: String(input?.body ?? "") }))
+  .handler(async ({ data }) => {
+    const { groupSend: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const noteList = createServerFn({ method: "GET" })
+  .validator((input: { groupId: number }) => ({ groupId: Number(input?.groupId) }))
+  .handler(async ({ data }) => {
+    const { noteList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const noteSave = createServerFn({ method: "POST" })
+  .validator((input: { groupId: number; id?: number | null; judul: string; isi: string; pinned?: boolean }) => ({ groupId: Number(input?.groupId), id: input?.id ? Number(input.id) : null, judul: String(input?.judul ?? ""), isi: String(input?.isi ?? ""), pinned: Boolean(input?.pinned) }))
+  .handler(async ({ data }) => {
+    const { noteSave: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const noteDelete = createServerFn({ method: "POST" })
+  .validator((input: { groupId: number; id: number }) => ({ groupId: Number(input?.groupId), id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { noteDelete: run } = await import("./logic.server");
+    return run(data);
+  });

@@ -2026,16 +2026,47 @@ export async function chatContacts() {
   }));
 }
 
-/** Total pesan masuk yang belum dibaca (untuk badge menu). */
+/** Total pesan belum dibaca (pribadi + grup) dan pesan terbaru, untuk badge dan notifikasi. */
 export async function chatUnread() {
+  type Latest = { ts: number; kind: "dm" | "group"; target: string; fromName: string; title: string; body: string };
   const me = await readStaff();
-  if (!me) return { unread: 0 };
+  if (!me) return { unread: 0, latest: null as Latest | null };
   const db = await sql();
-  const [row] = await db.query<{ n: number }>(
+  const [dm] = await db.query<{ n: number }>(
     `select count(*)::int as n from chat_messages where recipient = $1 and read_at is null`,
     [me.username],
   );
-  return { unread: Number(row?.n ?? 0) };
+  const [grp] = await db.query<{ n: number }>(
+    `select count(*)::int as n from chat_group_messages m
+     join chat_group_members gm on gm.group_id = m.group_id and gm.username = $1
+     where m.sender <> $1 and m.id > gm.last_read_id`,
+    [me.username],
+  );
+  const unread = Number(dm?.n ?? 0) + Number(grp?.n ?? 0);
+  if (!unread) return { unread, latest: null as Latest | null };
+  const [d] = Number(dm?.n ?? 0)
+    ? await db.query<Record<string, unknown>>(
+        `select m.sender, s.name, m.body, m.created_at from chat_messages m join staff s on s.username = m.sender
+         where m.recipient = $1 and m.read_at is null order by m.id desc limit 1`,
+        [me.username],
+      )
+    : [];
+  const [g] = Number(grp?.n ?? 0)
+    ? await db.query<Record<string, unknown>>(
+        `select m.group_id, gr.nama as group_name, s.name, m.body, m.created_at
+         from chat_group_messages m
+         join chat_group_members gm on gm.group_id = m.group_id and gm.username = $1
+         join chat_groups gr on gr.id = m.group_id
+         join staff s on s.username = m.sender
+         where m.sender <> $1 and m.id > gm.last_read_id order by m.created_at desc, m.id desc limit 1`,
+        [me.username],
+      )
+    : [];
+  const cand: Latest[] = [];
+  if (d) cand.push({ ts: new Date(String(d.created_at)).getTime(), kind: "dm", target: String(d.sender), fromName: String(d.name ?? ""), title: String(d.name ?? ""), body: String(d.body ?? "") });
+  if (g) cand.push({ ts: new Date(String(g.created_at)).getTime(), kind: "group", target: `g:${Number(g.group_id)}`, fromName: String(g.name ?? ""), title: `${String(g.group_name ?? "")} · ${String(g.name ?? "")}`, body: String(g.body ?? "") });
+  cand.sort((x, y) => y.ts - x.ts);
+  return { unread, latest: cand[0] ?? null };
 }
 
 /** Percakapan dengan satu staff (200 pesan terakhir). Pesan masuk otomatis ditandai terbaca. */
@@ -2080,4 +2111,231 @@ export async function chatSend(data: { to: string; body: string }) {
     [me.username, to, body],
   );
   return { id: Number(row?.id ?? 0) };
+}
+
+
+// ---------------------------------------------------------------------------
+// Grup khusus: chat grup + catatan bersama
+// ---------------------------------------------------------------------------
+
+function assertManager(me: Staff) {
+  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Hanya Admin atau Owner yang dapat membuat dan mengatur grup.");
+}
+
+async function requireMember(db: Awaited<ReturnType<typeof sql>>, groupId: number, me: Staff) {
+  const rows = await db.query(`select 1 from chat_group_members where group_id = $1 and username = $2`, [groupId, me.username]);
+  if (!rows.length) throw new Error("Anda bukan anggota grup ini.");
+}
+
+async function syncGroupMembers(db: Awaited<ReturnType<typeof sql>>, groupId: number, me: Staff, wanted: unknown) {
+  const list = new Set<string>([me.username, ...(Array.isArray(wanted) ? wanted.map((v) => String(v)) : [])]);
+  const valid = await db.query<{ username: string }>(
+    `select username from staff where status = 'Aktif' and username = any($1::text[])`,
+    [[...list]],
+  );
+  const keep = valid.map((row) => row.username);
+  await db.query(`delete from chat_group_members where group_id = $1 and not (username = any($2::text[]))`, [groupId, keep]);
+  // Anggota baru tidak mendapat badge "belum dibaca" untuk riwayat lama.
+  await db.query(
+    `insert into chat_group_members (group_id, username, last_read_id)
+     select $1, u, coalesce((select max(id) from chat_group_messages where group_id = $1), 0)
+     from unnest($2::text[]) as u
+     on conflict (group_id, username) do nothing`,
+    [groupId, keep],
+  );
+}
+
+function cleanGroupFields(data: { nama?: string; deskripsi?: string }) {
+  const nama = String(data.nama ?? "").trim();
+  if (!nama) throw new Error("Isi nama grup.");
+  if (nama.length > 60) throw new Error("Nama grup maksimal 60 huruf.");
+  const deskripsi = String(data.deskripsi ?? "").trim().slice(0, 300);
+  return { nama, deskripsi };
+}
+
+export async function groupList() {
+  const me = await requireStaff();
+  const db = await sql();
+  const rows = await db.query<Record<string, unknown>>(
+    `select g.id, g.nama, g.deskripsi,
+            (select count(*)::int from chat_group_members x where x.group_id = g.id) as member_count,
+            (select m.body from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
+            (select m.created_at from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_at,
+            (select s.name from chat_group_messages m join staff s on s.username = m.sender where m.group_id = g.id order by m.id desc limit 1) as last_name,
+            (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.id > gm.last_read_id) as unread,
+            g.created_at
+     from chat_groups g
+     join chat_group_members gm on gm.group_id = g.id and gm.username = $1
+     order by last_at desc nulls last, g.created_at desc`,
+    [me.username],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    nama: String(row.nama ?? ""),
+    deskripsi: String(row.deskripsi ?? ""),
+    memberCount: Number(row.member_count ?? 0),
+    lastBody: row.last_body == null ? "" : String(row.last_body),
+    lastName: row.last_name == null ? "" : String(row.last_name),
+    lastAt: row.last_at ? new Date(String(row.last_at)).toISOString() : "",
+    unread: Number(row.unread ?? 0),
+  }));
+}
+
+export async function groupInfo(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const [group] = await db.query<Record<string, unknown>>(`select id, nama, deskripsi, created_by from chat_groups where id = $1`, [data.id]);
+  if (!group) throw new Error("Grup tidak ditemukan.");
+  const members = await db.query<Record<string, unknown>>(
+    `select s.username, s.name, s.role, s.photo from chat_group_members gm join staff s on s.username = gm.username
+     where gm.group_id = $1 order by case s.role when 'Owner' then 0 when 'Admin' then 1 else 2 end, s.name`,
+    [data.id],
+  );
+  return {
+    id: Number(group.id),
+    nama: String(group.nama ?? ""),
+    deskripsi: String(group.deskripsi ?? ""),
+    createdBy: group.created_by == null ? "" : String(group.created_by),
+    canManage: me.role === "Admin" || me.role === "Owner",
+    members: members.map((m) => ({ username: String(m.username), name: String(m.name ?? ""), role: String(m.role ?? ""), photo: String(m.photo ?? "") })),
+  };
+}
+
+export async function groupCreate(data: { nama: string; deskripsi?: string; members: string[] }) {
+  const me = await requireStaff();
+  assertManager(me);
+  const db = await sql();
+  const { nama, deskripsi } = cleanGroupFields(data);
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_groups (nama, deskripsi, created_by) values ($1, $2, $3) returning id`,
+    [nama, deskripsi, me.username],
+  );
+  const id = Number(row?.id);
+  await syncGroupMembers(db, id, me, data.members);
+  await audit(me, `Buat grup chat ${nama}`);
+  return { id };
+}
+
+export async function groupUpdate(data: { id: number; nama: string; deskripsi?: string; members: string[] }) {
+  const me = await requireStaff();
+  assertManager(me);
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const { nama, deskripsi } = cleanGroupFields(data);
+  await db.query(`update chat_groups set nama = $2, deskripsi = $3 where id = $1`, [data.id, nama, deskripsi]);
+  await syncGroupMembers(db, data.id, me, data.members);
+  await audit(me, `Ubah grup chat ${nama}`);
+  return { ok: true };
+}
+
+export async function groupDelete(data: { id: number }) {
+  const me = await requireStaff();
+  assertManager(me);
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [data.id]);
+  await db.query(`delete from chat_groups where id = $1`, [data.id]);
+  await audit(me, `Hapus grup chat ${String(g?.nama ?? data.id)}`);
+  return { ok: true };
+}
+
+export async function groupMessages(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const rows = await db.query<Record<string, unknown>>(
+    `select * from (
+       select m.id, m.sender, s.name, m.body, m.created_at from chat_group_messages m join staff s on s.username = m.sender
+       where m.group_id = $1 order by m.id desc limit 200
+     ) t order by id asc`,
+    [data.id],
+  );
+  await db.query(
+    `update chat_group_members set last_read_id = greatest(last_read_id, coalesce((select max(id) from chat_group_messages where group_id = $1), 0))
+     where group_id = $1 and username = $2`,
+    [data.id, me.username],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    mine: String(row.sender) === me.username,
+    name: String(row.name ?? ""),
+    body: String(row.body ?? ""),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+  }));
+}
+
+export async function groupSend(data: { id: number; body: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const body = String(data.body ?? "").trim();
+  if (!body) throw new Error("Pesan kosong.");
+  if (body.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_group_messages (group_id, sender, body) values ($1, $2, $3) returning id`,
+    [data.id, me.username, body],
+  );
+  return { id: Number(row?.id ?? 0) };
+}
+
+export async function noteList(data: { groupId: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.groupId, me);
+  const rows = await db.query<Record<string, unknown>>(
+    `select n.id, n.judul, n.isi, n.pinned, n.created_at, n.updated_at, cs.name as created_name, us.name as updated_name
+     from chat_group_notes n
+     left join staff cs on cs.username = n.created_by
+     left join staff us on us.username = n.updated_by
+     where n.group_id = $1 order by n.pinned desc, n.updated_at desc, n.id desc`,
+    [data.groupId],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    judul: String(row.judul ?? ""),
+    isi: String(row.isi ?? ""),
+    pinned: Boolean(row.pinned),
+    createdName: String(row.created_name ?? "-"),
+    updatedName: String(row.updated_name ?? "-"),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    updatedAt: new Date(String(row.updated_at)).toISOString(),
+  }));
+}
+
+export async function noteSave(data: { groupId: number; id?: number | null; judul: string; isi: string; pinned?: boolean }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.groupId, me);
+  const judul = String(data.judul ?? "").trim().slice(0, 120);
+  const isi = String(data.isi ?? "").trim();
+  if (!judul && !isi) throw new Error("Catatan kosong. Isi judul atau isi catatan.");
+  if (isi.length > 10000) throw new Error("Isi catatan terlalu panjang (maksimal 10.000 huruf).");
+  if (data.id) {
+    const rows = await db.query(
+      `update chat_group_notes set judul = $3, isi = $4, pinned = $5, updated_by = $6, updated_at = now()
+       where id = $1 and group_id = $2 returning id`,
+      [data.id, data.groupId, judul, isi, Boolean(data.pinned), me.username],
+    );
+    if (!rows.length) throw new Error("Catatan tidak ditemukan.");
+    return { id: Number(data.id) };
+  }
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_group_notes (group_id, judul, isi, pinned, created_by, updated_by) values ($1, $2, $3, $4, $5, $5) returning id`,
+    [data.groupId, judul, isi, Boolean(data.pinned), me.username],
+  );
+  return { id: Number(row?.id) };
+}
+
+export async function noteDelete(data: { groupId: number; id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.groupId, me);
+  const rows = await db.query<{ created_by: string | null }>(`select created_by from chat_group_notes where id = $1 and group_id = $2`, [data.id, data.groupId]);
+  if (!rows.length) throw new Error("Catatan tidak ditemukan.");
+  if (rows[0].created_by !== me.username && me.role !== "Admin" && me.role !== "Owner") {
+    throw new Error("Catatan hanya bisa dihapus oleh pembuatnya, Admin, atau Owner.");
+  }
+  await db.query(`delete from chat_group_notes where id = $1 and group_id = $2`, [data.id, data.groupId]);
+  return { ok: true };
 }
