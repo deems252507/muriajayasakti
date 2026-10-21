@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { manualNota, searchProducts } from "@/lib/shop/api";
@@ -18,14 +19,14 @@ const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * 
 
 function ManualPage() {
   const me = Route.useRouteContext().me;
-  const [q, setQ] = useState("");
+  const [q, setQ] = usePersistedState("manual:q", "");
   const [hits, setHits] = useState<Product[]>([]);
   const [activeHit, setActiveHit] = useState(0);
-  const [items, setItems] = useState<Draft[]>([]);
+  const [items, setItems] = usePersistedState<Draft[]>("manual:items", []);
   const [tanggal, setTanggal] = useState(todayInput());
-  const [jenis, setJenis] = useState<Jenis>("MASUK");
-  const [tujuan, setTujuan] = useState("");
-  const [ket, setKet] = useState("");
+  const [jenis, setJenis] = usePersistedState<Jenis>("manual:jenis", "MASUK");
+  const [tujuan, setTujuan] = usePersistedState("manual:tujuan", "");
+  const [ket, setKet] = usePersistedState("manual:ket", "");
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState<{ key: string; n: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);

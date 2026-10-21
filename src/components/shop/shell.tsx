@@ -1,3 +1,4 @@
+import { clearPersistedState } from "@/lib/persist";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
@@ -238,6 +239,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 onClick={() => {
                   if (!confirm("Yakin keluar dari aplikasi?")) return;
                   void logout().then(() => {
+                    clearPersistedState();
                     window.location.href = "/";
                   });
                 }}

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { editSale, getInvoice, listBon, payoffBon } from "@/lib/shop/api";
@@ -12,10 +13,10 @@ export const Route = createFileRoute("/_shop/bon")({ component: BonPage });
 function BonPage() {
   const me = Route.useRouteContext().me;
   const canEdit = me.role === "Admin";
-  const [status, setStatus] = useState("Bon");
-  const [customer, setCustomer] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [status, setStatus] = usePersistedState("bon:status", "Bon");
+  const [customer, setCustomer] = usePersistedState("bon:customer", "");
+  const [start, setStart] = usePersistedState("bon:start", "");
+  const [end, setEnd] = usePersistedState("bon:end", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [edit, setEdit] = useState<{ nomor: string; diskon: string; items: Array<{ id: number; nama: string; jumlah: number; satuan: string; harga: string }> } | null>(null);
 

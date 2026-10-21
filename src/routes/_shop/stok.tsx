@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel } from "@/components/shop/shell";
 import { listProducts } from "@/lib/shop/api";
@@ -11,11 +12,11 @@ import type { Product } from "@/lib/shop/types";
 export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
 
 function StokPage() {
-  const [q, setQ] = useState("");
-  const [sort, setSort] = useState("nama");
-  const [kategori, setKategori] = useState<string[]>([]);
+  const [q, setQ] = usePersistedState("stok:q", "");
+  const [sort, setSort] = usePersistedState("stok:sort", "nama");
+  const [kategori, setKategori] = usePersistedState<string[]>("stok:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = usePersistedState("stok:status", "");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");

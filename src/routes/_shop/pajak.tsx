@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { listTax } from "@/lib/shop/api";
@@ -10,10 +11,10 @@ import { printTaxNotes } from "@/lib/shop/print";
 export const Route = createFileRoute("/_shop/pajak")({ component: PajakPage });
 
 function PajakPage() {
-  const [start, setStart] = useState(todayInput());
-  const [end, setEnd] = useState(todayInput());
-  const [jenis, setJenis] = useState("");
-  const [kategori, setKategori] = useState("");
+  const [start, setStart] = usePersistedState("pajak:start", todayInput());
+  const [end, setEnd] = usePersistedState("pajak:end", todayInput());
+  const [jenis, setJenis] = usePersistedState("pajak:jenis", "");
+  const [kategori, setKategori] = usePersistedState("pajak:kategori", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
 
   useEffect(() => {

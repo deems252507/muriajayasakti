@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deletePartner, listPartners, savePartner } from "@/lib/shop/api";
@@ -14,8 +15,8 @@ function MitraPage() {
   const me = Route.useRouteContext().me;
   const isAdmin = me.role === "Admin";
   const [rows, setRows] = useState<Partner[]>([]);
-  const [tab, setTab] = useState<Tipe>("Pelanggan");
-  const [q, setQ] = useState("");
+  const [tab, setTab] = usePersistedState<Tipe>("mitra:tab", "Pelanggan");
+  const [q, setQ] = usePersistedState("mitra:q", "");
   const [form, setForm] = useState(emptyForm("Pelanggan"));
   const [open, setOpen] = useState(false);
 

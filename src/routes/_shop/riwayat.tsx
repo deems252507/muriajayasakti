@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { editManual, editSale, findRetur, getInvoice, listHistoryLines, listInvoices, listMasters, removeInvoice, searchProducts } from "@/lib/shop/api";
@@ -12,13 +13,13 @@ export const Route = createFileRoute("/_shop/riwayat")({ component: RiwayatPage 
 
 function RiwayatPage() {
   const me = Route.useRouteContext().me;
-  const [q, setQ] = useState("");
-  const [source, setSource] = useState("");
-  const [status, setStatus] = useState("");
-  const [jenis, setJenis] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [page, setPage] = useState(1);
+  const [q, setQ] = usePersistedState("riwayat:q", "");
+  const [source, setSource] = usePersistedState("riwayat:source", "");
+  const [status, setStatus] = usePersistedState("riwayat:status", "");
+  const [jenis, setJenis] = usePersistedState("riwayat:jenis", "");
+  const [start, setStart] = usePersistedState("riwayat:start", "");
+  const [end, setEnd] = usePersistedState("riwayat:end", "");
+  const [page, setPage] = usePersistedState("riwayat:page", 1);
   const [data, setData] = useState<{ total: number; perPage: number; items: Array<Record<string, unknown>> } | null>(null);
   const [open, setOpen] = useState("");
   const [detail, setDetail] = useState<{ invoice: Record<string, unknown>; lines: Array<Record<string, unknown>> } | null>(null);

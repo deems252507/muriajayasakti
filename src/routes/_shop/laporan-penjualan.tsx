@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { PeriodPicker } from "@/components/shop/period";
 import { inputClass, Panel } from "@/components/shop/shell";
@@ -15,10 +16,10 @@ const esc = (v: unknown) => String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&a
 const hariText = (iso: string) => new Date(`${iso}T12:00:00+08:00`).toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
 function LaporanPenjualanPage() {
-  const [start, setStart] = useState(todayInput());
-  const [end, setEnd] = useState(todayInput());
-  const [source, setSource] = useState("Kasir");
-  const [q, setQ] = useState("");
+  const [start, setStart] = usePersistedState("lapjual:start", todayInput());
+  const [end, setEnd] = usePersistedState("lapjual:end", todayInput());
+  const [source, setSource] = usePersistedState("lapjual:source", "Kasir");
+  const [q, setQ] = usePersistedState("lapjual:q", "");
   const [view, setView] = useState<"nota" | "barang" | "hari">("nota");
   const [items, setItems] = useState<Row[]>([]);
   const [days, setDays] = useState<Row[]>([]);

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Barcode, Pencil, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
@@ -33,17 +34,17 @@ const empty = {
 function BarangPage() {
   const me = Route.useRouteContext().me;
   const canEdit = me.role === "Admin";
-  const [q, setQ] = useState("");
+  const [q, setQ] = usePersistedState("barang:q", "");
   useEffect(() => {
     const saved = sessionStorage.getItem("mjs-find");
     if (!saved) return;
     sessionStorage.removeItem("mjs-find");
     setQ(saved);
   }, []);
-  const [kategori, setKategori] = useState<string[]>([]);
+  const [kategori, setKategori] = usePersistedState<string[]>("barang:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState("nama");
+  const [sort, setSort] = usePersistedState("barang:sort", "nama");
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState(empty);
