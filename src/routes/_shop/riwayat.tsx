@@ -185,7 +185,7 @@ function RiwayatPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span>{String(inv.nomor)}</p>
-                <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar)}</p>
+                <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar) === "Bon" ? <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-amber-800">Bon</span> : String(inv.status_bayar)}</p>
                 <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
               </div>
               <div className="text-right">
@@ -249,7 +249,10 @@ function RiwayatPage() {
                     });
                   }}>Ubah Nota</button>
                 ) : null}
-                {me.role === "Admin" && String(inv.source) === "Manual" ? (
+                {String(inv.source) === "Manual" && String(inv.status_bayar) === "Bon" ? (
+                  <p className="mt-2 text-xs text-muted">Nota ini tercatat sebagai Bon. Untuk ubah harga, qty, nama pelanggan, atau tambah/hapus barang, buka menu Bon / Piutang lalu klik Edit bon.</p>
+                ) : null}
+                {me.role === "Admin" && String(inv.source) === "Manual" && String(inv.status_bayar) !== "Bon" ? (
                   <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => setManual({
                     nomor: String(inv.nomor),
                     tujuan: String(inv.tujuan || ""),

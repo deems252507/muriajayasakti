@@ -1432,7 +1432,7 @@ export async function listInvoices(data: any): Promise<any> {
     const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from invoices ${clause}`, params);
     const perPage = data.all ? 100000 : 12;
     const rows = await db.query(
-      `select * from invoices ${clause} order by tanggal desc limit ${perPage} offset ${(data.page - 1) * perPage}`,
+      `select * from invoices ${clause} order by tanggal desc, id desc limit ${perPage} offset ${(data.page - 1) * perPage}`,
       params,
     );
     return { total: Number(countRow?.n ?? 0), page: data.page, perPage, items: rows };
@@ -1536,7 +1536,7 @@ export async function listHistoryItems(data: any) {
     where.push(`tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
   }
   const base = `with all_lines as (
-      select i.tanggal, i.nomor::text as nomor, i.source::text as source, l.jenis::text as jenis,
+      select i.tanggal, l.id::bigint as line_id, i.id::bigint as inv_id, i.nomor::text as nomor, i.source::text as source, l.jenis::text as jenis,
              coalesce(nullif(l.custom_item, ''), p.nama, 'Barang')::text as nama,
              coalesce(p.part_number, '')::text as part_number,
              coalesce(nullif(l.part_numbers_alt, ''), p.part_numbers_alt, '')::text as pn_alt,
@@ -1549,7 +1549,7 @@ export async function listHistoryItems(data: any) {
       join invoices i on i.id = l.invoice_id
       left join products p on p.id = l.product_id
       union all
-      select r.received_at, r.invoice_no::text, 'Pemasok'::text, 'MASUK'::text,
+      select r.received_at, l.id::bigint, r.id::bigint, r.invoice_no::text, 'Pemasok'::text, 'MASUK'::text,
              pr.nama::text, coalesce(pr.part_number, '')::text, coalesce(pr.part_numbers_alt, '')::text,
              coalesce(pr.merek, '')::text, coalesce(pr.kode_pajak, '')::text,
              l.qty::int, l.satuan::text, l.harga_beli::bigint,
@@ -1565,7 +1565,7 @@ export async function listHistoryItems(data: any) {
   const page = Math.max(1, Number(data.page ?? 1) || 1);
   const offset = data.all ? 0 : (page - 1) * perPage;
   const rows = await db.query<Record<string, unknown>>(
-    `${base} select * from all_lines where ${clause} order by tanggal desc, nomor, nama limit ${perPage} offset ${offset}`,
+    `${base} select * from all_lines where ${clause} order by tanggal desc, inv_id desc, line_id asc limit ${perPage} offset ${offset}`,
     params,
   );
   return {
@@ -1611,7 +1611,7 @@ export async function listSalesNotes(data: any) {
   }
   const notes = await db.query<Record<string, unknown>>(
     `select i.id, i.nomor, i.tanggal, i.source, i.kasir, i.tujuan, i.metode_bayar, i.status_bayar, i.total, i.diskon
-     from invoices i where ${where.join(" and ")} order by i.tanggal asc limit 2000`,
+     from invoices i where ${where.join(" and ")} order by i.tanggal asc, i.id asc limit 2000`,
     params,
   );
   const ids = notes.map((n) => Number(n.id));
@@ -1755,14 +1755,14 @@ export async function listBon(data: any): Promise<any> {
            ), '[]'::json) as items
          from invoices i
          where ${where.join(" and ")}
-         order by i.tanggal desc
+         order by i.tanggal desc, i.id desc
          limit 5000`,
         params,
       );
       return rows;
     }
     const rows = await db.query(
-      `select * from invoices where ${where.join(" and ")} order by tanggal desc limit 5000`,
+      `select * from invoices where ${where.join(" and ")} order by tanggal desc, id desc limit 5000`,
       params,
     );
     return rows;

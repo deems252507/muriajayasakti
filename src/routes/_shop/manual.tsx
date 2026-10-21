@@ -13,6 +13,13 @@ export const Route = createFileRoute("/_shop/manual")({ component: ManualPage })
 type Jenis = "MASUK" | "KELUAR";
 type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean; harga: number; own?: boolean; custom?: boolean };
 
+/** Jam sekarang (WITA) HH:mm:ss, dipakai sebagai jam nota supaya urutan dan jam transaksi sesuai waktu input. */
+function jamSekarang() {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Makassar", hourCycle: "h23", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date());
+  const get = (t: string) => parts.find((x) => x.type === t)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
 const konvOf = (item: Draft) => (item.isAlt && item.product.isiSatuanAlt > 0 ? item.product.isiSatuanAlt : 1);
 const hargaDefault = (product: Product, isAlt: boolean) => (isAlt && product.isiSatuanAlt > 0 ? product.hargaJualAlt : product.hargaJual) || 0; // sama persis dengan Daftar Sparepart/Kasir; harga dus tidak dihitung otomatis
 const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * konvOf(item);
@@ -98,20 +105,12 @@ function ManualPage() {
     setCustomNama("");
   }
 
-<<<<<<< HEAD
   /** Syarat Bon: semua barang Keluar dan nama pelanggan terisi. Harga boleh Rp 0, bisa diedit nanti di menu Bon / Piutang. */
-=======
-  /** Syarat Bon: semua barang Keluar, nama pelanggan terisi, dan ada harga. */
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
   const totalKeluarNilai = items.filter((row) => row.jenis === "KELUAR").reduce((sum, row) => sum + row.harga * row.qty, 0);
   const bonMasalah: string[] = [];
   if (bon) {
     if (items.some((row) => row.jenis === "MASUK")) bonMasalah.push("Ada barang Masuk. Bon hanya untuk barang Keluar.");
     if (!tujuan.trim() || tujuan.trim().toLowerCase() === "umum") bonMasalah.push("Isi nama pelanggan di kolom Supplier / pelanggan / gudang.");
-<<<<<<< HEAD
-=======
-    if (totalKeluarNilai <= 0) bonMasalah.push("Isi harga barang Keluar (total Bon harus lebih dari 0).");
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
   }
 
   function setQty(key: string, raw: number) {
@@ -137,7 +136,7 @@ function ManualPage() {
     try {
       const res = (await manualNota({
         data: {
-          tanggal: new Date(`${tanggal}T12:00:00+08:00`).toISOString(),
+          tanggal: new Date(`${tanggal}T${jamSekarang()}+08:00`).toISOString(),
           bon,
           items: items.map((item) => ({
             ...(item.custom ? { custom: item.product.nama, satuan: item.product.satuan } : { productId: item.product.id }),
@@ -367,19 +366,11 @@ function ManualPage() {
             <input type="checkbox" className="mt-1 h-5 w-5" checked={bon} onChange={(e) => setBon(e.target.checked)} />
             <span className="text-sm">
               <b className="text-slate-900">Catat sebagai Bon (belum dibayar)</b>
-<<<<<<< HEAD
               <span className="mt-0.5 block text-xs text-slate-600">Nota masuk ke menu Bon / Piutang atas nama pelanggan di atas, dan dilunasi dari sana. Syarat: semua barang Keluar dan nama pelanggan terisi. Harga boleh dikosongkan dulu, bisa diedit nanti di menu Bon / Piutang.</span>
             </span>
           </label>
           {bon && bonMasalah.length ? <ul className="mt-2 list-disc rounded-lg bg-amber-50 py-2 pl-7 pr-3 text-sm font-semibold text-amber-800">{bonMasalah.map((m) => <li key={m}>{m}</li>)}</ul> : null}
           {bon && !bonMasalah.length ? <p className="num mt-2 text-right text-sm font-bold text-amber-800">Piutang yang akan dicatat: {rupiah(totalKeluarNilai)}{totalKeluarNilai <= 0 ? " (harga bisa diisi nanti di Bon / Piutang)" : ""}</p> : null}
-=======
-              <span className="mt-0.5 block text-xs text-slate-600">Nota masuk ke menu Bon / Piutang atas nama pelanggan di atas, dan dilunasi dari sana. Syarat: semua barang Keluar, nama pelanggan terisi, dan harga terisi.</span>
-            </span>
-          </label>
-          {bon && bonMasalah.length ? <ul className="mt-2 list-disc rounded-lg bg-amber-50 py-2 pl-7 pr-3 text-sm font-semibold text-amber-800">{bonMasalah.map((m) => <li key={m}>{m}</li>)}</ul> : null}
-          {bon && !bonMasalah.length ? <p className="num mt-2 text-right text-sm font-bold text-amber-800">Piutang yang akan dicatat: {rupiah(totalKeluarNilai)}</p> : null}
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
           <PrimaryButton className="mt-4 h-14 w-full text-base" disabled={items.length === 0 || busy || melebihi.length > 0 || bonMasalah.length > 0} onClick={() => void simpan()}>{busy ? "Menyimpan..." : bon ? `Simpan sebagai Bon (${items.length} baris)` : `Simpan Nota (${items.length} baris)`}</PrimaryButton>
         </Panel>
       </div>
