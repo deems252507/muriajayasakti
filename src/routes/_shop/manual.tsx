@@ -98,20 +98,12 @@ function ManualPage() {
     setCustomNama("");
   }
 
-<<<<<<< HEAD
   /** Syarat Bon: semua barang Keluar dan nama pelanggan terisi. Harga boleh Rp 0, bisa diedit nanti di menu Bon / Piutang. */
-=======
-  /** Syarat Bon: semua barang Keluar, nama pelanggan terisi, dan ada harga. */
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
   const totalKeluarNilai = items.filter((row) => row.jenis === "KELUAR").reduce((sum, row) => sum + row.harga * row.qty, 0);
   const bonMasalah: string[] = [];
   if (bon) {
     if (items.some((row) => row.jenis === "MASUK")) bonMasalah.push("Ada barang Masuk. Bon hanya untuk barang Keluar.");
     if (!tujuan.trim() || tujuan.trim().toLowerCase() === "umum") bonMasalah.push("Isi nama pelanggan di kolom Supplier / pelanggan / gudang.");
-<<<<<<< HEAD
-=======
-    if (totalKeluarNilai <= 0) bonMasalah.push("Isi harga barang Keluar (total Bon harus lebih dari 0).");
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
   }
 
   function setQty(key: string, raw: number) {
@@ -367,19 +359,11 @@ function ManualPage() {
             <input type="checkbox" className="mt-1 h-5 w-5" checked={bon} onChange={(e) => setBon(e.target.checked)} />
             <span className="text-sm">
               <b className="text-slate-900">Catat sebagai Bon (belum dibayar)</b>
-<<<<<<< HEAD
               <span className="mt-0.5 block text-xs text-slate-600">Nota masuk ke menu Bon / Piutang atas nama pelanggan di atas, dan dilunasi dari sana. Syarat: semua barang Keluar dan nama pelanggan terisi. Harga boleh dikosongkan dulu, bisa diedit nanti di menu Bon / Piutang.</span>
             </span>
           </label>
           {bon && bonMasalah.length ? <ul className="mt-2 list-disc rounded-lg bg-amber-50 py-2 pl-7 pr-3 text-sm font-semibold text-amber-800">{bonMasalah.map((m) => <li key={m}>{m}</li>)}</ul> : null}
           {bon && !bonMasalah.length ? <p className="num mt-2 text-right text-sm font-bold text-amber-800">Piutang yang akan dicatat: {rupiah(totalKeluarNilai)}{totalKeluarNilai <= 0 ? " (harga bisa diisi nanti di Bon / Piutang)" : ""}</p> : null}
-=======
-              <span className="mt-0.5 block text-xs text-slate-600">Nota masuk ke menu Bon / Piutang atas nama pelanggan di atas, dan dilunasi dari sana. Syarat: semua barang Keluar, nama pelanggan terisi, dan harga terisi.</span>
-            </span>
-          </label>
-          {bon && bonMasalah.length ? <ul className="mt-2 list-disc rounded-lg bg-amber-50 py-2 pl-7 pr-3 text-sm font-semibold text-amber-800">{bonMasalah.map((m) => <li key={m}>{m}</li>)}</ul> : null}
-          {bon && !bonMasalah.length ? <p className="num mt-2 text-right text-sm font-bold text-amber-800">Piutang yang akan dicatat: {rupiah(totalKeluarNilai)}</p> : null}
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
           <PrimaryButton className="mt-4 h-14 w-full text-base" disabled={items.length === 0 || busy || melebihi.length > 0 || bonMasalah.length > 0} onClick={() => void simpan()}>{busy ? "Menyimpan..." : bon ? `Simpan sebagai Bon (${items.length} baris)` : `Simpan Nota (${items.length} baris)`}</PrimaryButton>
         </Panel>
       </div>

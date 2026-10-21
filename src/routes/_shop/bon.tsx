@@ -73,11 +73,7 @@ function BonPage() {
                 <li key={String(inv.nomor)} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{String(inv.source) === "Manual" ? <span className="mr-2 rounded-md bg-amber-100 px-1.5 py-0.5 align-middle text-[10px] font-extrabold uppercase text-amber-800">Manual</span> : null}{String(inv.nomor)} · {String(inv.keterangan || inv.status_bayar)}</p>
-<<<<<<< HEAD
                     <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Bon" && Number(inv.total) <= 0 ? " · harga belum diisi" : ""}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
-=======
-                    <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
@@ -88,7 +84,6 @@ function BonPage() {
                     }}>Cetak Bon</button>
                     {canEdit && inv.status_bayar === "Bon" ? (
                       <>
-                      {String(inv.source) !== "Manual" ? (
                       <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
                         void getInvoice({ data: { nomor: String(inv.nomor) } }).then((res) => {
                           if (!res) return;
@@ -106,12 +101,7 @@ function BonPage() {
                             })),
                           });
                         });
-<<<<<<< HEAD
                       }}>Edit bon</button>
-=======
-                      }}>Edit struk</button>
-                      ) : null}
->>>>>>> 47ac4db27b4df4044230fee698a7631b7fc7190c
                       <PrimaryButton onClick={() => {
                         if (Number(inv.total) <= 0) return toast.error("Harga bon masih Rp 0. Klik Edit bon dulu untuk mengisi harga.");
                         if (!confirm(`Lunasi ${String(inv.nomor)}?`)) return;
