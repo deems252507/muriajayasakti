@@ -1986,3 +1986,98 @@ export async function exportProducts() {
 }
 
 
+
+
+// ---------------------------------------------------------------------------
+// Chat pribadi antar staff
+// ---------------------------------------------------------------------------
+
+/** Daftar staff aktif (selain saya) beserta pesan terakhir dan jumlah belum dibaca. */
+export async function chatContacts() {
+  const me = await requireStaff();
+  const db = await sql();
+  const rows = await db.query<Record<string, unknown>>(
+    `select s.username, s.name, s.role, s.photo,
+            (select m.body from chat_messages m
+              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              order by m.id desc limit 1) as last_body,
+            (select m.created_at from chat_messages m
+              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              order by m.id desc limit 1) as last_at,
+            (select m.sender from chat_messages m
+              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              order by m.id desc limit 1) as last_sender,
+            (select count(*)::int from chat_messages m
+              where m.sender = s.username and m.recipient = $1 and m.read_at is null) as unread
+     from staff s
+     where s.status = 'Aktif' and s.username <> $1
+     order by last_at desc nulls last, case s.role when 'Owner' then 0 when 'Admin' then 1 else 2 end, s.name`,
+    [me.username],
+  );
+  return rows.map((row) => ({
+    username: String(row.username),
+    name: String(row.name ?? ""),
+    role: String(row.role ?? ""),
+    photo: String(row.photo ?? ""),
+    lastBody: row.last_body == null ? "" : String(row.last_body),
+    lastAt: row.last_at ? new Date(String(row.last_at)).toISOString() : "",
+    lastMine: row.last_sender != null && String(row.last_sender) === me.username,
+    unread: Number(row.unread ?? 0),
+  }));
+}
+
+/** Total pesan masuk yang belum dibaca (untuk badge menu). */
+export async function chatUnread() {
+  const me = await readStaff();
+  if (!me) return { unread: 0 };
+  const db = await sql();
+  const [row] = await db.query<{ n: number }>(
+    `select count(*)::int as n from chat_messages where recipient = $1 and read_at is null`,
+    [me.username],
+  );
+  return { unread: Number(row?.n ?? 0) };
+}
+
+/** Percakapan dengan satu staff (200 pesan terakhir). Pesan masuk otomatis ditandai terbaca. */
+export async function chatMessages(data: { with: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const other = String(data.with ?? "");
+  if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
+  await db.query(
+    `update chat_messages set read_at = now() where sender = $1 and recipient = $2 and read_at is null`,
+    [other, me.username],
+  );
+  const rows = await db.query<Record<string, unknown>>(
+    `select * from (
+       select id, sender, body, created_at, read_at from chat_messages
+       where (sender = $1 and recipient = $2) or (sender = $2 and recipient = $1)
+       order by id desc limit 200
+     ) t order by id asc`,
+    [me.username, other],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    mine: String(row.sender) === me.username,
+    body: String(row.body ?? ""),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    read: row.read_at != null,
+  }));
+}
+
+export async function chatSend(data: { to: string; body: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const to = String(data.to ?? "");
+  const body = String(data.body ?? "").trim();
+  if (!body) throw new Error("Pesan kosong.");
+  if (body.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
+  if (!to || to === me.username) throw new Error("Pilih staff lawan bicara.");
+  const target = await db.query(`select 1 from staff where username = $1 and status = 'Aktif'`, [to]);
+  if (!target.length) throw new Error("Staff tujuan tidak ditemukan atau tidak aktif.");
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_messages (sender, recipient, body) values ($1, $2, $3) returning id`,
+    [me.username, to, body],
+  );
+  return { id: Number(row?.id ?? 0) };
+}

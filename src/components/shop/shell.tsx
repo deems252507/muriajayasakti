@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Package,
   PackagePlus,
   Percent,
@@ -22,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { logout, listMasters, searchProducts } from "@/lib/shop/api";
+import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
 import { setShopProfile } from "@/lib/shop/print";
 import type { Product, Staff } from "@/lib/shop/types";
 
@@ -65,6 +66,7 @@ const ADMIN = [
   {
     label: "Sistem",
     items: [
+      { to: "/chat", label: "Chat Staff", icon: MessageCircle },
       { to: "/jejak", label: "Riwayat Aktivitas", icon: ScrollText },
       { to: "/pengaturan", label: "Pengaturan", icon: Settings },
     ],
@@ -85,6 +87,7 @@ const OWNER = [
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
   {
     label: "Data (lihat saja)",
     items: [
@@ -112,6 +115,7 @@ const KASIR = [
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
     ],
   },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
 ] as const;
 
 export function Mark({ text, q }: { text: string; q: string }) {
@@ -175,6 +179,17 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const [chatBadge, setChatBadge] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const tick = () => { if (!document.hidden) void chatUnread().then((res) => { if (alive) setChatBadge(res.unread); }).catch(() => undefined); };
+    tick();
+    const timer = window.setInterval(tick, 8000);
+    const onChat = () => tick();
+    window.addEventListener("mjs-chat", onChat);
+    window.addEventListener("focus", tick);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("mjs-chat", onChat); window.removeEventListener("focus", tick); };
+  }, []);
   const groups = me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
@@ -221,6 +236,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                     >
                       <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
                       {item.label}
+                      {item.to === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
                     </Link>
                   );
                 })}

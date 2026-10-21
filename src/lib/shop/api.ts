@@ -524,3 +524,29 @@ export const exportProducts = createServerFn({ method: "GET" }).handler(async ()
   const { exportProducts: run } = await import("./logic.server");
   return run();
 });
+
+export const chatContacts = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { chatContacts: run } = await import("./logic.server");
+    return run();
+  });
+
+export const chatUnread = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { chatUnread: run } = await import("./logic.server");
+    return run();
+  });
+
+export const chatMessages = createServerFn({ method: "GET" })
+  .validator((input: { with: string }) => ({ with: String(input?.with ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatMessages: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatSend = createServerFn({ method: "POST" })
+  .validator((input: { to: string; body: string }) => ({ to: String(input?.to ?? ""), body: String(input?.body ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatSend: run } = await import("./logic.server");
+    return run(data);
+  });

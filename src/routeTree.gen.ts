@@ -15,6 +15,7 @@ import { Route as ShopBarangRouteImport } from './routes/_shop/barang'
 import { Route as ShopBonRouteImport } from './routes/_shop/bon'
 import { Route as ShopDashboardRouteImport } from './routes/_shop/dashboard'
 import { Route as ShopJejakRouteImport } from './routes/_shop/jejak'
+import { Route as ShopChatRouteImport } from './routes/_shop/chat'
 import { Route as ShopKasRouteImport } from './routes/_shop/kas'
 import { Route as ShopKasirRouteImport } from './routes/_shop/kasir'
 import { Route as ShopLaporanKasRouteImport } from './routes/_shop/laporan-kas'
@@ -55,6 +56,11 @@ const ShopDashboardRoute = ShopDashboardRouteImport.update({
 const ShopJejakRoute = ShopJejakRouteImport.update({
   id: '/jejak',
   path: '/jejak',
+  getParentRoute: () => ShopRoute,
+} as any)
+const ShopChatRoute = ShopChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => ShopRoute,
 } as any)
 const ShopKasRoute = ShopKasRouteImport.update({
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/bon': typeof ShopBonRoute
   '/dashboard': typeof ShopDashboardRoute
   '/jejak': typeof ShopJejakRoute
+  '/chat': typeof ShopChatRoute
   '/kas': typeof ShopKasRoute
   '/kasir': typeof ShopKasirRoute
   '/laporan-kas': typeof ShopLaporanKasRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/bon': typeof ShopBonRoute
   '/dashboard': typeof ShopDashboardRoute
   '/jejak': typeof ShopJejakRoute
+  '/chat': typeof ShopChatRoute
   '/kas': typeof ShopKasRoute
   '/kasir': typeof ShopKasirRoute
   '/laporan-kas': typeof ShopLaporanKasRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/_shop/bon': typeof ShopBonRoute
   '/_shop/dashboard': typeof ShopDashboardRoute
   '/_shop/jejak': typeof ShopJejakRoute
+  '/_shop/chat': typeof ShopChatRoute
   '/_shop/kas': typeof ShopKasRoute
   '/_shop/kasir': typeof ShopKasirRoute
   '/_shop/laporan-kas': typeof ShopLaporanKasRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/bon'
     | '/dashboard'
     | '/jejak'
+    | '/chat'
     | '/kas'
     | '/kasir'
     | '/laporan-kas'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/bon'
     | '/dashboard'
     | '/jejak'
+    | '/chat'
     | '/kas'
     | '/kasir'
     | '/laporan-kas'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/_shop/bon'
     | '/_shop/dashboard'
     | '/_shop/jejak'
+    | '/_shop/chat'
     | '/_shop/kas'
     | '/_shop/kasir'
     | '/_shop/laporan-kas'
@@ -285,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/jejak'
       fullPath: '/jejak'
       preLoaderRoute: typeof ShopJejakRouteImport
+      parentRoute: typeof ShopRoute
+    }
+    '/_shop/chat': {
+      id: '/_shop/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ShopChatRouteImport
       parentRoute: typeof ShopRoute
     }
     '/_shop/kas': {
@@ -379,6 +398,7 @@ interface ShopRouteChildren {
   ShopBonRoute: typeof ShopBonRoute
   ShopDashboardRoute: typeof ShopDashboardRoute
   ShopJejakRoute: typeof ShopJejakRoute
+  ShopChatRoute: typeof ShopChatRoute
   ShopKasRoute: typeof ShopKasRoute
   ShopKasirRoute: typeof ShopKasirRoute
   ShopLaporanKasRoute: typeof ShopLaporanKasRoute
@@ -398,6 +418,7 @@ const ShopRouteChildren: ShopRouteChildren = {
   ShopBonRoute: ShopBonRoute,
   ShopDashboardRoute: ShopDashboardRoute,
   ShopJejakRoute: ShopJejakRoute,
+  ShopChatRoute: ShopChatRoute,
   ShopKasRoute: ShopKasRoute,
   ShopKasirRoute: ShopKasirRoute,
   ShopLaporanKasRoute: ShopLaporanKasRoute,
