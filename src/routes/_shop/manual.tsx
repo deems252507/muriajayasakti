@@ -13,7 +13,7 @@ type Jenis = "MASUK" | "KELUAR";
 type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean; harga: number; own?: boolean };
 
 const konvOf = (item: Draft) => (item.isAlt && item.product.isiSatuanAlt > 0 ? item.product.isiSatuanAlt : 1);
-const hargaDefault = (product: Product, isAlt: boolean) => (isAlt && product.isiSatuanAlt > 0 ? product.hargaJualAlt || product.hargaJual * product.isiSatuanAlt : product.hargaJual) || 0;
+const hargaDefault = (product: Product, isAlt: boolean) => (isAlt && product.isiSatuanAlt > 0 ? product.hargaJualAlt : product.hargaJual) || 0; // sama persis dengan Daftar Sparepart/Kasir; harga dus tidak dihitung otomatis
 const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * konvOf(item);
 
 function ManualPage() {
