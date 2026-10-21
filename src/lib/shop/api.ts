@@ -337,8 +337,9 @@ export const listSupplierReceipts = createServerFn({ method: "GET" })
   });
 
 export const listInvoices = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string; page?: number; all?: boolean }) => ({
+  .validator((input: { q?: string; tujuan?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
+    tujuan: String(input?.tujuan ?? "").trim(),
     source: String(input?.source ?? ""),
     status: String(input?.status ?? ""),
     jenis: String(input?.jenis ?? ""),
@@ -352,9 +353,27 @@ export const listInvoices = createServerFn({ method: "GET" })
     return run(data);
   });
 
-export const listHistoryLines = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string }) => ({
+export const listHistoryItems = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; tujuan?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
+    tujuan: String(input?.tujuan ?? "").trim(),
+    source: String(input?.source ?? ""),
+    status: String(input?.status ?? ""),
+    jenis: String(input?.jenis ?? ""),
+    start: String(input?.start ?? ""),
+    end: String(input?.end ?? ""),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+    all: Boolean(input?.all),
+  }))
+  .handler(async ({ data }) => {
+    const { listHistoryItems: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const listHistoryLines = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; tujuan?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string }) => ({
+    q: String(input?.q ?? "").trim(),
+    tujuan: String(input?.tujuan ?? "").trim(),
     source: String(input?.source ?? ""),
     status: String(input?.status ?? ""),
     jenis: String(input?.jenis ?? ""),
