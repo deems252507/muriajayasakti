@@ -248,7 +248,13 @@ export const editManualBon = createServerFn({ method: "POST" })
   });
 
 export const editManual = createServerFn({ method: "POST" })
-  .validator((input: { nomor: string; tujuan: string; keterangan: string; lines: Array<{ id: number; qty: number; jenis: string; productId?: number | null; isAlt?: boolean }> }) => ({
+  .validator((input: {
+    nomor: string;
+    tujuan: string;
+    keterangan: string;
+    lines: Array<{ id: number; qty: number; jenis: string; harga?: number; productId?: number | null; isAlt?: boolean }>;
+    add?: Array<{ productId?: number | null; custom?: string; satuan?: string; jenis?: string; qty: number; harga?: number; isAlt?: boolean }>;
+  }) => ({
     nomor: String(input?.nomor ?? ""),
     tujuan: String(input?.tujuan ?? ""),
     keterangan: String(input?.keterangan ?? ""),
@@ -257,8 +263,20 @@ export const editManual = createServerFn({ method: "POST" })
           id: Number(line.id),
           qty: Number(line.qty),
           jenis: String(line.jenis),
+          ...(line.harga === undefined ? {} : { harga: Math.max(0, Number(line.harga) || 0) }),
           productId: line.productId ? Number(line.productId) : null,
           isAlt: Boolean(line.isAlt),
+        }))
+      : [],
+    add: Array.isArray(input?.add)
+      ? input.add.map((row) => ({
+          productId: row.productId ? Number(row.productId) : null,
+          custom: String(row.custom ?? ""),
+          satuan: String(row.satuan ?? ""),
+          jenis: String(row.jenis ?? "KELUAR"),
+          qty: Number(row.qty),
+          harga: Math.max(0, Number(row.harga) || 0),
+          isAlt: Boolean(row.isAlt),
         }))
       : [],
   }))

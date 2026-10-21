@@ -1136,9 +1136,11 @@ export async function editManual(data: any) {
           id: line.id,
           qty: line.qty,
           jenis: line.jenis,
+          ...(line.harga === undefined ? {} : { harga: line.harga }),
           productId: line.productId || null,
           isAlt: Boolean(line.isAlt),
         })),
+        add: data.add ?? [],
       }),
     ]);
     await audit(me, `Ubah nota manual ${data.nomor}`);
@@ -1574,6 +1576,7 @@ export async function listHistoryItems(data: any) {
     perPage,
     items: rows.map((row) => ({
       tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
+      line_id: Number(row.line_id ?? 0),
       nomor: String(row.nomor ?? ""),
       source: String(row.source ?? ""),
       jenis: String(row.jenis ?? ""),

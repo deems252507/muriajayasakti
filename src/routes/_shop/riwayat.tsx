@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
-import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice, searchProducts } from "@/lib/shop/api";
+import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
+import { ItemEditor, editorSubtotal, type EditorAdd, type EditorRow, type Jenis } from "@/components/shop/item-editor";
 import { PeriodPicker } from "@/components/shop/period";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printHistoryReport, printReturSlip, printStoredManual, printStoredSale } from "@/lib/shop/print";
-import type { Partner, Product } from "@/lib/shop/types";
+import type { Partner } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/riwayat")({ component: RiwayatPage });
 
@@ -28,22 +29,51 @@ function RiwayatPage() {
   const [data, setData] = useState<{ total: number; perPage: number; items: Array<Record<string, unknown>> } | null>(null);
   const [open, setOpen] = useState("");
   const [detail, setDetail] = useState<{ invoice: Record<string, unknown>; lines: Array<Record<string, unknown>> } | null>(null);
-  const [manual, setManual] = useState<{ nomor: string; tujuan: string; keterangan: string; lines: Array<{ id: number; nama: string; qty: number; jenis: string; satuan: string; productId: number | null; isAlt: boolean }> } | null>(null);
-  const [ganti, setGanti] = useState<{ index: number; q: string; items: Product[] } | null>(null);
   const [banks, setBanks] = useState<string[]>([]);
-  const [sale, setSale] = useState<{
-    nomor: string;
-    tujuan: string;
-    diskon: string;
-    metode: string;
-    bank: string;
-    bayar: string;
-    lines: Array<{ id: number; nama: string; qty: number; harga: string; satuan: string }>;
-    drop: number[];
-    add: Array<{ productId: number; nama: string; qty: number; harga: string; isAlt: boolean; satuan: string }>;
-    q: string;
-    hits: Product[];
-  } | null>(null);
+  const [manual, setManual] = useState<{ nomor: string; tujuan: string; keterangan: string; bon: boolean; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
+  const [sale, setSale] = useState<{ nomor: string; tujuan: string; diskon: string; metode: string; bank: string; bayar: string; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
+
+  /** Buka editor per item untuk nota Kasir / Manual. removeId = baris yang langsung ditandai hapus. */
+  async function openEditor(nomor: string, removeId?: number) {
+    try {
+      const res = await getInvoice({ data: { nomor } });
+      if (!res) return toast.error("Nota tidak ditemukan");
+      const invoice = res.invoice as Record<string, unknown>;
+      const source = String(invoice.source);
+      const rows: EditorRow[] = (res.lines as Array<Record<string, unknown>>).map((line) => ({
+        id: Number(line.id),
+        nama: String(line.custom_item || line.product_nama || "Barang"),
+        satuan: String(line.satuan || "Pcs"),
+        jumlah: Number(line.jumlah),
+        harga: grouped(Number(line.harga_satuan || 0)),
+        jenis: (String(line.jenis) === "MASUK" ? "MASUK" : "KELUAR") as Jenis,
+        productId: line.product_id == null ? null : Number(line.product_id),
+        isAlt: false,
+        removed: removeId === Number(line.id),
+      }));
+      if (source === "Kasir") {
+        void listMasters().then((m) => setBanks(m.banks.filter((bank) => bank.aktif).map((bank) => bank.nama)));
+        setSale({
+          nomor,
+          tujuan: String(invoice.tujuan || ""),
+          diskon: grouped(Number(invoice.diskon || 0)),
+          metode: String(invoice.metode_bayar || "Tunai"),
+          bank: String(invoice.bank_transfer || ""),
+          bayar: grouped(Number(invoice.bayar_tunai || 0)),
+          rows,
+          adds: [],
+        });
+      } else if (source === "Manual") {
+        const bon = String(invoice.metode_bayar) === "Bon";
+        if (bon && String(invoice.status_bayar) !== "Bon") return toast.error("Bon sudah lunas dan tidak bisa diedit.");
+        setManual({ nomor, tujuan: String(invoice.tujuan || ""), keterangan: String(invoice.keterangan || ""), bon, rows, adds: [] });
+      } else {
+        toast.error("Nota retur tidak bisa diedit di sini. Hapus retur lalu proses ulang.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal membuka nota");
+    }
+  }
 
   function load(next = page) {
     const asked = view;
@@ -154,6 +184,7 @@ function RiwayatPage() {
                 <th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">Harga</th>
                 <th className="px-3 py-2">Pelanggan / Supplier</th>
+                {me.role === "Admin" ? <th className="px-3 py-2">Aksi</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -172,9 +203,19 @@ function RiwayatPage() {
                   <td className="num whitespace-nowrap px-3 py-2 text-right font-bold">{grouped(Number(row.jumlah))} {String(row.satuan)}</td>
                   <td className="num whitespace-nowrap px-3 py-2 text-right">{Number(row.harga_satuan) ? rupiah(Number(row.harga_satuan)) : "-"}</td>
                   <td className="px-3 py-2 text-xs">{String(row.tujuan || "-")}</td>
+                  {me.role === "Admin" ? (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {(String(row.source) === "Kasir" || String(row.source) === "Manual") && Number(row.line_id) > 0 ? (
+                        <div className="flex gap-2">
+                          <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(row.nomor))}>Edit</button>
+                          <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(row.nomor), Number(row.line_id))}>Hapus</button>
+                        </div>
+                      ) : <span className="text-xs text-muted">-</span>}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
-              {items.length === 0 ? <tr><td colSpan={7} className="py-8 text-center text-sm text-muted">Tidak ada barang ditemukan. Coba kata lain, kurangi filter, atau ubah tanggal.</td></tr> : null}
+              {items.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-sm text-muted">Tidak ada barang ditemukan. Coba kata lain, kurangi filter, atau ubah tanggal.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -216,57 +257,24 @@ function RiwayatPage() {
               <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
                 <p className="text-xs font-bold">Rincian Barang</p>
                 {detail.lines.map((line) => (
-                  <div key={String(line.id)} className="mt-2 border-t border-slate-200 pt-2">
-                    <p className="font-medium">{String(line.jenis)} · {String(line.custom_item || line.product_nama || "Barang")}</p>
-                    <p className="text-[11px] text-muted">PN: {String(line.part_number || "-")}{line.merek ? ` · Merek: ${String(line.merek)}` : ""}{line.kode_pajak ? ` · Kode Pajak: ${String(line.kode_pajak)}` : ""}</p>
-                    <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
+                  <div key={String(line.id)} className="mt-2 flex items-start justify-between gap-2 border-t border-slate-200 pt-2">
+                    <div>
+                      <p className="font-medium">{String(line.jenis)} · {String(line.custom_item || line.product_nama || "Barang")}</p>
+                      <p className="text-[11px] text-muted">PN: {String(line.part_number || "-")}{line.merek ? ` · Merek: ${String(line.merek)}` : ""}{line.kode_pajak ? ` · Kode Pajak: ${String(line.kode_pajak)}` : ""}</p>
+                      <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Harga {rupiah(Number(line.harga_satuan))} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
+                    </div>
+                    {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Edit</button>
+                        <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(inv.nomor), Number(line.id))}>Hapus</button>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
                 <p className="mt-2 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
                 {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
-                {me.role === "Admin" && String(inv.source) === "Kasir" && detail ? (
-                  <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => {
-                    const invoice = detail.invoice;
-                    void listMasters().then((res) => setBanks(res.banks.filter((bank) => bank.aktif).map((bank) => bank.nama)));
-                    setSale({
-                      nomor: String(inv.nomor),
-                      tujuan: String(invoice.tujuan || ""),
-                      diskon: grouped(Number(invoice.diskon || 0)),
-                      metode: String(invoice.metode_bayar || "Tunai"),
-                      bank: String(invoice.bank_transfer || ""),
-                      bayar: grouped(Number(invoice.bayar_tunai || 0)),
-                      lines: detail.lines.map((line) => ({
-                        id: Number(line.id),
-                        nama: String(line.custom_item || line.product_nama || "Barang"),
-                        qty: Number(line.jumlah),
-                        harga: grouped(Number(line.harga_satuan || 0)),
-                        satuan: String(line.satuan || "Pcs"),
-                      })),
-                      drop: [],
-                      add: [],
-                      q: "",
-                      hits: [],
-                    });
-                  }}>Ubah Nota</button>
-                ) : null}
-                {String(inv.source) === "Manual" && String(inv.status_bayar) === "Bon" ? (
-                  <p className="mt-2 text-xs text-muted">Nota ini tercatat sebagai Bon. Untuk ubah harga, qty, nama pelanggan, atau tambah/hapus barang, buka menu Bon / Piutang lalu klik Edit bon.</p>
-                ) : null}
-                {me.role === "Admin" && String(inv.source) === "Manual" && String(inv.status_bayar) !== "Bon" ? (
-                  <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => setManual({
-                    nomor: String(inv.nomor),
-                    tujuan: String(inv.tujuan || ""),
-                    keterangan: String(inv.keterangan || ""),
-                    lines: detail.lines.map((line) => ({
-                      id: Number(line.id),
-                      nama: String(line.custom_item || line.product_nama || "Barang"),
-                      qty: Number(line.jumlah),
-                      jenis: String(line.jenis),
-                      satuan: String(line.satuan),
-                      productId: line.product_id == null ? null : Number(line.product_id),
-                      isAlt: false,
-                    })),
-                  })}>Ubah Nota</button>
+                {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
+                  <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Ubah Nota (per barang)</button>
                 ) : null}
                 {me.role === "Admin" ? (
                   <button className="mt-2 text-sm font-bold text-danger" onClick={() => {
@@ -288,10 +296,14 @@ function RiwayatPage() {
           <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
         </div>
       </div>
-      {sale ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
-          <form className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => {
+      {sale ? (() => {
+        const subtotal = editorSubtotal(sale.rows, sale.adds);
+        const total = Math.max(0, subtotal - digits(sale.diskon));
+        return (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
+          <form className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
+            if (sale.rows.every((row) => row.removed) && sale.adds.length === 0) return toast.error("Nota tidak boleh kosong. Pakai Hapus Transaksi untuk membatalkan nota.");
             void editSale({
               data: {
                 nomor: sale.nomor,
@@ -300,11 +312,10 @@ function RiwayatPage() {
                 metode: sale.metode,
                 bank: sale.bank,
                 bayarTunai: digits(sale.bayar),
-                lines: [
-                  ...sale.lines.map((line) => ({ id: line.id, qty: line.qty, harga: digits(line.harga) })),
-                  ...sale.drop.map((id) => ({ id, qty: 0, harga: 0 })),
-                ],
-                add: sale.add.map((line) => ({ productId: line.productId, qty: line.qty, harga: digits(line.harga), isAlt: line.isAlt })),
+                lines: sale.rows.map((row) => ({ id: row.id, qty: row.removed ? 0 : Math.max(1, row.jumlah || 1), harga: row.removed ? 0 : digits(row.harga) })),
+                add: sale.adds.map((row) => (row.productId
+                  ? { productId: row.productId, qty: Math.max(1, row.jumlah || 1), harga: digits(row.harga), isAlt: row.isAlt }
+                  : { nama: row.nama, qty: Math.max(1, row.jumlah || 1), harga: digits(row.harga) })),
               },
             }).then(async () => {
               const res = await getInvoice({ data: { nomor: sale.nomor } });
@@ -316,58 +327,11 @@ function RiwayatPage() {
             }).catch((error: Error) => toast.error(error.message));
           }}>
             <h3 className="font-semibold">Perbaiki {sale.nomor}</h3>
-            <p className="mt-1 text-xs text-muted">Salah barang, jumlah, harga, atau bayar bisa diubah. Stok, laci, dan pajak ikut menyesuaikan.</p>
+            <p className="mt-1 text-xs text-muted">Ubah jumlah dan harga per barang, hapus barang, atau tambah barang. Stok, laci, dan pajak ikut menyesuaikan.</p>
             <label className="mt-3 block text-sm">Pelanggan
               <input className={`${inputClass} mt-1`} value={sale.tujuan} onChange={(e) => setSale({ ...sale, tujuan: e.target.value })} />
             </label>
-            <ul className="mt-3 space-y-2">
-              {sale.lines.map((line, index) => (
-                <li key={line.id} className="grid grid-cols-[1fr_4rem_7rem_auto] items-center gap-2 text-sm">
-                  <span>{line.nama}<span className="block text-[11px] text-muted">{line.satuan}</span></span>
-                  <input className={`${inputClass} num`} value={line.qty} onChange={(e) => {
-                    const qty = Math.max(1, Number(e.target.value) || 1);
-                    setSale({ ...sale, lines: sale.lines.map((row, i) => i === index ? { ...row, qty } : row) });
-                  }} />
-                  <input className={`${inputClass} num`} value={line.harga} onChange={(e) => {
-                    const harga = grouped(digits(e.target.value));
-                    setSale({ ...sale, lines: sale.lines.map((row, i) => i === index ? { ...row, harga } : row) });
-                  }} />
-                  <button type="button" className="text-xs font-bold text-danger" onClick={() => setSale({ ...sale, lines: sale.lines.filter((row) => row.id !== line.id), drop: [...sale.drop, line.id] })}>Hapus</button>
-                </li>
-              ))}
-              {sale.add.map((line, index) => (
-                <li key={`${line.productId}-${index}`} className="grid grid-cols-[1fr_4rem_7rem_auto] items-center gap-2 text-sm">
-                  <span>{line.nama}<span className="block text-[11px] text-muted">Baru · {line.satuan}</span></span>
-                  <input className={`${inputClass} num`} value={line.qty} onChange={(e) => {
-                    const qty = Math.max(1, Number(e.target.value) || 1);
-                    setSale({ ...sale, add: sale.add.map((row, i) => i === index ? { ...row, qty } : row) });
-                  }} />
-                  <input className={`${inputClass} num`} value={line.harga} onChange={(e) => {
-                    const harga = grouped(digits(e.target.value));
-                    setSale({ ...sale, add: sale.add.map((row, i) => i === index ? { ...row, harga } : row) });
-                  }} />
-                  <button type="button" className="text-xs font-bold text-danger" onClick={() => setSale({ ...sale, add: sale.add.filter((_, i) => i !== index) })}>Hapus</button>
-                </li>
-              ))}
-            </ul>
-            <input className={`${inputClass} mt-3`} placeholder="Tambah barang, ketik nama" value={sale.q} onChange={(e) => {
-              const q = e.target.value;
-              setSale({ ...sale, q, hits: [] });
-              if (q.trim().length < 2) return;
-              void searchProducts({ data: { q } }).then((res) => setSale((prev) => prev ? { ...prev, q, hits: res.items } : prev));
-            }} />
-            {sale.hits.length ? (
-              <div className="mt-1 max-h-28 overflow-y-auto rounded border border-line">
-                {sale.hits.slice(0, 6).map((item) => (
-                  <button type="button" key={item.id} className="block w-full px-2 py-1 text-left text-sm hover:bg-blue-50" onClick={() => setSale({
-                    ...sale,
-                    q: "",
-                    hits: [],
-                    add: [...sale.add, { productId: item.id, nama: item.nama, qty: 1, harga: grouped(item.hargaJual), isAlt: false, satuan: item.satuan }],
-                  })}>{item.nama}</button>
-                ))}
-              </div>
-            ) : null}
+            <ItemEditor rows={sale.rows} adds={sale.adds} onRows={(rows) => setSale({ ...sale, rows })} onAdds={(adds) => setSale({ ...sale, adds })} lockKeluar />
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <label className="text-sm">Diskon
                 <input className={`${inputClass} num mt-1`} value={sale.diskon} onChange={(e) => setSale({ ...sale, diskon: grouped(digits(e.target.value)) })} />
@@ -394,69 +358,64 @@ function RiwayatPage() {
                 </label>
               ) : null}
             </div>
+            <p className="num mt-3 text-right text-sm font-bold">Total: {rupiah(total)}</p>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="h-11 px-3" onClick={() => setSale(null)}>Batal</button>
               <button className="h-11 rounded-lg bg-accent px-4 text-sm font-bold text-white" type="submit">Simpan & Cetak</button>
             </div>
           </form>
         </div>
-      ) : null}
-      {manual ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
-          <form className="w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
+        );
+      })() : null}
+      {manual ? (() => {
+        const total = editorSubtotal(manual.rows, manual.adds);
+        return (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
+          <form className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
-            void editManual({ data: { nomor: manual.nomor, tujuan: manual.tujuan, keterangan: manual.keterangan, lines: manual.lines.map((line) => ({ id: line.id, qty: line.qty, jenis: line.jenis, productId: line.productId, isAlt: line.isAlt })) } })
+            if (manual.rows.every((row) => row.removed) && manual.adds.length === 0) return toast.error("Nota tidak boleh kosong. Pakai Hapus Transaksi untuk membatalkan nota.");
+            void editManual({
+              data: {
+                nomor: manual.nomor,
+                tujuan: manual.tujuan,
+                keterangan: manual.keterangan,
+                lines: manual.rows.map((row) => ({
+                  id: row.id,
+                  qty: row.removed ? 0 : Math.max(1, row.jumlah || 1),
+                  jenis: row.jenis,
+                  harga: row.jenis === "KELUAR" ? digits(row.harga) : 0,
+                  productId: row.productId,
+                  isAlt: row.isAlt,
+                })),
+                add: manual.adds.map((row) => ({
+                  ...(row.productId ? { productId: row.productId, isAlt: row.isAlt } : { custom: row.nama, satuan: row.satuan }),
+                  jenis: row.jenis,
+                  qty: Math.max(1, row.jumlah || 1),
+                  harga: row.jenis === "KELUAR" ? digits(row.harga) : 0,
+                })),
+              },
+            })
               .then(() => { toast.success("Nota manual diubah. Stok ikut disesuaikan."); setManual(null); setOpen(""); load(); })
               .catch((error: Error) => toast.error(error.message));
           }}>
-            <h3 className="font-semibold">Ubah {manual.nomor}</h3>
-            <p className="mt-1 text-xs text-muted">Hanya nota manual. Uang kasir tidak berubah. Stok mengikuti barang, jumlah, dan jenis baru.</p>
-            <label className="mt-3 block text-sm">Tujuan
+            <h3 className="font-semibold">Ubah {manual.nomor}{manual.bon ? " (Bon)" : ""}</h3>
+            <p className="mt-1 text-xs text-muted">Hanya nota manual. Uang kasir tidak berubah. Ubah jumlah, harga, atau jenis per barang, hapus barang, ganti barang, atau tambah barang. Stok dan pajak ikut menyesuaikan.{manual.bon ? " Bon hanya untuk barang Keluar." : ""}</p>
+            <label className="mt-3 block text-sm">{manual.bon ? "Nama pelanggan" : "Tujuan"}
               <input className={`${inputClass} mt-1`} value={manual.tujuan} onChange={(e) => setManual({ ...manual, tujuan: e.target.value })} />
             </label>
             <label className="mt-2 block text-sm">Keterangan
               <input className={`${inputClass} mt-1`} value={manual.keterangan} onChange={(e) => setManual({ ...manual, keterangan: e.target.value })} />
             </label>
-            <ul className="mt-3 space-y-2">
-              {manual.lines.map((line, index) => (
-                <li key={line.id} className="rounded-lg border border-line p-2 text-sm">
-                  <div className="grid grid-cols-[1fr_5rem_7rem] items-center gap-2">
-                    <span>{line.nama}</span>
-                    <input className={`${inputClass} num`} value={line.qty} onChange={(e) => {
-                      const qty = Math.max(1, Number(e.target.value) || 1);
-                      setManual({ ...manual, lines: manual.lines.map((row, i) => i === index ? { ...row, qty } : row) });
-                    }} />
-                    <select className={inputClass} value={line.jenis} onChange={(e) => setManual({ ...manual, lines: manual.lines.map((row, i) => i === index ? { ...row, jenis: e.target.value } : row) })}>
-                      <option value="MASUK">Masuk</option>
-                      <option value="KELUAR">Keluar</option>
-                    </select>
-                  </div>
-                  <input className={`${inputClass} mt-2`} placeholder="Ganti barang, ketik nama atau kategori" value={ganti?.index === index ? ganti.q : ""} onChange={(e) => {
-                    const q = e.target.value;
-                    setGanti({ index, q, items: [] });
-                    if (q.trim().length < 2 || !manual) return;
-                    void searchProducts({ data: { q } }).then((res) => setGanti({ index, q, items: res.items }));
-                  }} />
-                  {ganti?.index === index && ganti.items.length ? (
-                    <div className="mt-1 max-h-28 overflow-y-auto rounded border border-line">
-                      {ganti.items.slice(0, 6).map((item) => (
-                        <button type="button" key={item.id} className="block w-full px-2 py-1 text-left hover:bg-blue-50" onClick={() => {
-                          setManual({ ...manual, lines: manual.lines.map((row, i) => i === index ? { ...row, productId: item.id, nama: item.nama, satuan: item.satuan, isAlt: false } : row) });
-                          setGanti(null);
-                        }}>{item.nama}</button>
-                      ))}
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <ItemEditor rows={manual.rows} adds={manual.adds} onRows={(rows) => setManual({ ...manual, rows })} onAdds={(adds) => setManual({ ...manual, adds })} withJenis withSwap lockKeluar={manual.bon} />
+            <p className="num mt-3 text-right text-sm font-bold">Total nilai barang keluar: {rupiah(total)}</p>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="h-11 px-3" onClick={() => setManual(null)}>Batal</button>
               <button className="h-11 rounded-lg bg-accent px-4 text-sm font-bold text-white" type="submit">Simpan</button>
             </div>
           </form>
         </div>
-      ) : null}
+        );
+      })() : null}
     </Panel>
   );
 }
