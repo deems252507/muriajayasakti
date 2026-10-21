@@ -322,7 +322,7 @@ function KasirPage() {
                 </div>
                 <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="btn-tight bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}>Pcs</button>
-                  <button type="button" className="btn-tight bg-blue-700 text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-40" disabled={!dusOk} title={dusOk ? "" : "Isi satuan dus lewat Ubah di Daftar Sparepart"} onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button>
+                  {dusOk ? <button type="button" className="btn-tight bg-blue-700 text-white shadow-sm" onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button> : null}
                   <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-2">

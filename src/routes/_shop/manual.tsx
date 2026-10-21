@@ -175,7 +175,7 @@ function ManualPage() {
                     <p className="num mt-0.5 text-xs font-bold text-emerald-700">{rupiah(hargaDefault(item, false))} / {item.satuan}{dusOk ? ` · ${rupiah(hargaDefault(item, true))} / ${item.satuanAlt}` : ""}</p>
                   </div>
                   <button type="button" className="h-11 rounded-lg bg-slate-800 px-4 text-sm font-bold text-white" onClick={() => addItem(item, false)}>+ Pcs</button>
-                  <button type="button" className="h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-30" disabled={!dusOk} onClick={() => addItem(item, true)}>+ {item.satuanAlt || "Dus"}</button>
+                  {dusOk ? <button type="button" className="h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white" onClick={() => addItem(item, true)}>+ {item.satuanAlt || "Dus"}</button> : null}
                 </div>
               );
             })}
