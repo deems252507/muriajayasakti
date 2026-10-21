@@ -537,17 +537,65 @@ export const chatUnread = createServerFn({ method: "GET" })
     return run();
   });
 
+const pageOpts = (input: { limit?: number; fromId?: number } | undefined) => ({ limit: Number(input?.limit) || 60, fromId: Number(input?.fromId) || 0 });
+
+export type ChatAtt = { name: string; type: string; data: string };
+export type ChatRef = { type: string; id: string; label: string };
+type SendOpts = { body: string; replyTo?: number | null; ref?: ChatRef | null; att?: ChatAtt | null; mentions?: string[] };
+const sendOpts = (input: SendOpts) => ({
+  body: String(input?.body ?? ""),
+  replyTo: input?.replyTo ? Number(input.replyTo) : null,
+  ref: input?.ref ? { type: String(input.ref.type), id: String(input.ref.id), label: String(input.ref.label ?? "") } : null,
+  att: input?.att ? { name: String(input.att.name), type: String(input.att.type), data: String(input.att.data) } : null,
+  mentions: Array.isArray(input?.mentions) ? input.mentions.map((v) => String(v)) : [],
+});
+
 export const chatMessages = createServerFn({ method: "GET" })
-  .validator((input: { with: string }) => ({ with: String(input?.with ?? "") }))
+  .validator((input: { with: string; limit?: number; fromId?: number }) => ({ with: String(input?.with ?? ""), ...pageOpts(input) }))
   .handler(async ({ data }) => {
     const { chatMessages: run } = await import("./logic.server");
     return run(data);
   });
 
 export const chatSend = createServerFn({ method: "POST" })
-  .validator((input: { to: string; body: string }) => ({ to: String(input?.to ?? ""), body: String(input?.body ?? "") }))
+  .validator((input: { to: string } & SendOpts) => ({ to: String(input?.to ?? ""), ...sendOpts(input) }))
   .handler(async ({ data }) => {
     const { chatSend: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatSearch = createServerFn({ method: "GET" })
+  .validator((input: { scope: "dm" | "g"; target: string; q: string }) => ({ scope: (input?.scope === "g" ? "g" : "dm") as "dm" | "g", target: String(input?.target ?? ""), q: String(input?.q ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatSearch: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatAttachment = createServerFn({ method: "GET" })
+  .validator((input: { scope: "dm" | "g"; id: number }) => ({ scope: (input?.scope === "g" ? "g" : "dm") as "dm" | "g", id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { chatAttachment: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatEditMessage = createServerFn({ method: "POST" })
+  .validator((input: { scope: "dm" | "g"; id: number; body: string }) => ({ scope: (input?.scope === "g" ? "g" : "dm") as "dm" | "g", id: Number(input?.id), body: String(input?.body ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatEditMessage: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatReact = createServerFn({ method: "POST" })
+  .validator((input: { scope: "dm" | "g"; id: number; emoji: string }) => ({ scope: (input?.scope === "g" ? "g" : "dm") as "dm" | "g", id: Number(input?.id), emoji: String(input?.emoji ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatReact: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatPin = createServerFn({ method: "POST" })
+  .validator((input: { scope: "dm" | "g"; id: number; pin: boolean }) => ({ scope: (input?.scope === "g" ? "g" : "dm") as "dm" | "g", id: Number(input?.id), pin: Boolean(input?.pin) }))
+  .handler(async ({ data }) => {
+    const { chatPin: run } = await import("./logic.server");
     return run(data);
   });
 
@@ -586,14 +634,14 @@ export const groupDelete = createServerFn({ method: "POST" })
   });
 
 export const groupMessages = createServerFn({ method: "GET" })
-  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .validator((input: { id: number; limit?: number; fromId?: number }) => ({ id: Number(input?.id), ...pageOpts(input) }))
   .handler(async ({ data }) => {
     const { groupMessages: run } = await import("./logic.server");
     return run(data);
   });
 
 export const groupSend = createServerFn({ method: "POST" })
-  .validator((input: { id: number; body: string }) => ({ id: Number(input?.id), body: String(input?.body ?? "") }))
+  .validator((input: { id: number } & SendOpts) => ({ id: Number(input?.id), ...sendOpts(input) }))
   .handler(async ({ data }) => {
     const { groupSend: run } = await import("./logic.server");
     return run(data);
