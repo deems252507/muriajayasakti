@@ -263,7 +263,7 @@ export async function getDashboard() {
            when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Transfer' then total
            when source = 'Kasir' and status_bayar = 'Lunas' and metode_bayar = 'Split' then transfer_amount
            else 0 end), 0)::bigint as transfer,
-         coalesce(sum(case when source = 'Kasir' and status_bayar = 'Bon' then total else 0 end), 0)::bigint as bon,
+         coalesce(sum(case when source in ('Kasir', 'Manual') and status_bayar = 'Bon' then total else 0 end), 0)::bigint as bon,
          count(*) filter (where source = 'Manual')::int as masuk,
          count(*) filter (where source = 'Kasir')::int as trx
        from invoices
@@ -1107,6 +1107,21 @@ export async function editBon(data: any): Promise<any> {
 
 
 
+export async function editManualBon(data: any): Promise<any> {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ shop_edit_manual_bon: unknown }>(`select shop_edit_manual_bon($1::jsonb) as shop_edit_manual_bon`, [
+      JSON.stringify(data),
+    ]);
+    await audit(me, `Edit bon manual ${String(data.nomor ?? "")}`);
+    return row?.shop_edit_manual_bon;
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 export async function editManual(data: any) {
   const me = await requireStaff();
   assertAdmin(me);
@@ -1363,6 +1378,23 @@ export async function listSupplierReceipts(data: any) {
 }
 
 
+/** Pencarian per kata: tiap kata harus ketemu di salah satu kolom; spasi/strip pada part number diabaikan. */
+function tokenClauses(q: string, params: unknown[], build: (m: (hay: string) => string) => string): string[] {
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+  return tokens.map((tok) => {
+    params.push(`%${tok.replace(/[\\%_]/g, "\\$&")}%`);
+    const a = params.length;
+    const norm = tok.replace(/[^a-z0-9]/g, "");
+    let b = 0;
+    if (norm.length >= 3) {
+      params.push(`%${norm}%`);
+      b = params.length;
+    }
+    const m = (hay: string) => (b ? `(${hay} like $${a} or regexp_replace(${hay}, '[^a-z0-9]', '', 'g') like $${b})` : `${hay} like $${a}`);
+    return build(m);
+  });
+}
+
 export async function listInvoices(data: any): Promise<any> {
     await requireStaff();
     const db = await sql();
@@ -1385,8 +1417,12 @@ export async function listInvoices(data: any): Promise<any> {
       where.push(`tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
     }
     if (data.q) {
-      params.push(`%${data.q}%`);
-      where.push(`(nomor ilike $${params.length} or tujuan ilike $${params.length} or kasir ilike $${params.length} or exists (select 1 from invoice_lines lq left join products pq on pq.id = lq.product_id where lq.invoice_id = invoices.id and (coalesce(pq.nama, '') ilike $${params.length} or coalesce(pq.part_number, '') ilike $${params.length} or coalesce(lq.custom_item, '') ilike $${params.length})))`);
+      where.push(...tokenClauses(String(data.q), params, (m) =>
+        `(${m(`lower(concat_ws(' ', nomor, tujuan, kasir, keterangan))`)} or exists (select 1 from invoice_lines lq left join products pq on pq.id = lq.product_id where lq.invoice_id = invoices.id and ${m(`lower(concat_ws(' ', pq.nama, pq.part_number, pq.part_numbers_alt, pq.merek, pq.kode_pajak, lq.custom_item, lq.merek, lq.part_numbers_alt))`)}))`));
+    }
+    if (data.tujuan) {
+      params.push(String(data.tujuan).trim().toLowerCase());
+      where.push(`lower(tujuan) = $${params.length}`);
     }
     if (data.jenis === "MASUK" || data.jenis === "KELUAR") {
       params.push(data.jenis);
@@ -1410,8 +1446,12 @@ export async function listHistoryLines(data: any) {
   const where = ["true"];
   const params: unknown[] = [];
   if (data.q) {
-    params.push(`%${data.q}%`);
-    where.push(`(i.nomor ilike $${params.length} or i.tujuan ilike $${params.length} or coalesce(p.nama, '') ilike $${params.length} or coalesce(p.part_number, '') ilike $${params.length} or coalesce(l.custom_item, '') ilike $${params.length})`);
+    where.push(...tokenClauses(String(data.q), params, (m) =>
+      m(`lower(concat_ws(' ', i.nomor, i.tujuan, i.kasir, i.keterangan, p.nama, p.part_number, p.part_numbers_alt, p.merek, p.kode_pajak, l.custom_item, l.merek, l.part_numbers_alt))`)));
+  }
+  if (data.tujuan) {
+    params.push(String(data.tujuan).trim().toLowerCase());
+    where.push(`lower(i.tujuan) = $${params.length}`);
   }
   if (data.source) {
     params.push(data.source);
@@ -1460,6 +1500,95 @@ export async function listHistoryLines(data: any) {
     part_number: String(row.part_number ?? ""),
     kode_pajak: String(row.kode_pajak ?? ""),
   }));
+}
+
+export async function listHistoryItems(data: any) {
+  await requireStaff();
+  const db = await sql();
+  const where: string[] = ["true"];
+  const params: unknown[] = [];
+  if (data.q) {
+    where.push(...tokenClauses(String(data.q), params, (m) =>
+      m(`lower(concat_ws(' ', nomor, tujuan, kasir, keterangan, nama, part_number, pn_alt, merek, kode_pajak))`)));
+  }
+  if (data.source) {
+    params.push(data.source);
+    where.push(`source = $${params.length}`);
+  }
+  if (data.status) {
+    params.push(data.status);
+    where.push(`status_bayar = $${params.length}`);
+  }
+  if (data.jenis === "MASUK" || data.jenis === "KELUAR") {
+    params.push(data.jenis);
+    where.push(`jenis = $${params.length}`);
+  }
+  if (data.tujuan) {
+    params.push(String(data.tujuan).trim().toLowerCase());
+    where.push(`lower(tujuan) = $${params.length}`);
+  }
+  if (data.start) {
+    params.push(data.start);
+    where.push(`tanggal >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.end) {
+    params.push(data.end);
+    where.push(`tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
+  const base = `with all_lines as (
+      select i.tanggal, i.nomor::text as nomor, i.source::text as source, l.jenis::text as jenis,
+             coalesce(nullif(l.custom_item, ''), p.nama, 'Barang')::text as nama,
+             coalesce(p.part_number, '')::text as part_number,
+             coalesce(nullif(l.part_numbers_alt, ''), p.part_numbers_alt, '')::text as pn_alt,
+             coalesce(nullif(l.merek, ''), p.merek, '')::text as merek,
+             coalesce(p.kode_pajak, '')::text as kode_pajak,
+             l.jumlah::int as jumlah, l.satuan::text as satuan, l.harga_satuan::bigint as harga_satuan,
+             i.tujuan::text as tujuan, i.kasir::text as kasir, i.keterangan::text as keterangan,
+             i.status_bayar::text as status_bayar, i.metode_bayar::text as metode_bayar
+      from invoice_lines l
+      join invoices i on i.id = l.invoice_id
+      left join products p on p.id = l.product_id
+      union all
+      select r.received_at, r.invoice_no::text, 'Pemasok'::text, 'MASUK'::text,
+             pr.nama::text, coalesce(pr.part_number, '')::text, coalesce(pr.part_numbers_alt, '')::text,
+             coalesce(pr.merek, '')::text, coalesce(pr.kode_pajak, '')::text,
+             l.qty::int, l.satuan::text, l.harga_beli::bigint,
+             pt.nama::text, r.created_by::text, r.notes::text, ''::text, ''::text
+      from supplier_receipt_lines l
+      join supplier_receipts r on r.id = l.receipt_id
+      join partners pt on pt.id = r.supplier_id
+      join products pr on pr.id = l.product_id
+    )`;
+  const clause = where.join(" and ");
+  const [countRow] = await db.query<{ n: number }>(`${base} select count(*)::int as n from all_lines where ${clause}`, params);
+  const perPage = data.all ? 5000 : 30;
+  const page = Math.max(1, Number(data.page ?? 1) || 1);
+  const offset = data.all ? 0 : (page - 1) * perPage;
+  const rows = await db.query<Record<string, unknown>>(
+    `${base} select * from all_lines where ${clause} order by tanggal desc, nomor, nama limit ${perPage} offset ${offset}`,
+    params,
+  );
+  return {
+    total: Number(countRow?.n ?? 0),
+    page,
+    perPage,
+    items: rows.map((row) => ({
+      tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
+      nomor: String(row.nomor ?? ""),
+      source: String(row.source ?? ""),
+      jenis: String(row.jenis ?? ""),
+      nama: String(row.nama ?? ""),
+      part_number: String(row.part_number ?? ""),
+      merek: String(row.merek ?? ""),
+      kode_pajak: String(row.kode_pajak ?? ""),
+      jumlah: Number(row.jumlah ?? 0),
+      satuan: String(row.satuan ?? ""),
+      harga_satuan: Number(row.harga_satuan ?? 0),
+      tujuan: String(row.tujuan ?? ""),
+      status_bayar: String(row.status_bayar ?? ""),
+      metode_bayar: String(row.metode_bayar ?? ""),
+    })),
+  };
 }
 
 export async function listSalesNotes(data: any) {
@@ -1591,7 +1720,7 @@ export async function listSoldItems(data: any) {
 export async function listBon(data: any): Promise<any> {
     await requireStaff();
     const db = await sql();
-    const where = [`source = 'Kasir'`, `keterangan in ('Bon (Hutang)', 'Bon (Lunas)')`];
+    const where = [`((source = 'Kasir' and keterangan in ('Bon (Hutang)', 'Bon (Lunas)')) or (source = 'Manual' and metode_bayar = 'Bon'))`];
     const params: unknown[] = [];
     if (data.status === "Bon" || data.status === "Lunas") {
       params.push(data.status);

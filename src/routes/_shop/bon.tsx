@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { editSale, getInvoice, listBon, payoffBon } from "@/lib/shop/api";
+import { editManualBon, editSale, getInvoice, listBon, payoffBon, removeInvoice } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printDebtReport, printStoredSale } from "@/lib/shop/print";
@@ -18,7 +18,7 @@ function BonPage() {
   const [start, setStart] = usePersistedState("bon:start", "");
   const [end, setEnd] = usePersistedState("bon:end", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
-  const [edit, setEdit] = useState<{ nomor: string; diskon: string; items: Array<{ id: number; nama: string; jumlah: number; satuan: string; harga: string }> } | null>(null);
+  const [edit, setEdit] = useState<{ nomor: string; manual: boolean; tujuan: string; diskon: string; items: Array<{ id: number; nama: string; jumlah: number; satuan: string; harga: string }> } | null>(null);
 
   function load() {
     void listBon({ data: { status, customer, start, end } }).then((data) => setRows(data as Array<Record<string, unknown>>));
@@ -72,8 +72,8 @@ function BonPage() {
               {invoices.map((inv) => (
                 <li key={String(inv.nomor)} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-medium">{String(inv.nomor)} · {String(inv.keterangan || inv.status_bayar)}</p>
-                    <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
+                    <p className="font-medium">{String(inv.source) === "Manual" ? <span className="mr-2 rounded-md bg-amber-100 px-1.5 py-0.5 align-middle text-[10px] font-extrabold uppercase text-amber-800">Manual</span> : null}{String(inv.nomor)} · {String(inv.keterangan || inv.status_bayar)}</p>
+                    <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Bon" && Number(inv.total) <= 0 ? " · harga belum diisi" : ""}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
@@ -89,6 +89,8 @@ function BonPage() {
                           if (!res) return;
                           setEdit({
                             nomor: String(inv.nomor),
+                            manual: String(inv.source) === "Manual",
+                            tujuan: String(inv.tujuan || ""),
                             diskon: grouped(Number((res.invoice as { diskon: number }).diskon)),
                             items: (res.lines as Array<Record<string, unknown>>).map((line) => ({
                               id: Number(line.id),
@@ -99,14 +101,27 @@ function BonPage() {
                             })),
                           });
                         });
-                      }}>Edit struk</button>
+                      }}>Edit bon</button>
                       <PrimaryButton onClick={() => {
+                        if (Number(inv.total) <= 0) return toast.error("Harga bon masih Rp 0. Klik Edit bon dulu untuk mengisi harga.");
                         if (!confirm(`Lunasi ${String(inv.nomor)}?`)) return;
                         void payoffBon({ data: { nomor: String(inv.nomor) } })
                           .then((res) => { toast.success(`Kas masuk ${rupiah(Number((res as { total: number }).total))}`); load(); })
                           .catch((error: Error) => toast.error(error.message));
                       }}>Lunasi</PrimaryButton>
                       </>
+                    ) : null}
+                    {canEdit ? (
+                      <button className="h-11 rounded-lg border border-red-200 px-3 text-sm font-bold text-danger" onClick={() => {
+                        const lunas = inv.status_bayar === "Lunas";
+                        const warn = lunas
+                          ? `Hapus ${String(inv.nomor)} (${String(inv.tujuan)})? Bon ini sudah lunas, catatan kas pelunasannya juga ikut dihapus. Stok barang dikembalikan.`
+                          : `Hapus ${String(inv.nomor)} (${String(inv.tujuan)})? Stok barang dikembalikan.`;
+                        if (!confirm(warn)) return;
+                        void removeInvoice({ data: { nomor: String(inv.nomor) } })
+                          .then(() => { toast.success("Bon dihapus"); load(); })
+                          .catch((error: Error) => toast.error(error.message));
+                      }}>Hapus</button>
                     ) : null}
                   </div>
                 </li>
@@ -120,34 +135,44 @@ function BonPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
           <form className="w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(event) => {
             event.preventDefault();
-            void editSale({
-              data: {
-                nomor: edit.nomor,
-                diskon: digits(edit.diskon),
-                lines: edit.items.map((item) => ({ id: item.id, harga: digits(item.harga), qty: item.jumlah })),
-              },
-            }).then(() => { toast.success("Struk diperbarui. Cetak bon lagi untuk kertas yang baru."); setEdit(null); load(); }).catch((error: Error) => toast.error(error.message));
+            const lines = edit.items.map((item) => ({ id: item.id, harga: digits(item.harga), qty: Math.max(1, item.jumlah || 1) }));
+            const save = edit.manual
+              ? editManualBon({ data: { nomor: edit.nomor, tujuan: edit.tujuan, lines } })
+              : editSale({ data: { nomor: edit.nomor, tujuan: edit.tujuan, diskon: digits(edit.diskon), lines } });
+            void save.then(() => { toast.success("Bon diperbarui. Cetak bon lagi untuk kertas yang baru."); setEdit(null); load(); }).catch((error: Error) => toast.error(error.message));
           }}>
-            <h3 className="font-semibold">Edit {edit.nomor}</h3>
-            <p className="mt-1 text-xs text-muted">Ubah jumlah, harga, atau diskon. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>
-            <ul className="mt-3 space-y-2">
+            <h3 className="font-semibold">Edit Bon {edit.nomor}</h3>
+            <p className="mt-1 text-xs text-muted">Ubah nama pelanggan, jumlah, harga{edit.manual ? "" : ", atau diskon"}. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>
+            <label className="mt-3 block text-sm">Nama pelanggan
+              <input className={`${inputClass} mt-1`} value={edit.tujuan} onChange={(e) => setEdit({ ...edit, tujuan: e.target.value })} />
+            </label>
+            <div className="mt-3 grid grid-cols-[1fr_5.5rem_7rem] gap-2 text-[11px] font-bold uppercase text-muted">
+              <span>Barang</span><span className="text-center">Qty</span><span className="text-right">Harga satuan</span>
+            </div>
+            <ul className="mt-1 max-h-[45vh] space-y-2 overflow-y-auto">
               {edit.items.map((item, index) => (
-                <li key={item.id} className="grid grid-cols-[1fr_4.5rem_7rem] items-center gap-2 text-sm">
-                  <span>{item.nama}<span className="block text-[11px] text-muted">{item.satuan}</span></span>
-                  <input className={`${inputClass} num`} value={item.jumlah} onChange={(e) => {
-                    const jumlah = Math.max(1, Number(e.target.value) || 1);
+                <li key={item.id} className="grid grid-cols-[1fr_5.5rem_7rem] items-start gap-2 text-sm">
+                  <span className="font-medium">{item.nama}<span className="block text-[11px] font-normal text-muted">{item.satuan}</span></span>
+                  <input className={`${inputClass} num text-center`} inputMode="numeric" aria-label={`Qty ${item.nama}`} value={item.jumlah || ""} placeholder="1" onFocus={(e) => e.target.select()} onChange={(e) => {
+                    const jumlah = digits(e.target.value);
                     setEdit({ ...edit, items: edit.items.map((row, i) => i === index ? { ...row, jumlah } : row) });
                   }} />
-                  <input className={`${inputClass} num`} value={item.harga} onChange={(e) => {
-                    const harga = grouped(digits(e.target.value));
-                    setEdit({ ...edit, items: edit.items.map((row, i) => i === index ? { ...row, harga } : row) });
-                  }} />
+                  <div>
+                    <input className={`${inputClass} num text-right`} inputMode="numeric" aria-label={`Harga ${item.nama}`} value={item.harga} placeholder="0" onFocus={(e) => e.target.select()} onChange={(e) => {
+                      const harga = grouped(digits(e.target.value));
+                      setEdit({ ...edit, items: edit.items.map((row, i) => i === index ? { ...row, harga } : row) });
+                    }} />
+                    <p className="num mt-0.5 text-right text-[11px] text-muted">= {rupiah(Math.max(1, item.jumlah || 1) * digits(item.harga))}</p>
+                  </div>
                 </li>
               ))}
             </ul>
-            <label className="mt-3 block text-sm">Diskon
-              <input className={`${inputClass} num mt-1`} value={edit.diskon} onChange={(e) => setEdit({ ...edit, diskon: grouped(digits(e.target.value)) })} />
-            </label>
+            <p className="num mt-3 text-right text-sm font-bold">Total: {rupiah(Math.max(0, edit.items.reduce((sum, item) => sum + Math.max(1, item.jumlah || 1) * digits(item.harga), 0) - (edit.manual ? 0 : digits(edit.diskon))))}</p>
+            {edit.manual ? null : (
+              <label className="mt-3 block text-sm">Diskon
+                <input className={`${inputClass} num mt-1`} value={edit.diskon} onChange={(e) => setEdit({ ...edit, diskon: grouped(digits(e.target.value)) })} />
+              </label>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="h-11 px-3" onClick={() => setEdit(null)}>Batal</button>
               <PrimaryButton type="submit">Simpan</PrimaryButton>
