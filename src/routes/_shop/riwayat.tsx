@@ -6,7 +6,6 @@ import { inputClass, MarkWords, Panel } from "@/components/shop/shell";
 import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PeriodPicker } from "@/components/shop/period";
-import { ShareToChat, type ShareRef } from "@/components/shop/chat-share";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printHistoryReport, printReturSlip, printStoredManual, printStoredSale } from "@/lib/shop/print";
 import type { Partner } from "@/lib/shop/types";
@@ -30,7 +29,6 @@ function RiwayatPage() {
   const [data, setData] = useState<{ total: number; perPage: number; items: Array<Record<string, unknown>> } | null>(null);
   const [open, setOpen] = useState("");
   const [detail, setDetail] = useState<{ invoice: Record<string, unknown>; lines: Array<Record<string, unknown>> } | null>(null);
-  const [share, setShare] = useState<ShareRef | null>(null);
   const [banks, setBanks] = useState<string[]>([]);
   const [manual, setManual] = useState<{ nomor: string; tujuan: string; keterangan: string; bon: boolean; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
   const [sale, setSale] = useState<{ nomor: string; tujuan: string; diskon: string; metode: string; bank: string; bayar: string; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
@@ -226,13 +224,10 @@ function RiwayatPage() {
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
                 <button className="text-xs font-bold text-accent" onClick={() => {
                   const nomor = String(inv.nomor);
-                  setDetail(null);
+                  if (open === nomor) { setOpen(""); return; }
                   setOpen(nomor);
-                  void getInvoice({ data: { nomor } })
-                    .then((res) => setDetail(res ? { invoice: res.invoice as Record<string, unknown>, lines: res.lines as Array<Record<string, unknown>> } : null))
-                    .catch((error: Error) => { toast.error(error.message || "Gagal memuat detail"); setOpen(""); });
+                  void getInvoice({ data: { nomor } }).then((res) => setDetail(res ? { invoice: res.invoice as Record<string, unknown>, lines: res.lines as Array<Record<string, unknown>> } : null));
                 }}>Lihat Detail</button>
-                <button className="ml-3 text-xs font-bold text-slate-700" onClick={() => setShare({ type: "transaksi", id: String(inv.nomor), label: `${String(inv.nomor)} · ${String(inv.tujuan || "Umum")} · ${rupiah(Number(inv.total))}` })}>Bagikan</button>
                 <button className="ml-3 text-xs font-bold text-slate-700" onClick={() => {
                   const nomor = String(inv.nomor);
                   void getInvoice({ data: { nomor } }).then(async (res) => {
@@ -249,6 +244,38 @@ function RiwayatPage() {
                 }}>Cetak Nota</button>
               </div>
             </div>
+            {open === inv.nomor && detail ? (
+              <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
+                <p className="text-xs font-bold">Rincian Barang</p>
+                {detail.lines.map((line) => (
+                  <div key={String(line.id)} className="mt-2 flex items-start justify-between gap-2 border-t border-slate-200 pt-2">
+                    <div>
+                      <p className="font-medium">{String(line.jenis)} · <MarkWords text={String(line.custom_item || line.product_nama || "Barang")} q={q} />{line.kode_pajak ? <> (<MarkWords text={String(line.kode_pajak)} q={q} />)</> : null}</p>
+                      {line.merek || line.product_merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(line.merek || line.product_merek)} q={q} /></span></div> : null}
+                      <p className="font-mono text-[11px] text-slate-700">PN: <MarkWords text={String(line.part_number || line.product_part || "-")} q={q} />{line.part_numbers_alt || line.product_alt ? <> · Alt: <MarkWords text={String(line.part_numbers_alt || line.product_alt)} q={q} /></> : null}</p>
+                      <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Harga {rupiah(Number(line.harga_satuan))} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
+                    </div>
+                    {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Edit</button>
+                        <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(inv.nomor), Number(line.id))}>Hapus</button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                <p className="mt-2 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
+                {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
+                {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
+                  <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Ubah Nota (per barang)</button>
+                ) : null}
+                {me.role === "Admin" ? (
+                  <button className="mt-2 text-sm font-bold text-danger" onClick={() => {
+                    if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
+                    void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success("Nota dihapus"); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
+                  }}>Hapus Transaksi</button>
+                ) : null}
+              </div>
+            ) : null}
           </li>
         ))}
         {items.length === 0 ? <li className="py-8 text-center text-sm text-muted">Tidak ada transaksi ditemukan. Coba ubah kata pencarian atau filter tanggal.</li> : null}
@@ -261,77 +288,11 @@ function RiwayatPage() {
           <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
         </div>
       </div>
-      {open ? (() => {
-        const inv = (detail?.invoice ?? items.find((row) => String(row.nomor) === open) ?? { nomor: open }) as Record<string, unknown>;
-        const sumber = String(inv.source || "");
-        const bisaUbah = me.role === "Admin" && (sumber === "Kasir" || sumber === "Manual");
-        const tutup = () => { setOpen(""); setDetail(null); };
-        return (
-        <div className="fixed inset-0 z-40 grid place-items-center bg-ink/40 p-3 sm:p-4" onClick={tutup} onKeyDown={(e) => { if (e.key === "Escape") tutup(); }} role="dialog" aria-modal="true">
-          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 border-b border-line p-4">
-              <div className="min-w-0">
-                <p className="font-bold">
-                  <span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${sumber === "Manual" ? "bg-amber-100 text-amber-800" : sumber === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{sumber || "Nota"}</span>
-                  {String(inv.nomor)}
-                </p>
-                {inv.tanggal ? <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar || "")}</p> : null}
-                {inv.kasir || inv.tujuan ? <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p> : null}
-              </div>
-              <div className="flex shrink-0 items-start gap-3">
-                {inv.total !== undefined ? <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p> : null}
-                <button type="button" aria-label="Tutup" className="grid h-9 w-9 place-items-center rounded-lg border border-line text-lg font-bold leading-none" onClick={tutup}>×</button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 text-sm">
-              {!detail ? <p className="py-8 text-center text-sm text-muted">Memuat rincian...</p> : (
-                <>
-                  <p className="text-xs font-bold">Rincian Barang ({detail.lines.length})</p>
-                  {detail.lines.map((line) => (
-                    <div key={String(line.id)} className="mt-2 flex items-start justify-between gap-2 border-t border-slate-200 pt-2">
-                      <div className="min-w-0">
-                        <p className="font-medium">{String(line.jenis)} · <MarkWords text={String(line.custom_item || line.product_nama || "Barang")} q={q} />{line.kode_pajak ? <> (<MarkWords text={String(line.kode_pajak)} q={q} />)</> : null}</p>
-                        {line.merek || line.product_merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(line.merek || line.product_merek)} q={q} /></span></div> : null}
-                        <p className="font-mono text-[11px] text-slate-700">PN: <MarkWords text={String(line.part_number || line.product_part || "-")} q={q} />{line.part_numbers_alt || line.product_alt ? <> · Alt: <MarkWords text={String(line.part_numbers_alt || line.product_alt)} q={q} /></> : null}</p>
-                        <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Harga {rupiah(Number(line.harga_satuan))} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
-                      </div>
-                      {bisaUbah ? (
-                        <div className="flex shrink-0 gap-2">
-                          <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Edit</button>
-                          <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(inv.nomor), Number(line.id))}>Hapus</button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                  <p className="mt-3 border-t border-slate-200 pt-2 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
-                  {sumber === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
-                </>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line p-3">
-              <div className="flex flex-wrap gap-2">
-                {detail && bisaUbah ? <button type="button" className="h-10 rounded-lg border border-line px-3 text-sm font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Ubah Nota (per barang)</button> : null}
-                {detail && me.role === "Admin" ? (
-                  <button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-sm font-bold text-danger" onClick={() => {
-                    if (!confirm(sumber === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
-                    void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success("Nota dihapus"); tutup(); load(); }).catch((error: Error) => toast.error(error.message));
-                  }}>Hapus Transaksi</button>
-                ) : null}
-              </div>
-              <div className="flex gap-2">
-                <button type="button" className="h-10 rounded-lg border border-line px-3 text-sm font-bold" onClick={() => setShare({ type: "transaksi", id: String(inv.nomor), label: `${String(inv.nomor)} · ${String(inv.tujuan || "Umum")}${inv.total !== undefined ? ` · ${rupiah(Number(inv.total))}` : ""}` })}>Bagikan ke chat</button>
-                <button type="button" className="h-10 rounded-lg bg-slate-800 px-4 text-sm font-bold text-white" onClick={tutup}>Tutup</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        );
-      })() : null}
       {sale ? (() => {
         const subtotal = editorSubtotal(sale.rows, sale.adds);
         const total = Math.max(0, subtotal - digits(sale.diskon));
         return (
-        <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-ink/40 p-4">
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
           <form className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
             if (sale.rows.every((row) => row.removed) && sale.adds.length === 0) return toast.error("Nota tidak boleh kosong. Pakai Hapus Transaksi untuk membatalkan nota.");
@@ -398,7 +359,7 @@ function RiwayatPage() {
       {manual ? (() => {
         const total = editorSubtotal(manual.rows, manual.adds);
         return (
-        <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-ink/40 p-4">
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
           <form className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
             if (manual.rows.every((row) => row.removed) && manual.adds.length === 0) return toast.error("Nota tidak boleh kosong. Pakai Hapus Transaksi untuk membatalkan nota.");
@@ -431,7 +392,6 @@ function RiwayatPage() {
         </div>
         );
       })() : null}
-      {share ? <ShareToChat data={share} onClose={() => setShare(null)} /> : null}
     </Panel>
   );
 }

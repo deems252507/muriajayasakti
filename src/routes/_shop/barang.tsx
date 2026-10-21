@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Barcode, Pencil, Trash2, Share2 } from "lucide-react";
+import { Barcode, Pencil, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
-import { ShareToChat, type ShareRef } from "@/components/shop/chat-share";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
@@ -48,7 +47,6 @@ function BarangPage() {
   const [sort, setSort] = usePersistedState("barang:sort", "nama");
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [share, setShare] = useState<ShareRef | null>(null);
   const [form, setForm] = useState(empty);
   const [useDus, setUseDus] = useState(false);
   const [open, setOpen] = useState(false);
@@ -322,9 +320,6 @@ function BarangPage() {
                 </td>
                 <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
                   <div className="inline-flex items-center justify-center gap-1">
-                    <button type="button" title="Bagikan ke chat" aria-label="Bagikan ke chat" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setShare({ type: "barang", id: item.partNumber || item.nama, label: `${item.nama}${item.partNumber ? ` (${item.partNumber})` : ""} · stok ${item.stok} ${item.satuan} · ${rupiah(item.hargaJual)}` })}>
-                      <Share2 className="h-4 w-4" />
-                    </button>
                     <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
                       <Barcode className="h-4 w-4" />
                     </button>
@@ -429,7 +424,6 @@ function BarangPage() {
           </form>
         </div>
       ) : null}
-      {share ? <ShareToChat data={share} onClose={() => setShare(null)} /> : null}
     </div>
   );
 }
