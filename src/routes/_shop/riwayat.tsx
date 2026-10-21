@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { inputClass, Panel } from "@/components/shop/shell";
+import { inputClass, MarkWords, Panel } from "@/components/shop/shell";
 import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
-import { ItemEditor, editorSubtotal, type EditorAdd, type EditorRow, type Jenis } from "@/components/shop/item-editor";
+import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PeriodPicker } from "@/components/shop/period";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printHistoryReport, printReturSlip, printStoredManual, printStoredSale } from "@/lib/shop/print";
@@ -40,17 +40,7 @@ function RiwayatPage() {
       if (!res) return toast.error("Nota tidak ditemukan");
       const invoice = res.invoice as Record<string, unknown>;
       const source = String(invoice.source);
-      const rows: EditorRow[] = (res.lines as Array<Record<string, unknown>>).map((line) => ({
-        id: Number(line.id),
-        nama: String(line.custom_item || line.product_nama || "Barang"),
-        satuan: String(line.satuan || "Pcs"),
-        jumlah: Number(line.jumlah),
-        harga: grouped(Number(line.harga_satuan || 0)),
-        jenis: (String(line.jenis) === "MASUK" ? "MASUK" : "KELUAR") as Jenis,
-        productId: line.product_id == null ? null : Number(line.product_id),
-        isAlt: false,
-        removed: removeId === Number(line.id),
-      }));
+      const rows: EditorRow[] = (res.lines as Array<Record<string, unknown>>).map((line) => rowFromLine(line, removeId === Number(line.id)));
       if (source === "Kasir") {
         void listMasters().then((m) => setBanks(m.banks.filter((bank) => bank.aktif).map((bank) => bank.nama)));
         setSale({
@@ -193,16 +183,17 @@ function RiwayatPage() {
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-600">{when(String(row.tanggal))}</td>
                   <td className="px-3 py-2">
                     <span className={`mr-1 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase ${String(row.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(row.source) === "Retur" ? "bg-red-100 text-red-700" : String(row.source) === "Pemasok" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>{String(row.source)}</span>
-                    <span className="font-semibold">{String(row.nomor)}</span>
+                    <span className="font-semibold"><MarkWords text={String(row.nomor)} q={q} /></span>
                   </td>
                   <td className="px-3 py-2">
-                    <p className="font-semibold">{String(row.nama)}</p>
-                    <p className="text-[11px] text-muted">PN: {String(row.part_number || "-")}{row.merek ? ` · ${String(row.merek)}` : ""}{row.kode_pajak ? ` · Pajak ${String(row.kode_pajak)}` : ""}</p>
+                    <p className="font-semibold text-slate-900"><MarkWords text={String(row.nama)} q={q} />{row.kode_pajak ? <> (<MarkWords text={String(row.kode_pajak)} q={q} />)</> : null}</p>
+                    {row.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(row.merek)} q={q} /></span></div> : null}
+                    <p className="mt-0.5 font-mono text-[11px] text-slate-700">PN: <MarkWords text={String(row.part_number || "-")} q={q} />{row.pn_alt ? <> · Alt: <MarkWords text={String(row.pn_alt)} q={q} /></> : null}</p>
                   </td>
                   <td className={`px-3 py-2 text-xs font-bold ${String(row.jenis) === "MASUK" ? "text-emerald-700" : "text-red-600"}`}>{String(row.jenis)}</td>
                   <td className="num whitespace-nowrap px-3 py-2 text-right font-bold">{grouped(Number(row.jumlah))} {String(row.satuan)}</td>
                   <td className="num whitespace-nowrap px-3 py-2 text-right">{Number(row.harga_satuan) ? rupiah(Number(row.harga_satuan)) : "-"}</td>
-                  <td className="px-3 py-2 text-xs">{String(row.tujuan || "-")}</td>
+                  <td className="px-3 py-2 text-xs"><MarkWords text={String(row.tujuan || "-")} q={q} /></td>
                   {me.role === "Admin" ? (
                     <td className="whitespace-nowrap px-3 py-2">
                       {(String(row.source) === "Kasir" || String(row.source) === "Manual") && Number(row.line_id) > 0 ? (
@@ -225,9 +216,9 @@ function RiwayatPage() {
           <li key={String(inv.nomor)} className={`rounded-xl border border-line border-l-4 p-3 ${String(inv.source) === "Manual" ? "border-l-amber-400" : String(inv.source) === "Retur" ? "border-l-red-400" : "border-l-emerald-500"}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span>{String(inv.nomor)}</p>
+                <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span><MarkWords text={String(inv.nomor)} q={q} /></p>
                 <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar) === "Bon" ? <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-amber-800">Bon</span> : String(inv.status_bayar)}</p>
-                <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
+                <p className="text-xs text-muted">Kasir: <MarkWords text={String(inv.kasir || "-")} q={q} /> · Pelanggan/Supplier: <MarkWords text={String(inv.tujuan || "-")} q={q} /></p>
               </div>
               <div className="text-right">
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
@@ -259,8 +250,9 @@ function RiwayatPage() {
                 {detail.lines.map((line) => (
                   <div key={String(line.id)} className="mt-2 flex items-start justify-between gap-2 border-t border-slate-200 pt-2">
                     <div>
-                      <p className="font-medium">{String(line.jenis)} · {String(line.custom_item || line.product_nama || "Barang")}</p>
-                      <p className="text-[11px] text-muted">PN: {String(line.part_number || "-")}{line.merek ? ` · Merek: ${String(line.merek)}` : ""}{line.kode_pajak ? ` · Kode Pajak: ${String(line.kode_pajak)}` : ""}</p>
+                      <p className="font-medium">{String(line.jenis)} · <MarkWords text={String(line.custom_item || line.product_nama || "Barang")} q={q} />{line.kode_pajak ? <> (<MarkWords text={String(line.kode_pajak)} q={q} />)</> : null}</p>
+                      {line.merek || line.product_merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(line.merek || line.product_merek)} q={q} /></span></div> : null}
+                      <p className="font-mono text-[11px] text-slate-700">PN: <MarkWords text={String(line.part_number || line.product_part || "-")} q={q} />{line.part_numbers_alt || line.product_alt ? <> · Alt: <MarkWords text={String(line.part_numbers_alt || line.product_alt)} q={q} /></> : null}</p>
                       <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Harga {rupiah(Number(line.harga_satuan))} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
                     </div>
                     {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
@@ -312,10 +304,7 @@ function RiwayatPage() {
                 metode: sale.metode,
                 bank: sale.bank,
                 bayarTunai: digits(sale.bayar),
-                lines: sale.rows.map((row) => ({ id: row.id, qty: row.removed ? 0 : Math.max(1, row.jumlah || 1), harga: row.removed ? 0 : digits(row.harga) })),
-                add: sale.adds.map((row) => (row.productId
-                  ? { productId: row.productId, qty: Math.max(1, row.jumlah || 1), harga: digits(row.harga), isAlt: row.isAlt }
-                  : { nama: row.nama, qty: Math.max(1, row.jumlah || 1), harga: digits(row.harga) })),
+                ...editorPayload(sale.rows, sale.adds),
               },
             }).then(async () => {
               const res = await getInvoice({ data: { nomor: sale.nomor } });
@@ -379,20 +368,7 @@ function RiwayatPage() {
                 nomor: manual.nomor,
                 tujuan: manual.tujuan,
                 keterangan: manual.keterangan,
-                lines: manual.rows.map((row) => ({
-                  id: row.id,
-                  qty: row.removed ? 0 : Math.max(1, row.jumlah || 1),
-                  jenis: row.jenis,
-                  harga: row.jenis === "KELUAR" ? digits(row.harga) : 0,
-                  productId: row.productId,
-                  isAlt: row.isAlt,
-                })),
-                add: manual.adds.map((row) => ({
-                  ...(row.productId ? { productId: row.productId, isAlt: row.isAlt } : { custom: row.nama, satuan: row.satuan }),
-                  jenis: row.jenis,
-                  qty: Math.max(1, row.jumlah || 1),
-                  harga: row.jenis === "KELUAR" ? digits(row.harga) : 0,
-                })),
+                ...editorPayload(manual.rows, manual.adds),
               },
             })
               .then(() => { toast.success("Nota manual diubah. Stok ikut disesuaikan."); setManual(null); setOpen(""); load(); })

@@ -138,6 +138,38 @@ export function Mark({ text, q }: { text: string; q: string }) {
   return <>{parts}</>;
 }
 
+/** Seperti Mark, tapi tiap kata di pencarian (dipisah spasi) disorot sendiri-sendiri. */
+export function MarkWords({ text, q }: { text: string; q: string }) {
+  const words = [...new Set(q.toLowerCase().split(/\s+/).filter(Boolean))].sort((a, b) => b.length - a.length);
+  if (!words.length || !text) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const spans: Array<[number, number]> = [];
+  for (const word of words) {
+    let at = lower.indexOf(word);
+    while (at >= 0) {
+      spans.push([at, at + word.length]);
+      at = lower.indexOf(word, at + word.length);
+    }
+  }
+  if (!spans.length) return <>{text}</>;
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+    else merged.push([span[0], span[1]]);
+  }
+  const parts: React.ReactNode[] = [];
+  let from = 0;
+  merged.forEach(([a, b], key) => {
+    if (a > from) parts.push(text.slice(from, a));
+    parts.push(<mark key={key} className="rounded bg-yellow-300 px-0.5 text-inherit">{text.slice(a, b)}</mark>);
+    from = b;
+  });
+  if (from < text.length) parts.push(text.slice(from));
+  return <>{parts}</>;
+}
+
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");

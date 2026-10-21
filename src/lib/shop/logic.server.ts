@@ -1225,7 +1225,9 @@ export async function getInvoice(data: any): Promise<any> {
     const lines = await db.query(
       `select l.*, p.nama as product_nama, p.kode,
               p.part_number as product_part, p.part_numbers_alt as product_alt, p.merek as product_merek,
-              p.kode_pajak, p.kategori
+              p.kode_pajak, p.kategori,
+              p.satuan as product_satuan, p.satuan_alt as product_satuan_alt, p.isi_satuan_alt as product_isi_alt,
+              p.harga_jual as product_harga_jual, p.harga_jual_alt as product_harga_jual_alt, p.stok as product_stok
        from invoice_lines l
        left join products p on p.id = l.product_id
        where l.invoice_id = $1
@@ -1582,6 +1584,7 @@ export async function listHistoryItems(data: any) {
       jenis: String(row.jenis ?? ""),
       nama: String(row.nama ?? ""),
       part_number: String(row.part_number ?? ""),
+      pn_alt: String(row.pn_alt ?? ""),
       merek: String(row.merek ?? ""),
       kode_pajak: String(row.kode_pajak ?? ""),
       jumlah: Number(row.jumlah ?? 0),
