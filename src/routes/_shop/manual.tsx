@@ -3,10 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
-import { manualNota, searchProducts } from "@/lib/shop/api";
+import { listPartners, manualNota, searchProducts } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
-import type { Product } from "@/lib/shop/types";
+import type { Partner, Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/manual")({ component: ManualPage });
 
@@ -27,6 +27,8 @@ function ManualPage() {
   const [jenis, setJenis] = usePersistedState<Jenis>("manual:jenis", "MASUK");
   const [tujuan, setTujuan] = usePersistedState("manual:tujuan", "");
   const [ket, setKet] = usePersistedState("manual:ket", "");
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [tujuanOpen, setTujuanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState<{ key: string; n: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -38,6 +40,12 @@ function ManualPage() {
     return () => clearTimeout(timer);
   }, [q]);
   useEffect(() => { setActiveHit(0); }, [hits]);
+  useEffect(() => {
+    if (me.role === "Owner" || me.role === "Kasir") return;
+    void listPartners().then(setPartners).catch(() => setPartners([]));
+  }, [me.role]);
+  const tujuanQuery = tujuan.trim().toLowerCase();
+  const tujuanHits = partners.filter((row) => !tujuanQuery || row.nama.toLowerCase().includes(tujuanQuery)).slice(0, 30);
   useEffect(() => {
     if (!justAdded) return;
     const el = qtyRefs.current[justAdded.key];
@@ -137,7 +145,37 @@ function ManualPage() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm text-slate-600">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
-          <label className="text-sm text-slate-600">Supplier / pelanggan / gudang<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={tujuan} onChange={(e) => setTujuan(e.target.value)} /></label>
+          <div className="relative text-sm text-slate-600">
+            <label htmlFor="manual-tujuan">Supplier / pelanggan / gudang</label>
+            <input
+              id="manual-tujuan"
+              autoComplete="off"
+              className={`${inputClass} mt-1 h-12`}
+              placeholder="Opsional — pilih dari daftar atau ketik sendiri"
+              value={tujuan}
+              onChange={(e) => { setTujuan(e.target.value); setTujuanOpen(true); }}
+              onFocus={() => setTujuanOpen(true)}
+              onBlur={() => setTimeout(() => setTujuanOpen(false), 150)}
+              onKeyDown={(e) => { if (e.key === "Escape") setTujuanOpen(false); }}
+            />
+            {tujuanOpen && tujuanHits.length > 0 ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white shadow-xl">
+                {tujuanHits.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-50"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setTujuan(row.nama); setTujuanOpen(false); }}
+                  >
+                    <span className="truncate font-semibold">{row.nama}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${row.tipe === "Supplier" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>{row.tipe}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {tujuan ? <button type="button" className="mt-1 text-xs font-semibold text-slate-500 underline" onClick={() => setTujuan("")}>Kosongkan</button> : null}
+          </div>
           <label className="text-sm text-slate-600">Keterangan<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={ket} onChange={(e) => setKet(e.target.value)} /></label>
         </div>
       </Panel>
