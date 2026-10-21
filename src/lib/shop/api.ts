@@ -634,6 +634,20 @@ export const groupDeleteMessage = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const chatDeleteMessages = createServerFn({ method: "POST" })
+  .validator((input: { ids: number[] }) => ({ ids: (Array.isArray(input?.ids) ? input.ids : []).map(Number) }))
+  .handler(async ({ data }) => {
+    const { chatDeleteMessages: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupDeleteMessages = createServerFn({ method: "POST" })
+  .validator((input: { ids: number[] }) => ({ ids: (Array.isArray(input?.ids) ? input.ids : []).map(Number) }))
+  .handler(async ({ data }) => {
+    const { groupDeleteMessages: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const chatClear = createServerFn({ method: "POST" })
   .validator((input: { with: string }) => ({ with: String(input?.with ?? "") }))
   .handler(async ({ data }) => {

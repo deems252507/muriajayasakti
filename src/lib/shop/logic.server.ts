@@ -2373,6 +2373,42 @@ export async function groupDeleteMessage(data: { id: number }) {
 }
 
 
+/** Hapus beberapa pesan pribadi milik sendiri sekaligus. */
+export async function chatDeleteMessages(data: { ids: number[] }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
+  if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
+  const marks = ids.map((_, i) => `$${i + 2}`).join(",");
+  const rows = await db.query(
+    `update chat_messages set deleted_at = now() where sender = $1 and deleted_at is null and id in (${marks}) returning id`,
+    [me.username, ...ids],
+  );
+  if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
+  return { deleted: rows.length };
+}
+
+/** Hapus beberapa pesan grup sekaligus (aturan hak sama dengan hapus satu pesan). */
+export async function groupDeleteMessages(data: { ids: number[] }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
+  if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
+  const marks = ids.map((_, i) => `$${i + 1}`).join(",");
+  const msgs = await db.query<{ id: number; group_id: number; sender: string }>(
+    `select id, group_id, sender from chat_group_messages where deleted_at is null and id in (${marks})`,
+    ids,
+  );
+  if (!msgs.length) throw new Error("Pesan tidak ditemukan.");
+  const isMod = me.role === "Admin" || me.role === "Owner";
+  for (const gid of new Set(msgs.map((m) => Number(m.group_id)))) await requireMember(db, gid, me);
+  if (!isMod && msgs.some((m) => m.sender !== me.username)) throw new Error("Anda hanya bisa menghapus pesan Anda sendiri.");
+  const okIds = msgs.map((m) => Number(m.id));
+  const okMarks = okIds.map((_, i) => `$${i + 1}`).join(",");
+  await db.query(`update chat_group_messages set deleted_at = now() where id in (${okMarks})`, okIds);
+  return { deleted: okIds.length };
+}
+
 /** Hapus seluruh percakapan pribadi dengan satu staff (hilang untuk kedua pihak). */
 export async function chatClear(data: { with: string }) {
   const me = await requireStaff();
