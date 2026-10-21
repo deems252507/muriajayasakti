@@ -1,3 +1,4 @@
+set local lock_timeout = '5s';
 -- Hapus aturan lama "isi pesan minimal 1 huruf" apa pun namanya, supaya pesan berisi foto/file/data tanpa teks bisa disimpan.
 do $$
 declare r record;
