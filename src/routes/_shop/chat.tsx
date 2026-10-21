@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, Plus, Send, Users } from "lucide-react";
+import { ArrowLeft, Plus, Send, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, GroupFormModal, GroupPanel, dayKey, dayLabel, hhmm, listTime, roleStyle } from "@/components/shop/chat-group";
-import { chatContacts, chatMessages, chatSend, groupList } from "@/lib/shop/api";
+import { chatClear, chatContacts, chatDeleteMessage, chatMessages, chatSend, groupList } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/_shop/chat")({ component: ChatPage });
 
@@ -39,7 +39,7 @@ function ChatPage() {
     if (!who) return;
     void chatMessages({ data: { with: who } }).then((rows) => {
       if (activeRef.current !== who) return;
-      const sig = rows.map((r) => `${r.id}${r.read ? "r" : ""}`).join(",");
+      const sig = rows.map((r) => `${r.id}${r.read ? "r" : ""}${r.deleted ? "d" : ""}`).join(",");
       if (force || sig !== signature.current) {
         signature.current = sig;
         setMessages(rows);
@@ -159,6 +159,12 @@ function ChatPage() {
                   <p className="truncate text-sm font-bold">{current.name}</p>
                   <p className="text-[11px] text-muted">{current.role}</p>
                 </div>
+                {messages.length > 0 ? (
+                  <button type="button" className="ml-auto inline-flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger hover:bg-red-50" onClick={() => {
+                    if (!confirm(`Hapus SEMUA pesan dengan ${current.name}? Seluruh percakapan hilang untuk Anda dan ${current.name}, dan tidak bisa dikembalikan.`)) return;
+                    void chatClear({ data: { with: dm } }).then((res) => { toast.success(`${res.deleted} pesan dihapus`); loadMessages(dm, true); loadContacts(); }).catch((error: Error) => toast.error(error.message));
+                  }}><Trash2 className="size-3.5" />Hapus semua</button>
+                ) : null}
               </div>
               <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-3">
                 {messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">Belum ada pesan. Tulis pesan pertama untuk {current.name}.</p> : null}
@@ -169,8 +175,16 @@ function ChatPage() {
                       {newDay ? <p className="my-2 text-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-muted shadow-sm">{dayLabel(m.createdAt)}</span></p> : null}
                       <div className={`flex ${m.mine ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.mine ? "rounded-br-md bg-accent text-white" : "rounded-bl-md bg-white text-ink"}`}>
-                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                          <p className={`mt-0.5 text-right text-[10px] ${m.mine ? "text-white/70" : "text-muted"}`}>{hhmm(m.createdAt)}{m.mine ? (m.read ? " · Dibaca" : " · Terkirim") : ""}</p>
+                          {m.deleted ? <p className="italic opacity-70">Pesan ini telah dihapus</p> : <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                          <p className={`mt-0.5 flex items-center justify-end gap-2 text-[10px] ${m.mine ? "text-white/70" : "text-muted"}`}>
+                            {m.mine && !m.deleted ? (
+                              <button type="button" className="inline-flex items-center gap-0.5 font-semibold hover:underline" onClick={() => {
+                                if (!confirm("Hapus pesan ini? Pesan hilang untuk Anda dan lawan bicara.")) return;
+                                void chatDeleteMessage({ data: { id: m.id } }).then(() => { loadMessages(dm, true); loadContacts(); }).catch((error: Error) => toast.error(error.message));
+                              }}><Trash2 className="size-3" />Hapus</button>
+                            ) : null}
+                            <span>{hhmm(m.createdAt)}{m.mine && !m.deleted ? (m.read ? " · Dibaca" : " · Terkirim") : ""}</span>
+                          </p>
                         </div>
                       </div>
                     </div>

@@ -619,3 +619,31 @@ export const noteDelete = createServerFn({ method: "POST" })
     const { noteDelete: run } = await import("./logic.server");
     return run(data);
   });
+
+export const chatDeleteMessage = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { chatDeleteMessage: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupDeleteMessage = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { groupDeleteMessage: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatClear = createServerFn({ method: "POST" })
+  .validator((input: { with: string }) => ({ with: String(input?.with ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatClear: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const groupClearMessages = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { groupClearMessages: run } = await import("./logic.server");
+    return run(data);
+  });

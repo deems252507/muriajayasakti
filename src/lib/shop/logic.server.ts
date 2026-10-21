@@ -1998,7 +1998,7 @@ export async function chatContacts() {
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo,
-            (select m.body from chat_messages m
+            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_messages m
               where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
               order by m.id desc limit 1) as last_body,
             (select m.created_at from chat_messages m
@@ -2033,13 +2033,13 @@ export async function chatUnread() {
   if (!me) return { unread: 0, latest: null as Latest | null };
   const db = await sql();
   const [dm] = await db.query<{ n: number }>(
-    `select count(*)::int as n from chat_messages where recipient = $1 and read_at is null`,
+    `select count(*)::int as n from chat_messages where recipient = $1 and read_at is null and deleted_at is null`,
     [me.username],
   );
   const [grp] = await db.query<{ n: number }>(
     `select count(*)::int as n from chat_group_messages m
      join chat_group_members gm on gm.group_id = m.group_id and gm.username = $1
-     where m.sender <> $1 and m.id > gm.last_read_id`,
+     where m.sender <> $1 and m.id > gm.last_read_id and m.deleted_at is null`,
     [me.username],
   );
   const unread = Number(dm?.n ?? 0) + Number(grp?.n ?? 0);
@@ -2047,7 +2047,7 @@ export async function chatUnread() {
   const [d] = Number(dm?.n ?? 0)
     ? await db.query<Record<string, unknown>>(
         `select m.sender, s.name, m.body, m.created_at from chat_messages m join staff s on s.username = m.sender
-         where m.recipient = $1 and m.read_at is null order by m.id desc limit 1`,
+         where m.recipient = $1 and m.read_at is null and m.deleted_at is null order by m.id desc limit 1`,
         [me.username],
       )
     : [];
@@ -2058,7 +2058,7 @@ export async function chatUnread() {
          join chat_group_members gm on gm.group_id = m.group_id and gm.username = $1
          join chat_groups gr on gr.id = m.group_id
          join staff s on s.username = m.sender
-         where m.sender <> $1 and m.id > gm.last_read_id order by m.created_at desc, m.id desc limit 1`,
+         where m.sender <> $1 and m.id > gm.last_read_id and m.deleted_at is null order by m.created_at desc, m.id desc limit 1`,
         [me.username],
       )
     : [];
@@ -2081,7 +2081,7 @@ export async function chatMessages(data: { with: string }) {
   );
   const rows = await db.query<Record<string, unknown>>(
     `select * from (
-       select id, sender, body, created_at, read_at from chat_messages
+       select id, sender, body, created_at, read_at, deleted_at from chat_messages
        where (sender = $1 and recipient = $2) or (sender = $2 and recipient = $1)
        order by id desc limit 200
      ) t order by id asc`,
@@ -2090,7 +2090,8 @@ export async function chatMessages(data: { with: string }) {
   return rows.map((row) => ({
     id: Number(row.id),
     mine: String(row.sender) === me.username,
-    body: String(row.body ?? ""),
+    body: row.deleted_at ? "" : String(row.body ?? ""),
+    deleted: row.deleted_at != null,
     createdAt: new Date(String(row.created_at)).toISOString(),
     read: row.read_at != null,
   }));
@@ -2159,10 +2160,10 @@ export async function groupList() {
   const rows = await db.query<Record<string, unknown>>(
     `select g.id, g.nama, g.deskripsi,
             (select count(*)::int from chat_group_members x where x.group_id = g.id) as member_count,
-            (select m.body from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
+            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
             (select m.created_at from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_at,
             (select s.name from chat_group_messages m join staff s on s.username = m.sender where m.group_id = g.id order by m.id desc limit 1) as last_name,
-            (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.id > gm.last_read_id) as unread,
+            (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.deleted_at is null and m.id > gm.last_read_id) as unread,
             g.created_at
      from chat_groups g
      join chat_group_members gm on gm.group_id = g.id and gm.username = $1
@@ -2246,7 +2247,7 @@ export async function groupMessages(data: { id: number }) {
   await requireMember(db, data.id, me);
   const rows = await db.query<Record<string, unknown>>(
     `select * from (
-       select m.id, m.sender, s.name, m.body, m.created_at from chat_group_messages m join staff s on s.username = m.sender
+       select m.id, m.sender, s.name, m.body, m.created_at, m.deleted_at from chat_group_messages m join staff s on s.username = m.sender
        where m.group_id = $1 order by m.id desc limit 200
      ) t order by id asc`,
     [data.id],
@@ -2260,7 +2261,8 @@ export async function groupMessages(data: { id: number }) {
     id: Number(row.id),
     mine: String(row.sender) === me.username,
     name: String(row.name ?? ""),
-    body: String(row.body ?? ""),
+    body: row.deleted_at ? "" : String(row.body ?? ""),
+    deleted: row.deleted_at != null,
     createdAt: new Date(String(row.created_at)).toISOString(),
   }));
 }
@@ -2338,4 +2340,62 @@ export async function noteDelete(data: { groupId: number; id: number }) {
   }
   await db.query(`delete from chat_group_notes where id = $1 and group_id = $2`, [data.id, data.groupId]);
   return { ok: true };
+}
+
+
+/** Hapus pesan pribadi milik sendiri (isi pesan hilang untuk kedua pihak). */
+export async function chatDeleteMessage(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const rows = await db.query(
+    `update chat_messages set deleted_at = now() where id = $1 and sender = $2 and deleted_at is null returning id`,
+    [data.id, me.username],
+  );
+  if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
+  return { ok: true };
+}
+
+/** Hapus pesan grup: pengirim boleh menghapus pesannya sendiri; Admin/Owner anggota grup boleh menghapus pesan siapa saja. */
+export async function groupDeleteMessage(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const [msg] = await db.query<{ group_id: number; sender: string; deleted_at: string | null }>(
+    `select group_id, sender, deleted_at from chat_group_messages where id = $1`,
+    [data.id],
+  );
+  if (!msg || msg.deleted_at) throw new Error("Pesan tidak ditemukan.");
+  await requireMember(db, Number(msg.group_id), me);
+  if (msg.sender !== me.username && me.role !== "Admin" && me.role !== "Owner") {
+    throw new Error("Anda hanya bisa menghapus pesan Anda sendiri.");
+  }
+  await db.query(`update chat_group_messages set deleted_at = now() where id = $1`, [data.id]);
+  return { ok: true };
+}
+
+
+/** Hapus seluruh percakapan pribadi dengan satu staff (hilang untuk kedua pihak). */
+export async function chatClear(data: { with: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const other = String(data.with ?? "");
+  if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
+  const rows = await db.query(
+    `delete from chat_messages where (sender = $1 and recipient = $2) or (sender = $2 and recipient = $1) returning id`,
+    [me.username, other],
+  );
+  await audit(me, `Hapus semua chat pribadi dengan ${other} (${rows.length} pesan)`);
+  return { deleted: rows.length };
+}
+
+/** Hapus semua pesan chat di satu grup (catatan grup tidak ikut terhapus). Khusus Admin/Owner anggota grup. */
+export async function groupClearMessages(data: { id: number }) {
+  const me = await requireStaff();
+  assertManager(me);
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const rows = await db.query(`delete from chat_group_messages where group_id = $1 returning id`, [data.id]);
+  await db.query(`update chat_group_members set last_read_id = 0 where group_id = $1`, [data.id]);
+  const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [data.id]);
+  await audit(me, `Hapus semua chat grup ${String(g?.nama ?? data.id)} (${rows.length} pesan)`);
+  return { deleted: rows.length };
 }
