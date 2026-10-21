@@ -131,14 +131,14 @@ function ManualPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-extrabold">Nota Mutasi Barang (Masuk/Keluar)</h2>
-            <p className="mt-1 text-sm text-muted">Tambahkan beberapa barang, termasuk Masuk dan Keluar, lalu simpan sebagai satu nota.</p>
+            <p className="mt-1 text-sm text-slate-600">Tambahkan beberapa barang, termasuk Masuk dan Keluar, lalu simpan sebagai satu nota.</p>
           </div>
           <button className="h-11 rounded-lg border border-red-200 px-4 text-sm font-bold text-danger" onClick={resetAll}>Reset Form</button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <label className="text-sm text-muted">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
-          <label className="text-sm text-muted">Supplier / pelanggan / gudang<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={tujuan} onChange={(e) => setTujuan(e.target.value)} /></label>
-          <label className="text-sm text-muted">Keterangan<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={ket} onChange={(e) => setKet(e.target.value)} /></label>
+          <label className="text-sm text-slate-600">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
+          <label className="text-sm text-slate-600">Supplier / pelanggan / gudang<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={tujuan} onChange={(e) => setTujuan(e.target.value)} /></label>
+          <label className="text-sm text-slate-600">Keterangan<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={ket} onChange={(e) => setKet(e.target.value)} /></label>
         </div>
       </Panel>
 
@@ -149,7 +149,7 @@ function ManualPage() {
             <button type="button" onClick={() => pilihJenis("MASUK")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "MASUK" ? "border-emerald-600 bg-emerald-600 text-white" : "border-line bg-white text-slate-600"}`}>+ MASUK</button>
             <button type="button" onClick={() => pilihJenis("KELUAR")} className={`h-14 rounded-xl border-2 text-base font-extrabold ${jenis === "KELUAR" ? "border-red-600 bg-red-600 text-white" : "border-line bg-white text-slate-600"}`}>− KELUAR</button>
           </div>
-          <p className="mt-1 text-xs text-muted">Semua barang di nota ikut berjenis <b>{jenis === "MASUK" ? "Masuk" : "Keluar"}</b>. Kalau perlu campuran, klik tombol jenis di baris tertentu; baris itu tidak ikut berubah lagi.</p>
+          <p className="mt-1 text-xs text-slate-600">Semua barang di nota ikut berjenis <b>{jenis === "MASUK" ? "Masuk" : "Keluar"}</b>. Kalau perlu campuran, klik tombol jenis di baris tertentu; baris itu tidak ikut berubah lagi.</p>
           <input
             ref={searchRef}
             className="mt-3 h-12 w-full rounded-lg border border-line bg-white px-3 text-base outline-none focus:border-blue-500"
@@ -162,17 +162,17 @@ function ManualPage() {
               else if (e.key === "Enter" && hits[activeHit]) { e.preventDefault(); addItem(hits[activeHit], e.shiftKey); }
             }}
           />
-          <p className="mt-1 text-xs text-muted">Enter = tambah per Pcs · Shift+Enter = tambah per Dus.</p>
+          <p className="mt-1 text-xs text-slate-600">Enter = tambah per Pcs · Shift+Enter = tambah per Dus.</p>
           <div className="mt-3 max-h-[55vh] overflow-y-auto rounded-lg border border-line bg-white">
-            {!q.trim() ? <p className="px-3 py-6 text-center text-sm text-muted">Hasil pencarian muncul di sini.</p> : null}
-            {q.trim() && hits.length === 0 ? <p className="px-3 py-6 text-center text-sm text-muted">Barang tidak ditemukan.</p> : null}
+            {!q.trim() ? <p className="px-3 py-6 text-center text-sm text-slate-600">Hasil pencarian muncul di sini.</p> : null}
+            {q.trim() && hits.length === 0 ? <p className="px-3 py-6 text-center text-sm text-slate-600">Barang tidak ditemukan.</p> : null}
             {hits.map((item, index) => {
               const dusOk = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
               return (
-                <div key={item.id} className={`flex items-center gap-2 border-b border-line px-3 py-3 ${index === activeHit ? "bg-blue-50" : ""}`} onMouseEnter={() => setActiveHit(index)}>
+                <div key={item.id} className={`flex items-center gap-2 border-b border-slate-300 px-3 py-3 ${index === activeHit ? "bg-blue-100" : "bg-white"}`} onMouseEnter={() => setActiveHit(index)}>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold"><Mark text={item.nama} q={q} /></p>
-                    <p className="mt-0.5 text-xs text-muted">PN: {item.partNumber || item.kode || "-"} · Stok: {item.stok} {item.satuan}{dusOk ? ` · ${Math.floor(item.stok / item.isiSatuanAlt)} ${item.satuanAlt}` : ""}</p>
+                    <p className="text-sm font-bold text-slate-900"><Mark text={item.nama} q={q} />{item.merek ? <span className="ml-2 inline-block rounded-md bg-blue-100 px-1.5 py-0.5 align-middle text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span> : null}</p>
+                    <p className="mt-0.5 text-xs text-slate-600">PN: {item.partNumber || item.kode || "-"} · Stok: {item.stok} {item.satuan}{dusOk ? ` · ${Math.floor(item.stok / item.isiSatuanAlt)} ${item.satuanAlt}` : ""}</p>
                     <p className="num mt-0.5 text-xs font-bold text-emerald-700">{rupiah(hargaDefault(item, false))} / {item.satuan}{dusOk ? ` · ${rupiah(hargaDefault(item, true))} / ${item.satuanAlt}` : ""}</p>
                   </div>
                   <button type="button" className="h-11 rounded-lg bg-slate-800 px-4 text-sm font-bold text-white" onClick={() => addItem(item, false)}>+ Pcs</button>
@@ -186,22 +186,22 @@ function ManualPage() {
         <Panel>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-base font-extrabold">2. Isi Nota <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{items.length} baris</span>
-              {items.length ? <span className="ml-2 text-xs font-medium text-muted">{totalMasuk} masuk · {totalKeluar} keluar</span> : null}
+              {items.length ? <span className="ml-2 text-xs font-medium text-slate-600">{totalMasuk} masuk · {totalKeluar} keluar</span> : null}
             </h3>
             <button className="h-10 rounded-lg border border-line px-3 text-sm font-medium" onClick={() => setItems([])} disabled={!items.length}>Kosongkan Nota</button>
           </div>
           <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
             <table className="w-full min-w-[820px] text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
+              <thead className="sticky top-0 z-10 bg-slate-200 text-[11px] font-bold tracking-wide text-slate-900 uppercase">
                 <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2">Jenis</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga</th><th className="px-2 py-2 text-right">Stok setelah</th><th className="w-20"></th></tr>
               </thead>
               <tbody>
-                {items.length === 0 ? <tr><td colSpan={8} className="py-10 text-center text-muted">Nota masih kosong. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => {
+                {items.length === 0 ? <tr><td colSpan={8} className="py-10 text-center text-slate-600">Nota masih kosong. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => {
                   const after = stokSetelah(item.product);
                   const bad = item.jenis === "KELUAR" && after < 0;
                   return (
-                    <tr key={item.key} className={`border-t border-line ${bad ? "bg-red-50" : justAdded?.key === item.key ? "bg-yellow-50" : ""}`}>
-                      <td className="px-2 py-2 text-muted">{index + 1}</td>
+                    <tr key={item.key} className={`border-t border-slate-300 ${bad ? "bg-red-100" : justAdded?.key === item.key ? "bg-yellow-100" : "bg-white"}`}>
+                      <td className="px-2 py-2 text-slate-600">{index + 1}</td>
                       <td className="px-2 text-center">
                         <button
                           type="button"
@@ -210,7 +210,7 @@ function ManualPage() {
                           onClick={() => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, own: true, jenis: row.jenis === "MASUK" ? "KELUAR" : "MASUK" } : row)))}
                         >{item.jenis}</button>
                       </td>
-                      <td className="px-2 py-2"><b>{item.product.nama}</b><span className="block text-xs text-muted">{item.product.partNumber || item.product.kode} · Stok saat ini: {item.product.stok} {item.product.satuan}</span></td>
+                      <td className="px-2 py-2"><b className="text-slate-900">{item.product.nama}</b>{item.product.merek ? <span className="ml-2 inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800">{item.product.merek}</span> : null}<span className="block text-xs text-slate-600">{item.product.partNumber || item.product.kode} · Stok saat ini: {item.product.stok} {item.product.satuan}</span></td>
                       <td className="px-2 text-center">
                         {item.product.satuanAlt && item.product.isiSatuanAlt > 0 ? (
                           <select
@@ -237,7 +237,7 @@ function ManualPage() {
                           />
                           <button type="button" className="h-11 w-11 rounded-lg bg-slate-200 text-lg font-bold" onClick={() => setQty(item.key, item.qty + 1)}>+</button>
                         </div>
-                        {item.isAlt ? <p className="mt-0.5 text-center text-[11px] text-muted">= {item.qty * konvOf(item)} {item.product.satuan}</p> : null}
+                        {item.isAlt ? <p className="mt-0.5 text-center text-[11px] text-slate-600">= {item.qty * konvOf(item)} {item.product.satuan}</p> : null}
                       </td>
                       <td className="px-2 text-right">
                         {item.jenis === "KELUAR" ? (
@@ -251,9 +251,9 @@ function ManualPage() {
                               onFocus={(e) => e.target.select()}
                               onChange={(e) => setHarga(item.key, digits(e.target.value))}
                             />
-                            <p className="num mt-0.5 text-[11px] text-muted">= {rupiah(item.harga * item.qty)}</p>
+                            <p className="num mt-0.5 text-[11px] text-slate-600">= {rupiah(item.harga * item.qty)}</p>
                           </>
-                        ) : <span className="text-xs text-muted">-</span>}
+                        ) : <span className="text-xs text-slate-600">-</span>}
                       </td>
                       <td className={`num px-2 text-right font-semibold ${bad ? "text-red-600" : ""}`}>{after} {item.product.satuan}{bad ? <span className="block text-[11px]">Stok tidak cukup</span> : null}</td>
                       <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((row) => row.key !== item.key))}>Hapus</button></td>
@@ -264,7 +264,7 @@ function ManualPage() {
             </table>
           </div>
           {items.some((row) => row.jenis === "KELUAR") ? <p className="num mt-3 text-right text-sm font-bold">Total nilai barang keluar: {rupiah(items.filter((row) => row.jenis === "KELUAR").reduce((sum, row) => sum + row.harga * row.qty, 0))}</p> : null}
-          <p className="mt-3 text-xs text-muted">1 dus mengurangi atau menambah stok sebanyak isinya dalam Pcs. Harga hanya diisi untuk barang Keluar (otomatis dari harga jual, boleh diubah) dan ikut dihitung ke pajak. Nota tidak dicetak otomatis.</p>
+          <p className="mt-3 text-xs text-slate-600">1 dus mengurangi atau menambah stok sebanyak isinya dalam Pcs. Harga hanya diisi untuk barang Keluar (otomatis dari harga jual, boleh diubah) dan ikut dihitung ke pajak. Nota tidak dicetak otomatis.</p>
           {melebihi.length ? <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Ada barang keluar yang melebihi stok. Kurangi jumlahnya sebelum menyimpan.</p> : null}
           <PrimaryButton className="mt-4 h-14 w-full text-base" disabled={items.length === 0 || busy || melebihi.length > 0} onClick={() => void simpan()}>{busy ? "Menyimpan..." : `Simpan Nota (${items.length} baris)`}</PrimaryButton>
         </Panel>

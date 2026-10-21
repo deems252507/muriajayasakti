@@ -147,7 +147,7 @@ function BarangPage() {
                       ? kategori.join(", ")
                       : `${kategori.length} kategori dipilih`}
                 </span>
-                <span className="shrink-0 text-muted">▾</span>
+                <span className="shrink-0 text-slate-600">▾</span>
               </summary>
               <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
                 <div className="space-y-2 border-b border-line bg-white p-3">
@@ -208,7 +208,7 @@ function BarangPage() {
                       ...filtered.filter((item) => !selectedSet.has(item.toLowerCase())),
                     ];
                     if (ordered.length === 0) {
-                      return <p className="px-2 py-4 text-center text-xs text-muted">Tidak ada kategori cocok</p>;
+                      return <p className="px-2 py-4 text-center text-xs text-slate-600">Tidak ada kategori cocok</p>;
                     }
                     return ordered.map((item) => {
                       const checked = selectedSet.has(item.toLowerCase());
@@ -261,12 +261,12 @@ function BarangPage() {
           </div>
         </div>
         {canEdit ? (
-          <label className="mt-3 flex items-center gap-2 text-sm text-muted">
+          <label className="mt-3 flex items-center gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={replaceStock} onChange={(e) => setReplaceStock(e.target.checked)} />
             Saat impor, timpa stok dengan angka STOK di file
           </label>
         ) : null}
-        <p className="mt-2 text-xs text-muted">
+        <p className="mt-2 text-xs text-slate-600">
           File Google Sheet: kolom KODE SPAREPART, NAMA SPAREPART, JENIS BARANG, STOK, HARGA.
           Contoh nama `101486 / ACTUATOR IDLE SPEED AVANZA, XENIA - DAIHATSU (G)` dibaca sebagai kode pajak 101486, nama barang, merek DAIHATSU (G). Part number tetap 89690-BZ010-001. Kode SP- untuk barcode dibuat otomatis.
         </p>
@@ -274,7 +274,7 @@ function BarangPage() {
       <Panel className="overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold tracking-wide text-slate-700 uppercase shadow-[0_1px_0_#0f172a]">
+          <thead className="sticky top-0 z-10 bg-slate-200 text-[11px] font-bold tracking-wide text-slate-900 uppercase shadow-[0_1px_0_#0f172a]">
             <tr>
               <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
               <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
@@ -297,26 +297,26 @@ function BarangPage() {
               previousCategory = category;
               return (
                 <Fragment key={`group-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
-              <tr key={item.id} className="cursor-pointer border-t border-line" title="Klik baris untuk membuka detail dan ubah sparepart" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
+                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
+              <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk membuka detail dan ubah sparepart" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
                 <td className="py-3 pr-3">
-                  <div className="font-medium">
+                  <div className="font-semibold text-slate-900">
                     <Mark text={item.nama} q={q} />
                     {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
                   </div>
-                  {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
+                  {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
                 </td>
                 <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
                 <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
                 <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
-                <td className={`num text-center font-semibold ${status === "HABIS" ? "text-danger" : status === "KRITIS" ? "text-warn" : ""}`}>
+                <td className={`num text-center font-semibold ${status === "HABIS" ? "text-red-700" : status === "KRITIS" ? "text-amber-700" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>
-                  {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-muted">Pcs saja</div>}
+                  {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-slate-600">Pcs saja</div>}
                 </td>
                 <td className="num px-3 text-right">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
                 <td className="text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
                 <td className="text-center">
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status === "HABIS" ? "bg-red-50 text-danger" : status === "KRITIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}>{status}</span>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status === "HABIS" ? "bg-red-100 text-red-700" : status === "KRITIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{status}</span>
                 </td>
                 <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
                   <div className="inline-flex items-center justify-center gap-1">
@@ -343,7 +343,7 @@ function BarangPage() {
           </tbody>
         </table>
         <div className="mt-3 flex items-center justify-between text-sm">
-          <span className="text-muted">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
+          <span className="text-slate-600">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
           <div className="flex items-center gap-2">
             <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button>
             <span className="grid place-items-center text-sm">Hal {page} / {pages}</span>
@@ -395,7 +395,7 @@ function BarangPage() {
                 <button type="button" className={`h-11 rounded-lg text-sm font-bold ${!useDus ? "bg-slate-900 text-white" : "bg-slate-100"}`} onClick={() => setUseDus(false)}>Pcs saja</button>
                 <button type="button" className={`h-11 rounded-lg text-sm font-bold ${useDus ? "bg-blue-700 text-white" : "bg-slate-100"}`} onClick={() => { setUseDus(true); setForm((prev) => ({ ...prev, satuanAlt: prev.satuanAlt || "Dus" })); }}>Ada Dus</button>
               </div>
-              {!useDus ? <p className="mt-2 text-xs text-muted">Barang ini hanya dijual per pcs. Stok yang diisi adalah jumlah pcs.</p> : (
+              {!useDus ? <p className="mt-2 text-xs text-slate-600">Barang ini hanya dijual per pcs. Stok yang diisi adalah jumlah pcs.</p> : (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Field label="Nama satuan"><input className={inputClass} value={form.satuanAlt} onChange={(e) => setForm({ ...form, satuanAlt: e.target.value })} placeholder="Dus" /></Field>
                   <Field label="Isi 1 dus (berapa pcs)"><input className={`${inputClass} num`} value={form.isiSatuanAlt || ""} onChange={(e) => setForm({ ...form, isiSatuanAlt: Number(e.target.value) || 0 })} placeholder="12" /></Field>

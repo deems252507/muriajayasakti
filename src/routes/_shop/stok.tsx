@@ -40,7 +40,7 @@ function StokPage() {
                   ? kategori.join(", ")
                   : `${kategori.length} kategori dipilih`}
             </span>
-            <span className="shrink-0 text-muted">▾</span>
+            <span className="shrink-0 text-slate-600">▾</span>
           </summary>
           <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
             <div className="space-y-2 border-b border-line bg-white p-3">
@@ -99,7 +99,7 @@ function StokPage() {
                   ...filtered.filter((item) => !selectedSet.has(item.toLowerCase())),
                 ];
                 if (ordered.length === 0) {
-                  return <p className="px-2 py-4 text-center text-xs text-muted">Tidak ada kategori cocok</p>;
+                  return <p className="px-2 py-4 text-center text-xs text-slate-600">Tidak ada kategori cocok</p>;
                 }
                 return ordered.map((item) => {
                   const checked = selectedSet.has(item.toLowerCase());
@@ -166,7 +166,7 @@ function StokPage() {
       <div className="mt-3 overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-bold tracking-wide text-slate-700 uppercase shadow-[0_1px_0_#0f172a]">
+          <thead className="sticky top-0 z-10 bg-slate-200 text-[11px] font-bold tracking-wide text-slate-900 uppercase shadow-[0_1px_0_#0f172a]">
             <tr>
               <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
               <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
@@ -180,7 +180,7 @@ function StokPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-muted">Tidak ada barang pada filter yang dipilih.</td></tr> : null}
+            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-slate-600">Tidak ada barang pada filter yang dipilih.</td></tr> : null}
             {(() => {
               let previousCategory = "";
               return data?.items.map((item) => {
@@ -190,14 +190,14 @@ function StokPage() {
               previousCategory = category;
               return (
                 <Fragment key={`stock-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-line bg-slate-100 px-2 py-2 text-xs font-extrabold tracking-wide text-slate-700">{category.toUpperCase()}</td></tr> : null}
-                <tr key={item.id} className="cursor-pointer border-t border-line" title="Klik baris untuk melihat detail stok" onClick={() => setDetail(item)}>
+                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
+                <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk melihat detail stok" onClick={() => setDetail(item)}>
                   <td className="px-3 py-3">
-                    <div className="font-medium">
+                    <div className="font-semibold text-slate-900">
                       <Mark text={item.nama} q={q} />
                       {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
                     </div>
-                    {item.merek ? <div className="text-[11px] text-muted"><Mark text={item.merek} q={q} /></div> : null}
+                    {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
                   </td>
                   <td className="px-3 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
                   <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
@@ -211,7 +211,7 @@ function StokPage() {
                   <td className="px-3 text-center">
                     <button
                       type="button"
-                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok"}`}
+                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-100 text-red-700" : label === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
                       onClick={(event) => { event.stopPropagation(); setDetail(item); }}
                     >
                       {label}
@@ -231,7 +231,7 @@ function StokPage() {
         </table>
       </div>
       <div className="mt-3 flex items-center justify-between text-sm">
-        <span className="text-muted">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
+        <span className="text-slate-600">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
         <div className="flex items-center gap-2">
           <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button>
           <span>Hal: {page}/{pages}</span>
@@ -253,14 +253,14 @@ function StockDetail({ item, onClose }: { item: Product; onClose: () => void }) 
   const label = stockLabel(item);
   const dus = item.satuanAlt && item.isiSatuanAlt > 0 ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
   const sisa = item.satuanAlt && item.isiSatuanAlt > 0 ? item.stok % item.isiSatuanAlt : 0;
-  const tone = label === "HABIS" ? "bg-red-50 text-danger" : label === "MENIPIS" ? "bg-amber-50 text-warn" : "bg-emerald-50 text-ok";
+  const tone = label === "HABIS" ? "bg-red-100 text-red-700" : label === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800";
   return (
     <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-panel p-4 sm:max-w-xl sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Detail sparepart</h2>
-            <p className="text-sm text-muted">Informasi barang dan kondisi stok laporan</p>
+            <p className="text-sm text-slate-600">Informasi barang dan kondisi stok laporan</p>
           </div>
           <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${tone}`}>{label}</span>
         </div>
@@ -282,13 +282,13 @@ function StockDetail({ item, onClose }: { item: Product; onClose: () => void }) 
         </div>
         <div className="mt-4 rounded-xl border border-line bg-slate-50 p-3 text-sm">
           <p className="font-semibold">Status di laporan ini</p>
-          <ul className="mt-2 space-y-1 text-muted">
-            <li className={label === "HABIS" ? "font-bold text-danger" : ""}>Habis — stok akhir 0</li>
-            <li className={label === "MENIPIS" ? "font-bold text-warn" : ""}>Menipis — stok akhir menyentuh atau di bawah stok minimum</li>
-            <li className={label === "AMAN" ? "font-bold text-ok" : ""}>Aman — stok akhir di atas stok minimum</li>
+          <ul className="mt-2 space-y-1 text-slate-600">
+            <li className={label === "HABIS" ? "font-bold text-red-700" : ""}>Habis — stok akhir 0</li>
+            <li className={label === "MENIPIS" ? "font-bold text-amber-700" : ""}>Menipis — stok akhir menyentuh atau di bawah stok minimum</li>
+            <li className={label === "AMAN" ? "font-bold text-emerald-700" : ""}>Aman — stok akhir di atas stok minimum</li>
           </ul>
         </div>
-        {item.keterangan ? <p className="mt-3 text-sm text-muted">{item.keterangan}</p> : null}
+        {item.keterangan ? <p className="mt-3 text-sm text-slate-600">{item.keterangan}</p> : null}
         <div className="mt-4 flex justify-end">
           <button type="button" className="h-11 rounded-lg border border-line px-4 text-sm font-semibold" onClick={onClose}>Tutup</button>
         </div>
@@ -300,7 +300,7 @@ function StockDetail({ item, onClose }: { item: Product; onClose: () => void }) 
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-line px-3 py-2">
-      <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-600">{label}</div>
       <div className="mt-1 text-sm font-medium">{value}</div>
     </div>
   );
