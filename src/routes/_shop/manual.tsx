@@ -172,6 +172,7 @@ function ManualPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold"><Mark text={item.nama} q={q} /></p>
                     <p className="mt-0.5 text-xs text-muted">PN: {item.partNumber || item.kode || "-"} · Stok: {item.stok} {item.satuan}{dusOk ? ` · ${Math.floor(item.stok / item.isiSatuanAlt)} ${item.satuanAlt}` : ""}</p>
+                    <p className="num mt-0.5 text-xs font-bold text-emerald-700">{rupiah(hargaDefault(item, false))} / {item.satuan}{dusOk ? ` · ${rupiah(hargaDefault(item, true))} / ${item.satuanAlt}` : ""}</p>
                   </div>
                   <button type="button" className="h-11 rounded-lg bg-slate-800 px-4 text-sm font-bold text-white" onClick={() => addItem(item, false)}>+ Pcs</button>
                   <button type="button" className="h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-30" disabled={!dusOk} onClick={() => addItem(item, true)}>+ {item.satuanAlt || "Dus"}</button>

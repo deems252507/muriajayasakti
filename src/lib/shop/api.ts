@@ -400,7 +400,24 @@ export const listSoldItems = createServerFn({ method: "GET" })
   }))
   .handler(async ({ data }) => {
     const { listSoldItems: run } = await import("./logic.server");
-    return run(data) as Promise<{ items: Array<Record<string, string | number>>; days: Array<Record<string, string | number>> }>;
+    return run(data) as Promise<{ items: Array<Record<string, string | number>>; days: Array<Record<string, string | number>>; summary: Record<string, string | number> }>;
+  });
+
+export type SalesNote = {
+  nomor: string; tanggal: string; source: string; kasir: string; tujuan: string; metode_bayar: string; status_bayar: string; total: number; diskon: number;
+  lines: Array<{ jenis: string; jumlah: number; satuan: string; harga_satuan: number; nama: string; part_number: string }>;
+};
+
+export const listSalesNotes = createServerFn({ method: "GET" })
+  .validator((input: { start?: string; end?: string; source?: string; q?: string }) => ({
+    start: String(input?.start ?? ""),
+    end: String(input?.end ?? ""),
+    source: String(input?.source ?? "Kasir"),
+    q: String(input?.q ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { listSalesNotes: run } = await import("./logic.server");
+    return run(data) as Promise<SalesNote[]>;
   });
 
 export const shiftLedger = createServerFn({ method: "GET" })

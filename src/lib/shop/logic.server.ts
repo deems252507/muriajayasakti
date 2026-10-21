@@ -1462,6 +1462,59 @@ export async function listHistoryLines(data: any) {
   }));
 }
 
+export async function listSalesNotes(data: any) {
+  await requireStaff();
+  const db = await sql();
+  const src = data.source === "Manual" ? ["Manual"] : data.source === "Semua" ? ["Kasir", "Manual"] : ["Kasir"];
+  const params: unknown[] = [src];
+  const where = [`i.source = any($1::text[])`];
+  if (data.start) {
+    params.push(data.start);
+    where.push(`i.tanggal >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.end) {
+    params.push(data.end);
+    where.push(`i.tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.q) {
+    params.push(`%${data.q}%`);
+    where.push(`(i.nomor ilike $${params.length} or i.tujuan ilike $${params.length} or i.kasir ilike $${params.length} or exists (select 1 from invoice_lines lq left join products pq on pq.id = lq.product_id where lq.invoice_id = i.id and (coalesce(nullif(lq.custom_item, ''), pq.nama, '') ilike $${params.length} or coalesce(pq.part_number, '') ilike $${params.length})))`);
+  }
+  const notes = await db.query<Record<string, unknown>>(
+    `select i.id, i.nomor, i.tanggal, i.source, i.kasir, i.tujuan, i.metode_bayar, i.status_bayar, i.total, i.diskon
+     from invoices i where ${where.join(" and ")} order by i.tanggal asc limit 2000`,
+    params,
+  );
+  const ids = notes.map((n) => Number(n.id));
+  const lines = ids.length
+    ? await db.query<Record<string, unknown>>(
+        `select l.invoice_id, l.jenis, l.jumlah, l.satuan, l.harga_satuan,
+                coalesce(nullif(l.custom_item, ''), p.nama, 'Barang') as nama,
+                coalesce(p.part_number, '') as part_number
+         from invoice_lines l left join products p on p.id = l.product_id
+         where l.invoice_id = any($1::bigint[]) order by l.id`,
+        [ids],
+      )
+    : [];
+  const byInv = new Map<number, Array<Record<string, unknown>>>();
+  for (const l of lines) {
+    const key = Number(l.invoice_id);
+    byInv.set(key, [...(byInv.get(key) ?? []), { jenis: String(l.jenis ?? ""), jumlah: Number(l.jumlah ?? 0), satuan: String(l.satuan ?? ""), harga_satuan: Number(l.harga_satuan ?? 0), nama: String(l.nama ?? ""), part_number: String(l.part_number ?? "") }]);
+  }
+  return notes.map((n) => ({
+    nomor: String(n.nomor ?? ""),
+    tanggal: n.tanggal ? new Date(String(n.tanggal)).toISOString() : "",
+    source: String(n.source ?? ""),
+    kasir: String(n.kasir ?? ""),
+    tujuan: String(n.tujuan ?? ""),
+    metode_bayar: String(n.metode_bayar ?? ""),
+    status_bayar: String(n.status_bayar ?? ""),
+    total: Number(n.total ?? 0),
+    diskon: Number(n.diskon ?? 0),
+    lines: byInv.get(Number(n.id)) ?? [],
+  }));
+}
+
 export async function listSoldItems(data: any) {
   await requireStaff();
   const db = await sql();
@@ -1509,7 +1562,30 @@ export async function listSoldItems(data: any) {
     params,
   );
   const map = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === "string" || v == null ? (v ?? "") : Number(v)]));
-  return { items: items.map(map), days: days.map(map) };
+  const dateWhere: string[] = [`source = 'Kasir'`];
+  const dateParams: unknown[] = [];
+  if (data.start) {
+    dateParams.push(data.start);
+    dateWhere.push(`tanggal >= ($${dateParams.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.end) {
+    dateParams.push(data.end);
+    dateWhere.push(`tanggal < (($${dateParams.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
+  const [sum] = await db.query<Record<string, unknown>>(
+    `select count(*)::int as nota,
+            coalesce(sum(total), 0)::bigint as omzet,
+            coalesce(sum(diskon), 0)::bigint as diskon,
+            coalesce(sum(case when status_bayar = 'Lunas' and metode_bayar = 'Tunai' then total else 0 end), 0)::bigint as tunai,
+            coalesce(sum(case
+              when status_bayar = 'Lunas' and metode_bayar = 'Transfer' then total
+              when status_bayar = 'Lunas' and metode_bayar = 'Split' then transfer_amount
+              else 0 end), 0)::bigint as transfer,
+            coalesce(sum(case when status_bayar = 'Bon' then total else 0 end), 0)::bigint as bon
+     from invoices where ${dateWhere.join(" and ")}`,
+    dateParams,
+  );
+  return { items: items.map(map), days: days.map(map), summary: map(sum ?? {}) };
 }
 
 export async function listBon(data: any): Promise<any> {

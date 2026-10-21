@@ -648,3 +648,47 @@ export function printSupplierReceiptReport(rows: Array<{
     true,
   );
 }
+
+
+export function printSalesReport(
+  notes: Array<{ nomor: string; tanggal: string; source: string; kasir: string; tujuan: string; metode_bayar: string; status_bayar: string; total: number; diskon: number; lines: Array<{ jenis: string; jumlah: number; satuan: string; harga_satuan: number; nama: string; part_number: string }> }>,
+  summary: Record<string, string | number>,
+  start: string,
+  end: string,
+  sumberLabel: string,
+) {
+  const rp = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+  const num = (value: unknown) => Number(value || 0).toLocaleString("id-ID");
+  const periode = start && end && start !== end ? `${start} s/d ${end}` : start || end || "Semua tanggal";
+  const waktu = (iso: string) => (iso ? new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-");
+  const totalQty = notes.reduce((sum, n) => sum + n.lines.filter((l) => l.jenis === "KELUAR").reduce((s, l) => s + l.jumlah, 0), 0);
+  const body = notes
+    .map((n) => {
+      const rows = n.lines
+        .map((l, i) => `<tr><td class="center">${i + 1}</td><td>${esc(l.nama)}${l.part_number ? `<br><span style="color:#555">PN: ${esc(l.part_number)}</span>` : ""}</td><td class="right">${num(l.jumlah)} ${esc(l.satuan)}</td><td class="right">${rp(l.harga_satuan)}</td><td class="right">${rp(l.harga_satuan * l.jumlah)}</td></tr>`)
+        .join("");
+      const status = n.status_bayar === "Bon" ? '<span class="bon">BON</span>' : "";
+      return `<table style="margin-top:10px">
+        <tr class="invoice-head"><td colspan="5"><b>${esc(n.nomor)}</b> · ${esc(waktu(n.tanggal))} · ${esc(n.source)}<br>Kasir: ${esc(n.kasir || "-")} · Pelanggan: ${esc(n.tujuan || "Umum")} · Bayar: ${esc(n.metode_bayar || "-")} ${status}</td></tr>
+        <tr><th class="center" style="width:28px">No</th><th>Barang</th><th class="right">Qty</th><th class="right">Harga</th><th class="right">Subtotal</th></tr>
+        ${rows}
+        ${n.diskon > 0 ? `<tr><td colspan="4" class="right">Diskon</td><td class="right">- ${rp(n.diskon)}</td></tr>` : ""}
+        <tr class="invoice-total"><td colspan="4" class="right">TOTAL NOTA</td><td class="right">${rp(n.total)}</td></tr>
+      </table>`;
+    })
+    .join("");
+  openPrint(
+    "Laporan Penjualan",
+    `<h2>LAPORAN PENJUALAN PER NOTA</h2>
+    <div class="info"><div>Periode: <b>${esc(periode)}</b><br>Sumber: ${esc(sumberLabel)}</div><div style="text-align:right">Jumlah nota: <b>${num(notes.length)}</b><br>Total barang keluar: <b>${num(totalQty)}</b></div></div>
+    <div class="sum">
+      <div><span>Total Penjualan (Kasir)</span><b>${rp(summary.omzet)}</b></div>
+      <div><span>Tunai</span><span>${rp(summary.tunai)}</span></div>
+      <div><span>Transfer / QRIS</span><span>${rp(summary.transfer)}</span></div>
+      <div><span>Bon (belum dibayar)</span><span>${rp(summary.bon)}</span></div>
+      <div><span>Diskon</span><span>${rp(summary.diskon)}</span></div>
+    </div>
+    ${body || '<p class="center">Tidak ada transaksi pada periode ini.</p>'}
+    <p style="font-size:9px;color:#555">Catatan: retur/tukar belum dikurangkan. Nilai barang = harga satuan × jumlah.</p>`,
+  );
+}
