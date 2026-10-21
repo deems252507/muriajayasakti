@@ -6,7 +6,6 @@ import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { editManual, editSale, getInvoice, listBon, payoffBon, removeInvoice } from "@/lib/shop/api";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PeriodPicker } from "@/components/shop/period";
-import { ShareToChat, type ShareRef } from "@/components/shop/chat-share";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printDebtReport, printStoredSale } from "@/lib/shop/print";
 
@@ -23,7 +22,6 @@ function BonPage() {
   const [end, setEnd] = usePersistedState("bon:end", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [edit, setEdit] = useState<EditState | null>(null);
-  const [share, setShare] = useState<ShareRef | null>(null);
 
   function closeEdit() { setEdit(null); }
 
@@ -83,7 +81,6 @@ function BonPage() {
                     <p className="text-xs text-muted">{when(String(inv.tanggal))} · {rupiah(Number(inv.total))}{inv.status_bayar === "Bon" && Number(inv.total) <= 0 ? " · harga belum diisi" : ""}{inv.status_bayar === "Lunas" && inv.tanggal_lunas ? ` · Lunas ${when(String(inv.tanggal_lunas))}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => setShare({ type: "bon", id: String(inv.tujuan || "Umum"), label: `Bon ${String(inv.tujuan || "Umum")} · ${String(inv.nomor)} · ${rupiah(Number(inv.total))}` })}>Bagikan</button>
                     <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => {
                       void getInvoice({ data: { nomor: String(inv.nomor) } }).then((res) => {
                         if (!res) return toast.error("Nota tidak ditemukan");
@@ -170,7 +167,6 @@ function BonPage() {
         </div>
         );
       })() : null}
-      {share ? <ShareToChat data={share} onClose={() => setShare(null)} /> : null}
     </div>
   );
 }

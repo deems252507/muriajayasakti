@@ -1998,7 +1998,7 @@ export async function chatContacts() {
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo,
-            (select case when m.deleted_at is not null then 'Pesan dihapus' when coalesce(m.body, '') = '' and m.att_name is not null then (case when m.att_type like 'image/%' then 'Foto' else 'File' end) when coalesce(m.body, '') = '' and m.ref_type is not null then 'Data: ' || coalesce(m.ref_label, '') else m.body end from chat_messages m
+            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_messages m
               where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
               order by m.id desc limit 1) as last_body,
             (select m.created_at from chat_messages m
@@ -2046,14 +2046,14 @@ export async function chatUnread() {
   if (!unread) return { unread, latest: null as Latest | null };
   const [d] = Number(dm?.n ?? 0)
     ? await db.query<Record<string, unknown>>(
-        `select m.sender, s.name, case when m.deleted_at is not null then 'Pesan dihapus' when coalesce(m.body, '') = '' and m.att_name is not null then (case when m.att_type like 'image/%' then 'Foto' else 'File' end) when coalesce(m.body, '') = '' and m.ref_type is not null then 'Data: ' || coalesce(m.ref_label, '') else m.body end as body, m.created_at from chat_messages m join staff s on s.username = m.sender
+        `select m.sender, s.name, m.body, m.created_at from chat_messages m join staff s on s.username = m.sender
          where m.recipient = $1 and m.read_at is null and m.deleted_at is null order by m.id desc limit 1`,
         [me.username],
       )
     : [];
   const [g] = Number(grp?.n ?? 0)
     ? await db.query<Record<string, unknown>>(
-        `select m.group_id, gr.nama as group_name, s.name, case when m.deleted_at is not null then 'Pesan dihapus' when coalesce(m.body, '') = '' and m.att_name is not null then (case when m.att_type like 'image/%' then 'Foto' else 'File' end) when coalesce(m.body, '') = '' and m.ref_type is not null then 'Data: ' || coalesce(m.ref_label, '') else m.body end as body, m.created_at
+        `select m.group_id, gr.nama as group_name, s.name, m.body, m.created_at
          from chat_group_messages m
          join chat_group_members gm on gm.group_id = m.group_id and gm.username = $1
          join chat_groups gr on gr.id = m.group_id
@@ -2069,347 +2069,49 @@ export async function chatUnread() {
   return { unread, latest: cand[0] ?? null };
 }
 
-
-// ---- Inti chat: satu kode untuk chat pribadi (scope "dm") dan chat grup (scope "g") ----
-
-type ChatScope = "dm" | "g";
-type Db = Awaited<ReturnType<typeof sql>>;
-
-const MAX_ATT_B64 = 2_900_000; // sekitar 2 MB file asli
-const ATT_OK = /^(image\/(jpeg|png|webp|gif)|application\/pdf|text\/(plain|csv)|application\/(msword|vnd\.ms-excel|vnd\.ms-powerpoint|zip)|application\/vnd\.openxmlformats-officedocument\.[a-z.]+)$/;
-const REF_TYPES = new Set(["transaksi", "barang", "bon"]);
-const EMOJIS = new Set(["👍", "❤️", "😂", "😮", "🙏", "✅"]);
-
-function tableOf(scope: ChatScope) { return scope === "dm" ? "chat_messages" : "chat_group_messages"; }
-
-function snippet(body: string, deleted: boolean, att: string | null, attType: string | null) {
-  if (deleted) return "Pesan dihapus";
-  const text = String(body ?? "").replace(/\s+/g, " ").trim();
-  if (text) return text.length > 140 ? `${text.slice(0, 140)}…` : text;
-  if (att) return String(attType ?? "").startsWith("image/") ? "Foto" : "File";
-  return "";
-}
-
-/** Pastikan saya boleh mengakses pesan ini. Kembalikan barisnya. */
-async function accessMessage(db: Db, scope: ChatScope, id: number, me: Staff) {
-  const msgId = Number(id);
-  if (!Number.isInteger(msgId) || msgId <= 0) throw new Error("Pesan tidak ditemukan.");
-  if (scope === "dm") {
-    const [row] = await db.query<Record<string, unknown>>(`select id, sender, recipient, body, att_name, deleted_at from chat_messages where id = $1`, [msgId]);
-    if (!row || (String(row.sender) !== me.username && String(row.recipient) !== me.username)) throw new Error("Pesan tidak ditemukan.");
-    return row;
-  }
-  const [row] = await db.query<Record<string, unknown>>(`select id, group_id, sender, body, att_name, deleted_at from chat_group_messages where id = $1`, [msgId]);
-  if (!row) throw new Error("Pesan tidak ditemukan.");
-  await requireMember(db, Number(row.group_id), me);
-  return row;
-}
-
-function cleanAttachment(att: { name: string; type: string; data: string } | null | undefined) {
-  if (!att || !att.data) return null;
-  const type = String(att.type ?? "").toLowerCase();
-  const data = String(att.data).replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
-  if (!ATT_OK.test(type)) throw new Error("Jenis file tidak didukung. Pakai foto, PDF, Word, Excel, atau teks.");
-  if (!/^[A-Za-z0-9+/=]+$/.test(data)) throw new Error("File rusak. Pilih ulang.");
-  if (data.length > MAX_ATT_B64) throw new Error("File terlalu besar (maksimal 2 MB).");
-  const name = String(att.name ?? "file").replace(/[\\/\r\n]/g, "_").trim().slice(0, 120) || "file";
-  return { name, type, data, size: Math.floor((data.length * 3) / 4) };
-}
-
-type SendInput = {
-  body: string;
-  replyTo?: number | null;
-  ref?: { type: string; id: string; label: string } | null;
-  att?: { name: string; type: string; data: string } | null;
-  mentions?: string[];
-};
-
-/** Validasi isi kiriman (teks / lampiran / data toko / balasan) dan kembalikan nilai siap simpan. */
-async function prepareSend(db: Db, scope: ChatScope, scopeKey: string | number, input: SendInput) {
-  const body = String(input.body ?? "").trim();
-  if (body.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
-  const att = cleanAttachment(input.att);
-  let ref: { type: string; id: string; label: string } | null = null;
-  if (input.ref && REF_TYPES.has(String(input.ref.type))) {
-    ref = { type: String(input.ref.type), id: String(input.ref.id ?? "").slice(0, 200), label: String(input.ref.label ?? "").slice(0, 200) };
-    if (!ref.id) ref = null;
-  }
-  if (!body && !att && !ref) throw new Error("Pesan kosong.");
-  let replyTo: number | null = null;
-  if (input.replyTo) {
-    const rid = Number(input.replyTo);
-    const rows = scope === "dm"
-      ? await db.query(`select 1 from chat_messages where id = $1 and ((sender = $2 and recipient = $3) or (sender = $3 and recipient = $2))`, [rid, ...(scopeKey as string).split("\u0000")])
-      : await db.query(`select 1 from chat_group_messages where id = $1 and group_id = $2`, [rid, scopeKey]);
-    if (rows.length) replyTo = rid;
-  }
-  return { body, att, ref, replyTo };
-}
-
-export async function chatSend(data: { to: string } & SendInput) {
+/** Percakapan dengan satu staff (200 pesan terakhir). Pesan masuk otomatis ditandai terbaca. */
+export async function chatMessages(data: { with: string }) {
   const me = await requireStaff();
   const db = await sql();
-  const to = String(data.to ?? "");
-  if (!to || to === me.username) throw new Error("Pilih staff lawan bicara.");
-  const target = await db.query(`select 1 from staff where username = $1 and status = 'Aktif'`, [to]);
-  if (!target.length) throw new Error("Staff tujuan tidak ditemukan atau tidak aktif.");
-  const v = await prepareSend(db, "dm", `${me.username}\u0000${to}`, data);
-  const [row] = await db.query<{ id: number }>(
-    `insert into chat_messages (sender, recipient, body, reply_to, att_name, att_type, att_size, att_data, ref_type, ref_id, ref_label)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-    [me.username, to, v.body, v.replyTo, v.att?.name ?? null, v.att?.type ?? null, v.att?.size ?? null, v.att?.data ?? null, v.ref?.type ?? null, v.ref?.id ?? null, v.ref?.label ?? null],
+  const other = String(data.with ?? "");
+  if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
+  await db.query(
+    `update chat_messages set read_at = now() where sender = $1 and recipient = $2 and read_at is null`,
+    [other, me.username],
   );
-  return { id: Number(row?.id ?? 0) };
-}
-
-export async function groupSend(data: { id: number } & SendInput) {
-  const me = await requireStaff();
-  const db = await sql();
-  await requireMember(db, data.id, me);
-  const v = await prepareSend(db, "g", data.id, data);
-  const wanted = [...new Set((data.mentions ?? []).map(String))].slice(0, 20);
-  const mentions = wanted.length
-    ? (await db.query<{ username: string }>(`select username from chat_group_members where group_id = $1 and username = any($2::text[]) and username <> $3`, [data.id, wanted, me.username])).map((r) => String(r.username))
-    : [];
-  const [row] = await db.query<{ id: number }>(
-    `insert into chat_group_messages (group_id, sender, body, reply_to, att_name, att_type, att_size, att_data, ref_type, ref_id, ref_label, mentions)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
-    [data.id, me.username, v.body, v.replyTo, v.att?.name ?? null, v.att?.type ?? null, v.att?.size ?? null, v.att?.data ?? null, v.ref?.type ?? null, v.ref?.id ?? null, v.ref?.label ?? null, mentions.length ? mentions : null],
+  const rows = await db.query<Record<string, unknown>>(
+    `select * from (
+       select id, sender, body, created_at, read_at, deleted_at from chat_messages
+       where (sender = $1 and recipient = $2) or (sender = $2 and recipient = $1)
+       order by id desc limit 200
+     ) t order by id asc`,
+    [me.username, other],
   );
-  return { id: Number(row?.id ?? 0) };
-}
-
-type ThreadQuery = { limit?: number; fromId?: number };
-
-/** Ambil pesan satu percakapan beserta balasan, reaksi, sematan, status baca. */
-async function threadPage(scope: ChatScope, key: { other?: string; groupId?: number }, q: ThreadQuery) {
-  const me = await requireStaff();
-  const db = await sql();
-  const limit = Math.min(Math.max(Math.floor(Number(q.limit) || 60), 20), 1000);
-  const fromId = Math.max(0, Math.floor(Number(q.fromId) || 0));
-  const table = tableOf(scope);
-
-  let cond: string;
-  let base: unknown[];
-  let firstUnreadId = 0;
-  let memberRows: Array<{ username: string; name: string; last_read_id: number }> = [];
-
-  if (scope === "dm") {
-    const other = String(key.other ?? "");
-    if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
-    const [fu] = await db.query<{ id: number | null }>(
-      `select min(id) as id from chat_messages where sender = $1 and recipient = $2 and read_at is null and deleted_at is null`, [other, me.username]);
-    firstUnreadId = Number(fu?.id ?? 0);
-    await db.query(`update chat_messages set read_at = now() where sender = $1 and recipient = $2 and read_at is null`, [other, me.username]);
-    cond = `((m.sender = $1 and m.recipient = $2) or (m.sender = $2 and m.recipient = $1))`;
-    base = [me.username, other];
-  } else {
-    const gid = Number(key.groupId);
-    await requireMember(db, gid, me);
-    const [mine] = await db.query<{ last_read_id: number }>(`select last_read_id from chat_group_members where group_id = $1 and username = $2`, [gid, me.username]);
-    const [fu] = await db.query<{ id: number | null }>(
-      `select min(id) as id from chat_group_messages where group_id = $1 and id > $2 and sender <> $3 and deleted_at is null`, [gid, Number(mine?.last_read_id ?? 0), me.username]);
-    firstUnreadId = Number(fu?.id ?? 0);
-    cond = `m.group_id = $1`;
-    base = [gid];
-    memberRows = await db.query<{ username: string; name: string; last_read_id: number }>(
-      `select gm.username, s.name, gm.last_read_id from chat_group_members gm join staff s on s.username = gm.username where gm.group_id = $1`, [gid]);
-  }
-
-  const cols = `m.id, m.sender, s.name as sender_name, m.body, m.created_at, ${scope === "dm" ? "m.read_at" : "null::timestamptz as read_at"}, m.deleted_at, m.edited_at, m.pinned_at,
-    m.att_name, m.att_type, m.att_size, m.ref_type, m.ref_id, m.ref_label, m.mentions, m.reply_to,
-    r.body as r_body, r.deleted_at as r_deleted, r.att_name as r_att, r.att_type as r_atype, rs.name as r_name, r.sender as r_sender`;
-  const from = `${table} m left join ${table} r on r.id = m.reply_to left join staff s on s.username = m.sender left join staff rs on rs.username = r.sender`;
-  const n = base.length;
-  const pull = (extra: string, order: string, lim: number, params: unknown[] = []) =>
-    db.query<Record<string, unknown>>(`select ${cols} from ${from} where ${cond} ${extra} order by m.id ${order} limit ${lim}`, [...base, ...params]);
-
-  let rows: Array<Record<string, unknown>>;
-  let hasMore: boolean;
-  if (fromId > 0) {
-    const newer = await pull(`and m.id >= $${n + 1}`, "asc", 1000, [fromId]);
-    const older = await pull(`and m.id < $${n + 1}`, "desc", limit + 1, [fromId]);
-    hasMore = older.length > limit;
-    rows = [...older.slice(0, limit).reverse(), ...newer];
-  } else {
-    const latest = await pull("", "desc", limit + 1);
-    hasMore = latest.length > limit;
-    rows = latest.slice(0, limit).reverse();
-  }
-
-  if (scope === "g") {
-    const gid = Number(key.groupId);
-    await db.query(
-      `update chat_group_members set last_read_id = greatest(last_read_id, coalesce((select max(id) from chat_group_messages where group_id = $1), 0)) where group_id = $1 and username = $2`,
-      [gid, me.username]);
-  }
-
-  const ids = rows.map((r) => Number(r.id));
-  const reactionRows = ids.length
-    ? await db.query<{ message_id: number; emoji: string; username: string }>(
-        `select message_id, emoji, username from chat_reactions where scope = $1 and message_id = any($2::bigint[]) order by created_at`, [scope, ids])
-    : [];
-  const pinRows = await pull("and m.pinned_at is not null and m.deleted_at is null", "desc", 10);
-
-  return {
-    me,
-    rows,
-    hasMore,
-    firstUnreadId,
-    memberRows,
-    reactionRows,
-    pinRows,
-  };
-}
-
-function shapeThread(scope: ChatScope, t: Awaited<ReturnType<typeof threadPage>>) {
-  const { me } = t;
-  const others = t.memberRows.filter((m) => m.username !== me.username);
-  const messages = t.rows.map((row) => {
-    const id = Number(row.id);
-    const deleted = row.deleted_at != null;
-    const mine = String(row.sender) === me.username;
-    const reactions = new Map<string, { emoji: string; count: number; mine: boolean }>();
-    for (const rx of t.reactionRows) {
-      if (Number(rx.message_id) !== id) continue;
-      const cur = reactions.get(rx.emoji) ?? { emoji: rx.emoji, count: 0, mine: false };
-      cur.count += 1;
-      if (rx.username === me.username) cur.mine = true;
-      reactions.set(rx.emoji, cur);
-    }
-    const mentions = Array.isArray(row.mentions) ? (row.mentions as string[]) : [];
-    const readers = scope === "g" && mine ? others.filter((m) => Number(m.last_read_id) >= id) : [];
-    const pending = scope === "g" && mine ? others.filter((m) => Number(m.last_read_id) < id) : [];
-    return {
-      id,
-      mine,
-      name: String(row.sender_name ?? ""),
-      body: deleted ? "" : String(row.body ?? ""),
-      deleted,
-      createdAt: new Date(String(row.created_at)).toISOString(),
-      read: row.read_at != null,
-      edited: row.edited_at != null && !deleted,
-      pinned: row.pinned_at != null && !deleted,
-      att: !deleted && row.att_name ? { name: String(row.att_name), type: String(row.att_type ?? ""), size: Number(row.att_size ?? 0) } : null,
-      ref: !deleted && row.ref_type ? { type: String(row.ref_type), id: String(row.ref_id ?? ""), label: String(row.ref_label ?? "") } : null,
-      reply: !deleted && row.reply_to
-        ? { id: Number(row.reply_to), name: String(row.r_sender) === me.username ? "Anda" : String(row.r_name ?? ""), text: snippet(String(row.r_body ?? ""), row.r_deleted != null, row.r_att == null ? null : String(row.r_att), row.r_atype == null ? null : String(row.r_atype)) }
-        : null,
-      mentions: deleted ? [] : mentions,
-      mentionsMe: !deleted && mentions.includes(me.username),
-      reactions: [...reactions.values()],
-      readers: readers.map((m) => String(m.name)),
-      pending: pending.map((m) => String(m.name)),
-    };
-  });
-  const pins = [...t.pinRows].map((row) => ({ id: Number(row.id), name: String(row.sender_name ?? ""), text: snippet(String(row.body ?? ""), false, row.att_name == null ? null : String(row.att_name), row.att_type == null ? null : String(row.att_type)) }));
-  return { rows: messages, hasMore: t.hasMore, firstUnreadId: t.firstUnreadId, pins };
-}
-
-/** Percakapan dengan satu staff. Pesan masuk otomatis ditandai terbaca. */
-export async function chatMessages(data: { with: string } & ThreadQuery) {
-  return shapeThread("dm", await threadPage("dm", { other: String(data.with ?? "") }, data));
-}
-
-export async function groupMessages(data: { id: number } & ThreadQuery) {
-  return shapeThread("g", await threadPage("g", { groupId: Number(data.id) }, data));
-}
-
-const escapeLike = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
-
-/** Cari kata di dalam satu percakapan (maksimal 40 hasil terbaru). */
-export async function chatSearch(data: { scope: ChatScope; target: string; q: string }) {
-  const me = await requireStaff();
-  const db = await sql();
-  const term = String(data.q ?? "").trim().slice(0, 80);
-  if (term.length < 2) return [] as Array<{ id: number; name: string; text: string; createdAt: string }>;
-  const like = `%${escapeLike(term)}%`;
-  let rows: Array<Record<string, unknown>>;
-  if (data.scope === "dm") {
-    const other = String(data.target ?? "");
-    rows = await db.query(
-      `select m.id, s.name, m.body, m.att_name, m.created_at from chat_messages m join staff s on s.username = m.sender
-       where ((m.sender = $1 and m.recipient = $2) or (m.sender = $2 and m.recipient = $1)) and m.deleted_at is null
-         and (m.body ilike $3 or m.att_name ilike $3 or m.ref_label ilike $3)
-       order by m.id desc limit 40`, [me.username, other, like]);
-  } else {
-    const gid = Number(data.target);
-    await requireMember(db, gid, me);
-    rows = await db.query(
-      `select m.id, s.name, m.body, m.att_name, m.created_at from chat_group_messages m join staff s on s.username = m.sender
-       where m.group_id = $1 and m.deleted_at is null and (m.body ilike $2 or m.att_name ilike $2 or m.ref_label ilike $2)
-       order by m.id desc limit 40`, [gid, like]);
-  }
   return rows.map((row) => ({
     id: Number(row.id),
-    name: String(row.name ?? ""),
-    text: snippet(String(row.body ?? ""), false, row.att_name == null ? null : String(row.att_name), "") || String(row.att_name ?? ""),
+    mine: String(row.sender) === me.username,
+    body: row.deleted_at ? "" : String(row.body ?? ""),
+    deleted: row.deleted_at != null,
     createdAt: new Date(String(row.created_at)).toISOString(),
+    read: row.read_at != null,
   }));
 }
 
-/** Ambil isi lampiran satu pesan (dimuat terpisah agar daftar pesan tetap ringan). */
-export async function chatAttachment(data: { scope: ChatScope; id: number }) {
+export async function chatSend(data: { to: string; body: string }) {
   const me = await requireStaff();
   const db = await sql();
-  await accessMessage(db, data.scope, data.id, me);
-  const [row] = await db.query<Record<string, unknown>>(
-    `select att_name, att_type, att_data from ${tableOf(data.scope)} where id = $1 and deleted_at is null and att_data is not null`, [Number(data.id)]);
-  if (!row) throw new Error("Lampiran tidak ditemukan.");
-  return { name: String(row.att_name ?? "file"), type: String(row.att_type ?? ""), data: String(row.att_data ?? "") };
-}
-
-/** Ubah isi pesan sendiri. */
-export async function chatEditMessage(data: { scope: ChatScope; id: number; body: string }) {
-  const me = await requireStaff();
-  const db = await sql();
-  const msg = await accessMessage(db, data.scope, data.id, me);
-  if (String(msg.sender) !== me.username) throw new Error("Anda hanya bisa mengedit pesan Anda sendiri.");
-  if (msg.deleted_at) throw new Error("Pesan sudah dihapus.");
+  const to = String(data.to ?? "");
   const body = String(data.body ?? "").trim();
+  if (!body) throw new Error("Pesan kosong.");
   if (body.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
-  if (!body && !msg.att_name) throw new Error("Pesan kosong. Pakai Hapus kalau ingin membuang pesan.");
-  if (body === String(msg.body ?? "")) return { ok: true };
-  await db.query(`update ${tableOf(data.scope)} set body = $2, edited_at = now() where id = $1`, [Number(data.id), body]);
-  return { ok: true };
-}
-
-/** Beri / ubah / cabut reaksi emoji. Emoji yang sama dua kali = cabut. */
-export async function chatReact(data: { scope: ChatScope; id: number; emoji: string }) {
-  const me = await requireStaff();
-  const db = await sql();
-  const msg = await accessMessage(db, data.scope, data.id, me);
-  if (msg.deleted_at) throw new Error("Pesan sudah dihapus.");
-  const emoji = String(data.emoji ?? "");
-  if (!EMOJIS.has(emoji)) throw new Error("Emoji tidak didukung.");
-  const [cur] = await db.query<{ emoji: string }>(`select emoji from chat_reactions where scope = $1 and message_id = $2 and username = $3`, [data.scope, Number(data.id), me.username]);
-  if (cur && cur.emoji === emoji) {
-    await db.query(`delete from chat_reactions where scope = $1 and message_id = $2 and username = $3`, [data.scope, Number(data.id), me.username]);
-  } else {
-    await db.query(
-      `insert into chat_reactions (scope, message_id, username, emoji) values ($1, $2, $3, $4)
-       on conflict (scope, message_id, username) do update set emoji = excluded.emoji, created_at = now()`,
-      [data.scope, Number(data.id), me.username, emoji]);
-  }
-  return { ok: true };
-}
-
-/** Sematkan / lepas sematan pesan penting. */
-export async function chatPin(data: { scope: ChatScope; id: number; pin: boolean }) {
-  const me = await requireStaff();
-  const db = await sql();
-  const msg = await accessMessage(db, data.scope, data.id, me);
-  if (msg.deleted_at) throw new Error("Pesan sudah dihapus.");
-  if (data.pin) {
-    const [c] = await db.query<{ n: number }>(
-      data.scope === "dm"
-        ? `select count(*)::int as n from chat_messages where pinned_at is not null and deleted_at is null and ((sender = $1 and recipient = $2) or (sender = $2 and recipient = $1))`
-        : `select count(*)::int as n from chat_group_messages where pinned_at is not null and deleted_at is null and group_id = $1`,
-      data.scope === "dm" ? [String(msg.sender), String(msg.recipient)] : [Number(msg.group_id)]);
-    if (Number(c?.n ?? 0) >= 10) throw new Error("Maksimal 10 pesan disematkan. Lepas sematan lama dulu.");
-  }
-  await db.query(`update ${tableOf(data.scope)} set pinned_at = ${data.pin ? "now()" : "null"}, pinned_by = ${data.pin ? "$2" : "null"} where id = $1`, data.pin ? [Number(data.id), me.username] : [Number(data.id)]);
-  return { ok: true };
+  if (!to || to === me.username) throw new Error("Pilih staff lawan bicara.");
+  const target = await db.query(`select 1 from staff where username = $1 and status = 'Aktif'`, [to]);
+  if (!target.length) throw new Error("Staff tujuan tidak ditemukan atau tidak aktif.");
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_messages (sender, recipient, body) values ($1, $2, $3) returning id`,
+    [me.username, to, body],
+  );
+  return { id: Number(row?.id ?? 0) };
 }
 
 
@@ -2458,7 +2160,7 @@ export async function groupList() {
   const rows = await db.query<Record<string, unknown>>(
     `select g.id, g.nama, g.deskripsi,
             (select count(*)::int from chat_group_members x where x.group_id = g.id) as member_count,
-            (select case when m.deleted_at is not null then 'Pesan dihapus' when coalesce(m.body, '') = '' and m.att_name is not null then (case when m.att_type like 'image/%' then 'Foto' else 'File' end) when coalesce(m.body, '') = '' and m.ref_type is not null then 'Data: ' || coalesce(m.ref_label, '') else m.body end from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
+            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
             (select m.created_at from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_at,
             (select s.name from chat_group_messages m join staff s on s.username = m.sender where m.group_id = g.id order by m.id desc limit 1) as last_name,
             (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.deleted_at is null and m.id > gm.last_read_id) as unread,
@@ -2539,6 +2241,46 @@ export async function groupDelete(data: { id: number }) {
   return { ok: true };
 }
 
+export async function groupMessages(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const rows = await db.query<Record<string, unknown>>(
+    `select * from (
+       select m.id, m.sender, s.name, m.body, m.created_at, m.deleted_at from chat_group_messages m join staff s on s.username = m.sender
+       where m.group_id = $1 order by m.id desc limit 200
+     ) t order by id asc`,
+    [data.id],
+  );
+  await db.query(
+    `update chat_group_members set last_read_id = greatest(last_read_id, coalesce((select max(id) from chat_group_messages where group_id = $1), 0))
+     where group_id = $1 and username = $2`,
+    [data.id, me.username],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    mine: String(row.sender) === me.username,
+    name: String(row.name ?? ""),
+    body: row.deleted_at ? "" : String(row.body ?? ""),
+    deleted: row.deleted_at != null,
+    createdAt: new Date(String(row.created_at)).toISOString(),
+  }));
+}
+
+export async function groupSend(data: { id: number; body: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await requireMember(db, data.id, me);
+  const body = String(data.body ?? "").trim();
+  if (!body) throw new Error("Pesan kosong.");
+  if (body.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_group_messages (group_id, sender, body) values ($1, $2, $3) returning id`,
+    [data.id, me.username, body],
+  );
+  return { id: Number(row?.id ?? 0) };
+}
+
 export async function noteList(data: { groupId: number }) {
   const me = await requireStaff();
   const db = await sql();
@@ -2606,7 +2348,7 @@ export async function chatDeleteMessage(data: { id: number }) {
   const me = await requireStaff();
   const db = await sql();
   const rows = await db.query(
-    `update chat_messages set deleted_at = now(), att_data = null where id = $1 and sender = $2 and deleted_at is null returning id`,
+    `update chat_messages set deleted_at = now() where id = $1 and sender = $2 and deleted_at is null returning id`,
     [data.id, me.username],
   );
   if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
@@ -2626,7 +2368,7 @@ export async function groupDeleteMessage(data: { id: number }) {
   if (msg.sender !== me.username && me.role !== "Admin" && me.role !== "Owner") {
     throw new Error("Anda hanya bisa menghapus pesan Anda sendiri.");
   }
-  await db.query(`update chat_group_messages set deleted_at = now(), att_data = null where id = $1`, [data.id]);
+  await db.query(`update chat_group_messages set deleted_at = now() where id = $1`, [data.id]);
   return { ok: true };
 }
 
@@ -2639,7 +2381,7 @@ export async function chatDeleteMessages(data: { ids: number[] }) {
   if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
   const marks = ids.map((_, i) => `$${i + 2}`).join(",");
   const rows = await db.query(
-    `update chat_messages set deleted_at = now(), att_data = null where sender = $1 and deleted_at is null and id in (${marks}) returning id`,
+    `update chat_messages set deleted_at = now() where sender = $1 and deleted_at is null and id in (${marks}) returning id`,
     [me.username, ...ids],
   );
   if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
@@ -2663,7 +2405,7 @@ export async function groupDeleteMessages(data: { ids: number[] }) {
   if (!isMod && msgs.some((m) => m.sender !== me.username)) throw new Error("Anda hanya bisa menghapus pesan Anda sendiri.");
   const okIds = msgs.map((m) => Number(m.id));
   const okMarks = okIds.map((_, i) => `$${i + 1}`).join(",");
-  await db.query(`update chat_group_messages set deleted_at = now(), att_data = null where id in (${okMarks})`, okIds);
+  await db.query(`update chat_group_messages set deleted_at = now() where id in (${okMarks})`, okIds);
   return { deleted: okIds.length };
 }
 
