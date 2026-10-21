@@ -50,6 +50,7 @@ const ADMIN = [
   {
     label: "Keuangan & Laporan",
     items: [
+      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
@@ -76,6 +77,7 @@ const OWNER = [
     label: "Laporan",
     items: [
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
+      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },

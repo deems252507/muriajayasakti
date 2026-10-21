@@ -53,6 +53,22 @@ function KasirPage() {
   const [productOpen, setProductOpen] = useState(false);
   const [scanConfirm, setScanConfirm] = useState<{ product: Product; unit: "pcs" | "dus" | null } | null>(null);
   const scanLock = useRef(false);
+  // true hanya kalau isi kolom datang dari alat scan (ketikan sangat cepat), tempel, atau kamera.
+  // Ketikan manual kasir tidak pernah dianggap scan.
+  const scanLike = useRef(false);
+  const typing = useRef({ first: 0, last: 0 });
+
+  function onSearchChange(next: string) {
+    const now = performance.now();
+    const t = typing.current;
+    if (next.length <= 1 || now - t.last > 400) t.first = now;
+    const added = next.length - q.length;
+    const elapsed = now - t.first;
+    // alat scan USB mengetik semua karakter dalam hitungan milidetik; ketikan manusia jauh lebih lambat
+    scanLike.current = next.length >= 5 && (added >= 5 || elapsed / Math.max(next.length - 1, 1) < 35);
+    t.last = now;
+    setQ(next);
+  }
 
   useEffect(() => {
     function loadShifts() {
@@ -83,7 +99,10 @@ function KasirPage() {
     }
     const timer = setTimeout(() => {
       void searchProducts({ data: { q } }).then((res) => {
-        if (res.items[0] && (res.unit || res.exact)) {
+        // Popup konfirmasi otomatis hanya untuk hasil scan (kode-pcs/dus atau kode/PN persis).
+        // Mengetik kode pajak (mis. "S") atau nama barang tidak memicu popup.
+        if (res.items[0] && scanLike.current && (res.unit || (res.exact && !/\s/.test(q)))) {
+          scanLike.current = false;
           setScanConfirm({ product: res.items[0], unit: res.unit });
           setQ("");
           setHits([]);
@@ -123,6 +142,7 @@ function KasirPage() {
         (value) => {
           if (stopped || scanLock.current) return;
           scanLock.current = true;
+          scanLike.current = true;
           setQ(value);
           beep();
           setCamera(false);
@@ -251,12 +271,14 @@ function KasirPage() {
           className={inputClass}
           placeholder="Ketik nama, part, kategori (oli), atau scan barcode..."
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
             const code = q.trim();
             if (!code) return;
+            // Enter pada ketikan manual tidak membuka popup scan; pilih barang dari daftar hasil.
+            if (!scanLike.current && !/-(pcs|dus)$/i.test(code)) return;
             void searchProducts({ data: { q: code } }).then((res) => {
               const item = res.items[0];
               if (!item) {

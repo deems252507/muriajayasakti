@@ -391,6 +391,18 @@ export const listTax = createServerFn({ method: "GET" })
     return run(data);
   });
 
+export const listSoldItems = createServerFn({ method: "GET" })
+  .validator((input: { start?: string; end?: string; source?: string; q?: string }) => ({
+    start: String(input?.start ?? ""),
+    end: String(input?.end ?? ""),
+    source: String(input?.source ?? "Kasir"),
+    q: String(input?.q ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { listSoldItems: run } = await import("./logic.server");
+    return run(data) as Promise<{ items: Array<Record<string, string | number>>; days: Array<Record<string, string | number>> }>;
+  });
+
 export const shiftLedger = createServerFn({ method: "GET" })
   .validator((input: { shiftId?: string; start?: string; end?: string }) => ({
     shiftId: String(input?.shiftId ?? ""),

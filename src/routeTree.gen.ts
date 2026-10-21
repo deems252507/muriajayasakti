@@ -21,6 +21,7 @@ import { Route as ShopLaporanKasRouteImport } from './routes/_shop/laporan-kas'
 import { Route as ShopManualRouteImport } from './routes/_shop/manual'
 import { Route as ShopMitraRouteImport } from './routes/_shop/mitra'
 import { Route as ShopPajakRouteImport } from './routes/_shop/pajak'
+import { Route as ShopLaporanPenjualanRouteImport } from './routes/_shop/laporan-penjualan'
 import { Route as ShopPemasokRouteImport } from './routes/_shop/pemasok'
 import { Route as ShopPengaturanRouteImport } from './routes/_shop/pengaturan'
 import { Route as ShopReturRouteImport } from './routes/_shop/retur'
@@ -86,6 +87,11 @@ const ShopPajakRoute = ShopPajakRouteImport.update({
   path: '/pajak',
   getParentRoute: () => ShopRoute,
 } as any)
+const ShopLaporanPenjualanRoute = ShopLaporanPenjualanRouteImport.update({
+  id: '/laporan-penjualan',
+  path: '/laporan-penjualan',
+  getParentRoute: () => ShopRoute,
+} as any)
 const ShopPemasokRoute = ShopPemasokRouteImport.update({
   id: '/pemasok',
   path: '/pemasok',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/manual': typeof ShopManualRoute
   '/mitra': typeof ShopMitraRoute
   '/pajak': typeof ShopPajakRoute
+  '/laporan-penjualan': typeof ShopLaporanPenjualanRoute
   '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
@@ -142,6 +149,7 @@ export interface FileRoutesByTo {
   '/manual': typeof ShopManualRoute
   '/mitra': typeof ShopMitraRoute
   '/pajak': typeof ShopPajakRoute
+  '/laporan-penjualan': typeof ShopLaporanPenjualanRoute
   '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   '/_shop/manual': typeof ShopManualRoute
   '/_shop/mitra': typeof ShopMitraRoute
   '/_shop/pajak': typeof ShopPajakRoute
+  '/_shop/laporan-penjualan': typeof ShopLaporanPenjualanRoute
   '/_shop/pemasok': typeof ShopPemasokRoute
   '/_shop/pengaturan': typeof ShopPengaturanRoute
   '/_shop/retur': typeof ShopReturRoute
@@ -182,6 +191,7 @@ export interface FileRouteTypes {
     | '/manual'
     | '/mitra'
     | '/pajak'
+    | '/laporan-penjualan'
     | '/pemasok'
     | '/pengaturan'
     | '/retur'
@@ -200,6 +210,7 @@ export interface FileRouteTypes {
     | '/manual'
     | '/mitra'
     | '/pajak'
+    | '/laporan-penjualan'
     | '/pemasok'
     | '/pengaturan'
     | '/retur'
@@ -219,6 +230,7 @@ export interface FileRouteTypes {
     | '/_shop/manual'
     | '/_shop/mitra'
     | '/_shop/pajak'
+    | '/_shop/laporan-penjualan'
     | '/_shop/pemasok'
     | '/_shop/pengaturan'
     | '/_shop/retur'
@@ -317,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShopPajakRouteImport
       parentRoute: typeof ShopRoute
     }
+    '/_shop/laporan-penjualan': {
+      id: '/_shop/laporan-penjualan'
+      path: '/laporan-penjualan'
+      fullPath: '/laporan-penjualan'
+      preLoaderRoute: typeof ShopLaporanPenjualanRouteImport
+      parentRoute: typeof ShopRoute
+    }
     '/_shop/pemasok': {
       id: '/_shop/pemasok'
       path: '/pemasok'
@@ -366,6 +385,7 @@ interface ShopRouteChildren {
   ShopManualRoute: typeof ShopManualRoute
   ShopMitraRoute: typeof ShopMitraRoute
   ShopPajakRoute: typeof ShopPajakRoute
+  ShopLaporanPenjualanRoute: typeof ShopLaporanPenjualanRoute
   ShopPemasokRoute: typeof ShopPemasokRoute
   ShopPengaturanRoute: typeof ShopPengaturanRoute
   ShopReturRoute: typeof ShopReturRoute
@@ -384,6 +404,7 @@ const ShopRouteChildren: ShopRouteChildren = {
   ShopManualRoute: ShopManualRoute,
   ShopMitraRoute: ShopMitraRoute,
   ShopPajakRoute: ShopPajakRoute,
+  ShopLaporanPenjualanRoute: ShopLaporanPenjualanRoute,
   ShopPemasokRoute: ShopPemasokRoute,
   ShopPengaturanRoute: ShopPengaturanRoute,
   ShopReturRoute: ShopReturRoute,

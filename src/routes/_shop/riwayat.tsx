@@ -57,6 +57,11 @@ function RiwayatPage() {
         <p className="text-xs text-muted">Satu kartu = satu transaksi. Klik Lihat Detail untuk melihat semua barang dalam transaksi.</p>
       </div>
       <div className="mt-3 space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {([["", "Semua"], ["Kasir", "Penjualan Kasir"], ["Manual", "Transaksi Manual"], ["Retur", "Retur / Tukar"]] as const).map(([value, label]) => (
+            <button key={value || "all"} type="button" onClick={() => { setPage(1); setSource(value); }} className={`h-10 rounded-lg px-4 text-sm font-bold ${source === value ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}>{label}</button>
+          ))}
+        </div>
         <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setPage(1); setStart(nextStart); setEnd(nextEnd); }} />
         <div className="flex flex-wrap gap-2">
         <button className="h-9 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => { setQ(""); setSource(""); setStatus(""); setJenis(""); setStart(""); setEnd(""); setPage(1); }}>Reset</button>
@@ -94,11 +99,11 @@ function RiwayatPage() {
       </div>
       <ul className="mt-4 space-y-3">
         {items.map((inv) => (
-          <li key={String(inv.nomor)} className="rounded-xl border border-line p-3">
+          <li key={String(inv.nomor)} className={`rounded-xl border border-line border-l-4 p-3 ${String(inv.source) === "Manual" ? "border-l-amber-400" : String(inv.source) === "Retur" ? "border-l-red-400" : "border-l-emerald-500"}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-bold">{String(inv.nomor)}</p>
-                <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.source)} · {String(inv.status_bayar)}</p>
+                <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span>{String(inv.nomor)}</p>
+                <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar)}</p>
                 <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
               </div>
               <div className="text-right">

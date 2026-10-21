@@ -434,7 +434,8 @@ export async function searchProducts(data: any) {
     );
     const items = rows.map((row) => mapProduct(row as Record<string, unknown>));
     const needle = String(data.q).trim().toLowerCase();
-    const exact = items.some((item) => [item.kode, item.partNumber, item.kodePajak].some((value) => value.toLowerCase() === needle));
+    // Hanya kode barang / part number (bukan kode pajak) yang dianggap hasil scan barcode.
+    const exact = needle.length >= 5 && items.some((item) => [item.kode, item.partNumber].some((value) => value.toLowerCase() === needle));
     return { unit: null, exact, items };
   }
 
@@ -628,21 +629,37 @@ function splitCatalogName(raw: string) {
   let nama = raw.trim();
   let kodePajak = "";
   let merek = "";
-  const slash = nama.match(/^([^/\s]{1,24})\s*\/\s*(.+)$/);
-  if (slash) {
-    kodePajak = slash[1].trim();
-    nama = slash[2].trim();
+  // Kode pajak HANYA angka (mis. "162236/NAMA BARANG" atau "NAMA BARANG /162236").
+  // Huruf setelah/sebelum garis miring (C/M, /S, dst.) bukan pajak dan tetap jadi bagian nama.
+  const front = nama.match(/^(\d{1,24})\s*\/\s*(.+)$/);
+  const back = nama.match(/^(.+?)\s+\/\s*(\d{4,24})$/);
+  if (front) {
+    kodePajak = front[1];
+    nama = front[2].trim();
+  } else if (back) {
+    kodePajak = back[2];
+    nama = back[1].trim();
   }
   const dash = nama.lastIndexOf(" - ");
   if (dash > 0) {
     const left = nama.slice(0, dash).trim();
     const right = nama.slice(dash + 3).trim();
-    if (left && right && right.length <= 48) {
+    // Merek tidak mengandung angka. "... - N120 12V 120AH" adalah spesifikasi, bukan merek.
+    if (left && right && right.length <= 48 && !/\d/.test(right)) {
       nama = left;
       merek = right;
     }
   }
-  return { nama, merek, kodePajak };
+  // Kurung berisi satu kode tanpa spasi = part number alt, dipindah dari nama:
+  // yang mengandung angka ((T2310), (YLCMT-005), (STM-0525-001)) atau satu huruf ((Y), (U)).
+  // Kurung berisi kata/kalimat biasa seperti (KIRI) atau (DEPAN KIRI) tetap di nama.
+  const alts: string[] = [];
+  nama = nama.replace(/\(\s*([A-Za-z0-9.\-]+)\s*\)/g, (all, code: string) => {
+    if (!/\d/.test(code) && !/^[A-Za-z]$/.test(code)) return all;
+    alts.push(code);
+    return " ";
+  }).replace(/\s{2,}/g, " ").trim();
+  return { nama, merek, kodePajak, partNumbersAlt: alts.join(", ") };
 }
 
 export async function importProducts(data: any) {
@@ -655,8 +672,10 @@ export async function importProducts(data: any) {
       for (const [key, value] of Object.entries(raw)) row[key.trim().toUpperCase()] = String(value ?? "").trim();
       const partNumber = row["KODE SPAREPART"] || row["PART NUMBER"] || row["KODE"] || "";
       const parsed = splitCatalogName(row["NAMA SPAREPART"] || row["NAMA"] || "");
-      const kodePajak = row["KODE PAJAK"] || parsed.kodePajak;
+      const kodeKolom = (row["KODE PAJAK"] || "").replace(/\s/g, "");
+      const kodePajak = /^\d+$/.test(kodeKolom) ? kodeKolom : parsed.kodePajak; // huruf bukan kode pajak
       const merek = row["MEREK"] || parsed.merek;
+      const partNumbersAlt = row["PN ALT"] || row["PART NUMBER ALT"] || row["PART NUMBER LAIN"] || parsed.partNumbersAlt;
       const nama = parsed.nama;
       if (!partNumber && !nama) continue;
       const status = kodePajak || (row["STATUS PAJAK"] || "").toLowerCase() === "pajak" ? "Pajak" : "Non Pajak";
@@ -679,6 +698,7 @@ export async function importProducts(data: any) {
         hargaAlt: hargaDus ? moneyId(hargaDus) : 0, // harga dus hanya dari kolom HARGA DUS, tidak dihitung otomatis
         status,
         kodePajak,
+        partNumbersAlt,
       });
     }
     try {
@@ -1440,6 +1460,56 @@ export async function listHistoryLines(data: any) {
     part_number: String(row.part_number ?? ""),
     kode_pajak: String(row.kode_pajak ?? ""),
   }));
+}
+
+export async function listSoldItems(data: any) {
+  await requireStaff();
+  const db = await sql();
+  const where = [`l.jenis = 'KELUAR'`];
+  const params: unknown[] = [];
+  const src = data.source === "Manual" ? ["Manual"] : data.source === "Semua" ? ["Kasir", "Manual"] : ["Kasir"];
+  params.push(src);
+  where.push(`i.source = any($${params.length}::text[])`);
+  if (data.start) {
+    params.push(data.start);
+    where.push(`i.tanggal >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.end) {
+    params.push(data.end);
+    where.push(`i.tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
+  if (data.q) {
+    params.push(`%${data.q}%`);
+    where.push(`(coalesce(nullif(l.custom_item, ''), p.nama, '') ilike $${params.length} or coalesce(p.part_number, '') ilike $${params.length} or coalesce(p.kode_pajak, '') ilike $${params.length})`);
+  }
+  const clause = where.join(" and ");
+  const from = `from invoice_lines l join invoices i on i.id = l.invoice_id left join products p on p.id = l.product_id where ${clause}`;
+  const items = await db.query<Record<string, unknown>>(
+    `select coalesce(nullif(l.custom_item, ''), p.nama, 'Barang') as nama,
+            coalesce(p.part_number, '') as part_number,
+            coalesce(p.kode_pajak, '') as kode_pajak,
+            coalesce(p.satuan, max(l.satuan)) as satuan,
+            sum(coalesce(nullif(l.jumlah_dasar, 0), l.jumlah))::bigint as qty,
+            sum(l.harga_satuan * l.jumlah)::bigint as nilai,
+            count(distinct i.id)::int as nota
+     ${from}
+     group by l.product_id, coalesce(nullif(l.custom_item, ''), p.nama, 'Barang'), p.part_number, p.kode_pajak, p.satuan
+     order by qty desc, nama
+     limit 5000`,
+    params,
+  );
+  const days = await db.query<Record<string, unknown>>(
+    `select to_char((i.tanggal at time zone 'UTC') + interval '8 hours', 'YYYY-MM-DD') as hari,
+            count(distinct i.id)::int as nota,
+            sum(coalesce(nullif(l.jumlah_dasar, 0), l.jumlah))::bigint as qty,
+            sum(l.harga_satuan * l.jumlah)::bigint as nilai
+     ${from}
+     group by 1
+     order by 1 desc`,
+    params,
+  );
+  const map = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === "string" || v == null ? (v ?? "") : Number(v)]));
+  return { items: items.map(map), days: days.map(map) };
 }
 
 export async function listBon(data: any): Promise<any> {

@@ -3,16 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { manualNota, searchProducts } from "@/lib/shop/api";
-import { digits, todayInput } from "@/lib/shop/format";
+import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/manual")({ component: ManualPage });
 
 type Jenis = "MASUK" | "KELUAR";
-type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean; own?: boolean };
+type Draft = { key: string; product: Product; jenis: Jenis; qty: number; isAlt: boolean; harga: number; own?: boolean };
 
 const konvOf = (item: Draft) => (item.isAlt && item.product.isiSatuanAlt > 0 ? item.product.isiSatuanAlt : 1);
+const hargaDefault = (product: Product, isAlt: boolean) => (isAlt && product.isiSatuanAlt > 0 ? product.hargaJualAlt || product.hargaJual * product.isiSatuanAlt : product.hargaJual) || 0;
 const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * konvOf(item);
 
 function ManualPage() {
@@ -63,7 +64,7 @@ function ManualPage() {
       setJustAdded({ key: same.key, n: Date.now() });
     } else {
       const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      setItems((prev) => [...prev, { key, product, jenis, qty: 1, isAlt }]);
+      setItems((prev) => [...prev, { key, product, jenis, qty: 1, isAlt, harga: hargaDefault(product, isAlt) }]);
       setJustAdded({ key, n: Date.now() });
     }
     setQ("");
@@ -72,6 +73,10 @@ function ManualPage() {
 
   function setQty(key: string, raw: number) {
     setItems((prev) => prev.map((row) => (row.key === key ? { ...row, qty: Math.max(1, raw) } : row)));
+  }
+
+  function setHarga(key: string, raw: number) {
+    setItems((prev) => prev.map((row) => (row.key === key ? { ...row, harga: Math.max(0, raw) } : row)));
   }
 
   function resetAll() {
@@ -93,13 +98,18 @@ function ManualPage() {
             jenis: item.jenis,
             qty: item.qty,
             isAlt: item.isAlt,
+            harga: item.jenis === "KELUAR" ? item.harga : 0,
             tujuan,
             keterangan: ket,
           })),
         },
       })) as { nomor: string };
-      toast.success(`${me.role} · Nota ${res.nomor} tersimpan`);
-      printManual(res.nomor, tanggal, items);
+      const saved = items;
+      toast.success(`Nota ${res.nomor} tersimpan`, {
+        description: "Nota tidak dicetak otomatis. Bisa dicetak lewat tombol ini atau nanti dari Riwayat Transaksi.",
+        duration: 10000,
+        action: { label: "Cetak Nota", onClick: () => printManual(res.nomor, tanggal, saved) },
+      });
       setItems([]);
     } catch (error) {
       toast.error((error as Error).message);
@@ -179,12 +189,12 @@ function ManualPage() {
             <button className="h-10 rounded-lg border border-line px-3 text-sm font-medium" onClick={() => setItems([])} disabled={!items.length}>Kosongkan Nota</button>
           </div>
           <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
-            <table className="w-full min-w-[680px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
-                <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2">Jenis</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Stok setelah</th><th className="w-20"></th></tr>
+                <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2">Jenis</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga</th><th className="px-2 py-2 text-right">Stok setelah</th><th className="w-20"></th></tr>
               </thead>
               <tbody>
-                {items.length === 0 ? <tr><td colSpan={7} className="py-10 text-center text-muted">Nota masih kosong. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => {
+                {items.length === 0 ? <tr><td colSpan={8} className="py-10 text-center text-muted">Nota masih kosong. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => {
                   const after = stokSetelah(item.product);
                   const bad = item.jenis === "KELUAR" && after < 0;
                   return (
@@ -204,7 +214,7 @@ function ManualPage() {
                           <select
                             className="h-11 rounded-lg border border-blue-300 bg-blue-50 px-2 text-sm font-bold text-blue-700"
                             value={item.isAlt ? "alt" : "base"}
-                            onChange={(e) => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, isAlt: e.target.value === "alt" } : row)))}
+                            onChange={(e) => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, isAlt: e.target.value === "alt", harga: hargaDefault(item.product, e.target.value === "alt") } : row)))}
                           >
                             <option value="base">{item.product.satuan}</option>
                             <option value="alt">{item.product.satuanAlt}</option>
@@ -227,6 +237,22 @@ function ManualPage() {
                         </div>
                         {item.isAlt ? <p className="mt-0.5 text-center text-[11px] text-muted">= {item.qty * konvOf(item)} {item.product.satuan}</p> : null}
                       </td>
+                      <td className="px-2 text-right">
+                        {item.jenis === "KELUAR" ? (
+                          <>
+                            <input
+                              className="num h-11 w-28 rounded-lg border border-line px-2 text-right text-sm"
+                              inputMode="numeric"
+                              aria-label="Harga satuan"
+                              value={item.harga ? grouped(item.harga) : ""}
+                              placeholder="0"
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setHarga(item.key, digits(e.target.value))}
+                            />
+                            <p className="num mt-0.5 text-[11px] text-muted">= {rupiah(item.harga * item.qty)}</p>
+                          </>
+                        ) : <span className="text-xs text-muted">-</span>}
+                      </td>
                       <td className={`num px-2 text-right font-semibold ${bad ? "text-red-600" : ""}`}>{after} {item.product.satuan}{bad ? <span className="block text-[11px]">Stok tidak cukup</span> : null}</td>
                       <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((row) => row.key !== item.key))}>Hapus</button></td>
                     </tr>
@@ -235,9 +261,10 @@ function ManualPage() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-xs text-muted">1 dus mengurangi atau menambah stok sebanyak isinya dalam Pcs. Harga nota manual nol, jadi pajak keluarnya nol.</p>
+          {items.some((row) => row.jenis === "KELUAR") ? <p className="num mt-3 text-right text-sm font-bold">Total nilai barang keluar: {rupiah(items.filter((row) => row.jenis === "KELUAR").reduce((sum, row) => sum + row.harga * row.qty, 0))}</p> : null}
+          <p className="mt-3 text-xs text-muted">1 dus mengurangi atau menambah stok sebanyak isinya dalam Pcs. Harga hanya diisi untuk barang Keluar (otomatis dari harga jual, boleh diubah) dan ikut dihitung ke pajak. Nota tidak dicetak otomatis.</p>
           {melebihi.length ? <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Ada barang keluar yang melebihi stok. Kurangi jumlahnya sebelum menyimpan.</p> : null}
-          <PrimaryButton className="mt-4 h-14 w-full text-base" disabled={items.length === 0 || busy || melebihi.length > 0} onClick={() => void simpan()}>{busy ? "Menyimpan..." : `Simpan & Cetak 1 Nota (${items.length} baris)`}</PrimaryButton>
+          <PrimaryButton className="mt-4 h-14 w-full text-base" disabled={items.length === 0 || busy || melebihi.length > 0} onClick={() => void simpan()}>{busy ? "Menyimpan..." : `Simpan Nota (${items.length} baris)`}</PrimaryButton>
         </Panel>
       </div>
     </div>
@@ -245,9 +272,9 @@ function ManualPage() {
 }
 
 function printManual(nomor: string, tanggal: string, items: Draft[]) {
-  const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td></tr>`).join("");
+  const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td><td style="text-align:right">${item.jenis === "KELUAR" ? rupiah(item.harga * item.qty) : "-"}</td></tr>`).join("");
   const win = window.open("", "_blank", "width=720,height=640");
   if (!win) return;
-  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat}<br>${shopBrand().telepon}</p><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat}<br>${shopBrand().telepon}</p><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th><th>Nilai</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
   win.document.close();
 }
