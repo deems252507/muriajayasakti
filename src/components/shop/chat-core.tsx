@@ -8,6 +8,7 @@ import {
   chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, groupClearMessages, groupDeleteMessages,
 } from "@/lib/shop/api";
 import { EmojiPicker } from "./emoji-picker";
+import { MarkWords } from "./shell";
 import { dayKey, dayLabel, hhmm } from "./chat-time";
 
 type ChatKind = "dm" | "group";
@@ -1171,8 +1172,8 @@ function ShareModal({ type, onClose, onPick }: { type: "barang" | "transaksi"; o
           {(rows ?? []).map((r) => (
             <li key={r.ref}>
               <button type="button" className="block w-full border-b border-line px-3 py-2 text-left last:border-b-0 hover:bg-blue-50" onClick={() => onPick(r)}>
-                <span className="block break-words text-sm font-bold">{r.title}</span>
-                <span className="block break-words text-xs text-muted">{r.sub}</span>
+                <span className="block break-words text-sm font-bold"><MarkWords text={r.title} q={q} /></span>
+                <span className="block break-words text-xs text-muted"><MarkWords text={r.sub} q={q} /></span>
               </button>
             </li>
           ))}

@@ -144,6 +144,54 @@ export function Mark({ text, q }: { text: string; q: string }) {
   return <>{parts}</>;
 }
 
+/**
+ * Sorot untuk kolom part number: kata dari pencarian umum (q) dicocokkan apa adanya,
+ * sedangkan filter part number (part) dicocokkan tanpa peduli strip/spasi/tanda baca.
+ */
+export function MarkPart({ text, q, part }: { text: string; q: string; part: string }) {
+  if (!text) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const spans: Array<[number, number]> = [];
+  const words = [...new Set(q.toLowerCase().split(/\s+/).filter(Boolean))];
+  for (const word of words) {
+    let at = lower.indexOf(word);
+    while (at >= 0) {
+      spans.push([at, at + word.length]);
+      at = lower.indexOf(word, at + word.length);
+    }
+  }
+  const needle = part.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (needle) {
+    let flat = "";
+    const index: number[] = [];
+    for (let i = 0; i < lower.length; i += 1) {
+      if (/[a-z0-9]/.test(lower[i])) { flat += lower[i]; index.push(i); }
+    }
+    let at = flat.indexOf(needle);
+    while (at >= 0) {
+      spans.push([index[at], index[at + needle.length - 1] + 1]);
+      at = flat.indexOf(needle, at + needle.length);
+    }
+  }
+  if (!spans.length) return <>{text}</>;
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+    else merged.push([span[0], span[1]]);
+  }
+  const parts: React.ReactNode[] = [];
+  let from = 0;
+  merged.forEach(([a, b], key) => {
+    if (a > from) parts.push(text.slice(from, a));
+    parts.push(<mark key={key} className="rounded bg-yellow-300 px-0.5 text-inherit">{text.slice(a, b)}</mark>);
+    from = b;
+  });
+  if (from < text.length) parts.push(text.slice(from));
+  return <>{parts}</>;
+}
+
 /** Seperti Mark, tapi tiap kata di pencarian (dipisah spasi) disorot sendiri-sendiri. */
 export function MarkWords({ text, q }: { text: string; q: string }) {
   const words = [...new Set(q.toLowerCase().split(/\s+/).filter(Boolean))].sort((a, b) => b.length - a.length);

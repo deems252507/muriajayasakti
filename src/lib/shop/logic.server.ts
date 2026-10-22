@@ -452,6 +452,15 @@ export async function listProducts(data: any) {
         `(nama ilike $${params.length} or part_number ilike $${params.length} or part_numbers_alt ilike $${params.length} or kode ilike $${params.length} or merek ilike $${params.length} or kode_pajak ilike $${params.length} or kategori ilike $${params.length})`,
       );
     }
+    // Filter part number: cocok sebagian pada part number utama atau part number alternatif,
+    // tanpa peduli huruf besar/kecil, spasi, strip, atau tanda baca (9004B-82002 = 9004B82002).
+    const partFilter = String(data.partNumber ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (partFilter) {
+      params.push(`%${partFilter}%`);
+      where.push(
+        `(regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') like $${params.length} or regexp_replace(lower(part_numbers_alt), '[^a-z0-9]', '', 'g') like $${params.length})`,
+      );
+    }
     const categories = Array.isArray(data.kategori) ? data.kategori.map((v: unknown) => String(v).trim().toLowerCase()).filter(Boolean) : (data.kategori ? [String(data.kategori).trim().toLowerCase()] : []);
     if (categories.length) {
       params.push(categories);
@@ -461,8 +470,13 @@ export async function listProducts(data: any) {
     if (data.status === "Menipis") where.push(`stok > 0 and stok_min > 0 and stok <= stok_min`);
     if (data.status === "Aman") where.push(`not (stok <= 0 or (stok_min > 0 and stok <= stok_min))`);
     const clause = where.length ? `where ${where.join(" and ")}` : "";
+    // Saat filter part number aktif dan urutan masih bawaan, kelompokkan per part number lalu merek
+    // supaya barang dengan part number sama berdekatan (mudah cek duplikat).
+    const partGrouped = Boolean(partFilter) && (!data.sort || data.sort === "nama");
     const order =
-      data.sort === "stok_asc"
+      partGrouped
+        ? "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc"
+        : data.sort === "stok_asc"
         ? "stok asc, lower(kategori) asc, lower(nama) asc"
         : data.sort === "stok_desc"
           ? "stok desc, lower(kategori) asc, lower(nama) asc"

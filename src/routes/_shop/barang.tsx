@@ -3,7 +3,7 @@ import { Barcode, Pencil, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
+import { Field, inputClass, Mark, MarkPart, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
@@ -41,6 +41,7 @@ function BarangPage() {
     sessionStorage.removeItem("mjs-find");
     setQ(saved);
   }, []);
+  const [partNumber, setPartNumber] = usePersistedState("barang:partNumber", "");
   const [kategori, setKategori] = usePersistedState<string[]>("barang:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [page, setPage] = useState(1);
@@ -55,7 +56,7 @@ function BarangPage() {
   const importingRef = useRef(false);
 
   function load(next = page) {
-    void listProducts({ data: { q, page: next, sort, kategori } })
+    void listProducts({ data: { q, partNumber, page: next, sort, kategori } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat daftar barang."));
   }
@@ -68,7 +69,7 @@ function BarangPage() {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [q, page, sort, kategori]);
+  }, [q, partNumber, page, sort, kategori]);
 
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
 
@@ -138,6 +139,7 @@ function BarangPage() {
           </div>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+            <input className={inputClass} placeholder="Filter part number" value={partNumber} onChange={(e) => { setPage(1); setPartNumber(e.target.value); }} />
             <details className="relative min-w-[240px]" id="kategori-barang-dropdown">
               <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
                 <span className="truncate">
@@ -257,7 +259,7 @@ function BarangPage() {
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
             </select>
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
           </div>
         </div>
         {canEdit ? (
@@ -307,8 +309,8 @@ function BarangPage() {
                   {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
                 </td>
                 <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
-                <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
+                <td className="px-3 font-mono text-xs"><MarkPart text={item.partNumber || item.kode || ""} q={q} part={partNumber} /></td>
+                <td className="px-3 font-mono text-xs"><MarkPart text={item.partNumbersAlt || "-"} q={q} part={partNumber} /></td>
                 <td className={`num text-center font-semibold ${status === "HABIS" ? "text-red-700" : status === "KRITIS" ? "text-amber-700" : ""}`}>
                   <div>{item.stok} {item.satuan}</div>
                   {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-slate-600">Pcs saja</div>}

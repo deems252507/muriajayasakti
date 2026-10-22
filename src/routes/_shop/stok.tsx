@@ -3,7 +3,7 @@ import { Eye } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { inputClass, Mark, Panel } from "@/components/shop/shell";
+import { inputClass, Mark, MarkPart, Panel } from "@/components/shop/shell";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
 function StokPage() {
   const [q, setQ] = usePersistedState("stok:q", "");
   const [sort, setSort] = usePersistedState("stok:sort", "nama");
+  const [partNumber, setPartNumber] = usePersistedState("stok:partNumber", "");
   const [kategori, setKategori] = usePersistedState<string[]>("stok:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [status, setStatus] = usePersistedState("stok:status", "");
@@ -22,15 +23,16 @@ function StokPage() {
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<Product | null>(null);
   useEffect(() => {
-    void listProducts({ data: { q, sort, page, kategori, status } })
+    void listProducts({ data: { q, partNumber, sort, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat laporan stok."));
-  }, [q, sort, page, kategori, status]);
+  }, [q, partNumber, sort, page, kategori, status]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
         <input className={inputClass} placeholder="Cari nama, part number, merek, atau kategori" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <input className={inputClass} placeholder="Filter part number" value={partNumber} onChange={(e) => { setPage(1); setPartNumber(e.target.value); }} />
         <details className="relative min-w-[240px]" id="kategori-dropdown">
           <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
             <span className="truncate">
@@ -153,9 +155,9 @@ function StokPage() {
           <option value="stok_desc">Stok Terbesar</option>
           <option value="stok_asc">Stok Terkecil</option>
         </select>
-        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
-          void listProducts({ data: { q, sort, page: 1, kategori, status, all: true } }).then((res) => {
+          void listProducts({ data: { q, partNumber, sort, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
               printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal });
@@ -200,8 +202,8 @@ function StokPage() {
                     {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
                   </td>
                   <td className="px-3 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
-                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
+                  <td className="px-3 font-mono text-xs"><MarkPart text={item.partNumber || "-"} q={q} part={partNumber} /></td>
+                  <td className="px-3 font-mono text-xs"><MarkPart text={item.partNumbersAlt || "-"} q={q} part={partNumber} /></td>
                   <td className="num px-3 text-center font-semibold">
                     <div>{item.stok} {item.satuan}</div>
                     {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}</div> : null}
