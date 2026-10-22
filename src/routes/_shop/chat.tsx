@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, Plus, Users } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, Plus, Search, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Conversation } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
@@ -17,6 +17,7 @@ function ChatPage() {
   const [contacts, setContacts] = useState<Contact[] | null>(null);
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [newChat, setNewChat] = useState(false);
   const [active, setActive] = useState<string>(() => { try { return sessionStorage.getItem("mjs-chat-with") || ""; } catch { return ""; } });
   const [filter, setFilter] = useState("");
   const groupId = active.startsWith("g:") ? Number(active.slice(2)) || 0 : 0;
@@ -66,7 +67,10 @@ function ChatPage() {
       <div className="grid h-[calc(100vh-9.5rem)] min-h-[420px] md:grid-cols-[320px_1fr]">
         <aside className={`min-h-0 flex-col border-r border-line ${active ? "hidden md:flex" : "flex"}`}>
           <div className="border-b border-line p-3">
-            <h2 className="font-extrabold">Chat Staff</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-extrabold">Chat Staff</h2>
+              <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-bold text-white" onClick={() => setNewChat(true)} aria-label="Pesan baru"><MessageSquarePlus className="size-4" />Pesan baru</button>
+            </div>
             <p className="text-xs text-muted">Pesan pribadi dan grup khusus (chat + catatan bersama).</p>
             <PushToggle />
             <input className="mt-2 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent" placeholder="Cari nama staff" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -138,7 +142,62 @@ function ChatPage() {
           )}
         </section>
       </div>
+      {newChat ? (
+        <NewChatModal
+          contacts={contacts ?? []}
+          canMakeGroup={canMakeGroup}
+          onClose={() => setNewChat(false)}
+          onPick={(username) => { setNewChat(false); setFilter(""); setActive(username); }}
+          onNewGroup={() => { setNewChat(false); setCreating(true); }}
+        />
+      ) : null}
       {creating ? <GroupFormModal staff={contacts ?? []} onClose={() => setCreating(false)} onSaved={(id) => { setCreating(false); loadContacts(); setActive(`g:${id}`); }} /> : null}
     </section>
+  );
+}
+
+/** Pilih staff untuk memulai chat baru (seperti tombol "Chat baru" di WhatsApp). */
+function NewChatModal(props: { contacts: Contact[]; canMakeGroup: boolean; onClose: () => void; onPick: (username: string) => void; onNewGroup: () => void }) {
+  const { contacts, canMakeGroup, onClose, onPick, onNewGroup } = props;
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const rows = [...contacts]
+    .filter((c) => !needle || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(needle))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
+      <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold">Pesan baru</h3>
+          <button type="button" className="grid size-9 place-items-center rounded-lg hover:bg-slate-100" aria-label="Tutup" onClick={onClose}><X className="size-4" /></button>
+        </div>
+        <div className="relative mt-2">
+          <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" />
+          <input autoFocus className="h-10 w-full rounded-lg border border-line bg-white pl-9 pr-3 text-sm outline-none focus:border-accent" placeholder="Cari nama staff" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <ul className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-line bg-white">
+          {canMakeGroup && !needle ? (
+            <li>
+              <button type="button" className="flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left hover:bg-blue-50" onClick={onNewGroup}>
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-white"><Users className="size-4" /></span>
+                <span className="text-sm font-bold">Grup baru</span>
+              </button>
+            </li>
+          ) : null}
+          {rows.length === 0 ? <li className="p-4 text-center text-sm text-muted">Staff tidak ditemukan.</li> : null}
+          {rows.map((c) => (
+            <li key={c.username}>
+              <button type="button" className="flex w-full items-center gap-3 border-b border-line px-3 py-2.5 text-left last:border-b-0 hover:bg-blue-50" onClick={() => onPick(c.username)}>
+                <Avatar c={c} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{c.name}</span>
+                  <span className={`mt-0.5 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${roleStyle[c.role] ?? "bg-slate-100 text-slate-700"}`}>{c.role}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

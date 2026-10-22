@@ -1,12 +1,13 @@
 import {
-  Check, ChevronDown, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Package, Paperclip, Pencil, Pin, PinOff, Receipt, Search, Send, Trash2, X,
+  Check, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  chatDeleteMessages, chatEdit, chatFileGet, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, groupDeleteMessages,
+  chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, groupClearMessages, groupDeleteMessages,
 } from "@/lib/shop/api";
+import { EmojiPicker } from "./emoji-picker";
 import { dayKey, dayLabel, hhmm } from "./chat-time";
 
 type ChatKind = "dm" | "group";
@@ -221,6 +222,76 @@ function ShareCard({ share, mine, role, disabled }: { share: { kind: string; ref
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Galeri foto: geser kiri/kanan antar foto percakapan                 */
+/* ------------------------------------------------------------------ */
+
+function Lightbox({ items, startId, onClose }: { items: Array<{ id: number; name: string }>; startId: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(() => Math.max(0, items.findIndex((i) => i.id === startId)));
+  const [src, setSrc] = useState("");
+  const [failed, setFailed] = useState(false);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const cur = items[Math.min(idx, items.length - 1)];
+  const pos = Math.min(idx, items.length - 1);
+
+  const go = useCallback((d: number) => setIdx((i) => Math.min(items.length - 1, Math.max(0, Math.min(i, items.length - 1) + d))), [items.length]);
+
+  useEffect(() => { if (!cur) onClose(); }, [cur, onClose]);
+
+  useEffect(() => {
+    if (!cur) return;
+    let alive = true;
+    setSrc("");
+    setFailed(false);
+    getFile(cur.id).then((f) => { if (alive) setSrc(f.dataUrl); }).catch(() => { if (alive) setFailed(true); });
+    // Muat foto di kiri-kanan lebih awal supaya geser terasa cepat.
+    for (const n of [items[pos - 1], items[pos + 1]]) if (n) getFile(n.id).catch(() => undefined);
+    return () => { alive = false; };
+  }, [cur?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go, onClose]);
+
+  if (!cur) return null;
+  const nav = "absolute top-1/2 z-10 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow disabled:opacity-30 sm:grid";
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/90 p-4"
+      onClick={onClose}
+      onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; }}
+      onTouchEnd={(e) => {
+        const start = touch.current;
+        touch.current = null;
+        if (!start) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) go(dx < 0 ? 1 : -1);
+      }}
+    >
+      <div className="absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs font-bold text-white">{pos + 1} / {items.length}</div>
+      <div className="absolute right-3 top-3 z-10 flex gap-2">
+        <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Unduh" onClick={(e) => { e.stopPropagation(); void downloadFile(cur.id); }}><Download className="size-5" /></button>
+        <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Tutup" onClick={onClose}><X className="size-5" /></button>
+      </div>
+      <button type="button" className={`${nav} left-3`} aria-label="Foto sebelumnya" disabled={pos <= 0} onClick={(e) => { e.stopPropagation(); go(-1); }}><ChevronLeft className="size-6" /></button>
+      <button type="button" className={`${nav} right-3`} aria-label="Foto berikutnya" disabled={pos >= items.length - 1} onClick={(e) => { e.stopPropagation(); go(1); }}><ChevronRight className="size-6" /></button>
+      {failed ? <p className="text-sm text-white">Foto tidak bisa dimuat</p> : !src ? <p className="text-sm text-white/80">Memuat foto...</p> : (
+        <img src={src} alt={cur.name} className="max-h-[84vh] max-w-full select-none rounded-lg object-contain" draggable={false} onClick={(e) => e.stopPropagation()} />
+      )}
+      <p className="absolute bottom-3 left-0 right-0 truncate px-16 text-center text-xs text-white/70">{cur.name}{items.length > 1 ? " · geser untuk foto lain" : ""}</p>
+    </div>
+  );
+}
+
 type BubbleProps = {
   m: Msg;
   kind: ChatKind;
@@ -243,13 +314,11 @@ function Bubble(p: BubbleProps) {
   const longFired = useRef(false);
   const cancel = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
   const down = () => {
-    if (m.deleted) return;
     longFired.current = false;
     cancel();
     timer.current = window.setTimeout(() => { longFired.current = true; p.onToggle(); }, 450);
   };
   const click = (e: ReactMouseEvent) => {
-    if (m.deleted) return;
     if (longFired.current) { longFired.current = false; e.preventDefault(); return; }
     const inner = (e.target as HTMLElement).closest("[data-act]");
     if (selecting || !inner) { e.preventDefault(); p.onToggle(); }
@@ -260,17 +329,17 @@ function Bubble(p: BubbleProps) {
 
   return (
     <div id={`msg-${m.id}`} className={`flex items-end rounded-lg py-0.5 ${m.mine ? "justify-end" : "justify-start"} ${selected ? "bg-blue-100/70" : ""}`}>
-      {selecting && !m.mine && !m.deleted ? <PickMark on={selected} /> : null}
+      {selecting && !m.mine ? <PickMark on={selected} /> : null}
       <div className={`flex max-w-[82%] flex-col gap-1 ${m.mine ? "items-end" : "items-start"}`}>
         <div
-          role={m.deleted ? undefined : "button"}
+          role="button"
           onClick={click}
           onPointerDown={down}
           onPointerUp={cancel}
           onPointerLeave={cancel}
           onPointerCancel={cancel}
           onContextMenu={(e) => { if (longFired.current) e.preventDefault(); }}
-          className={`rounded-2xl px-3 py-2 text-sm shadow-sm ${m.deleted ? "" : "cursor-pointer select-none md:select-text"} ${m.mine ? "rounded-br-md bg-accent text-white" : "rounded-bl-md bg-white text-ink"}`}
+          className={`rounded-2xl px-3 py-2 text-sm shadow-sm cursor-pointer select-none md:select-text ${m.mine ? "rounded-br-md bg-accent text-white" : "rounded-bl-md bg-white text-ink"}`}
         >
           {p.showName ? <p className="mb-0.5 text-[11px] font-bold text-accent">{m.name}</p> : null}
           {m.deleted ? <p className="italic opacity-70">Pesan ini telah dihapus</p> : (
@@ -313,7 +382,7 @@ function Bubble(p: BubbleProps) {
           </div>
         ) : null}
       </div>
-      {selecting && m.mine && !m.deleted ? <PickMark on={selected} /> : null}
+      {selecting && m.mine ? <PickMark on={selected} /> : null}
     </div>
   );
 }
@@ -361,7 +430,11 @@ export function Conversation(props: {
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Array<{ id: number; name: string; body: string; createdAt: string }>>([]);
-  const [lightbox, setLightbox] = useState<{ src: string; name: string; id: number } | null>(null);
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  const [delDialog, setDelDialog] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [reactFor, setReactFor] = useState<Msg | null>(null);
   const [seen, setSeen] = useState<Msg | null>(null);
   const [pinIdx, setPinIdx] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
@@ -490,10 +563,13 @@ export function Conversation(props: {
 
   /* ---------- aksi di bar pilihan ---------- */
 
-  const pickable = messages.filter((m) => !m.deleted).map((m) => m.id);
+  const pickable = messages.map((m) => m.id);
   const selMsgs = messages.filter((m) => sel.selected.has(m.id));
-  const one = selMsgs.length === 1 ? selMsgs[0] : null;
-  const canDeleteAll = selMsgs.length > 0 && selMsgs.every((m) => m.mine || (kind === "group" && moderator));
+  const one = selMsgs.length === 1 && !selMsgs[0].deleted ? selMsgs[0] : null;
+  // "Hapus untuk semua" hanya untuk pesan milik sendiri (atau pesan siapa pun bila moderator grup).
+  const canDeleteAll = selMsgs.length > 0 && selMsgs.every((m) => !m.deleted && (m.mine || (kind === "group" && moderator)));
+  const canClearAll = role === "Admin" || role === "Owner";
+  const galleryItems = messages.filter((m) => !m.deleted && m.file && m.file.mime.startsWith("image/")).map((m) => ({ id: m.file!.id, name: m.file!.name }));
 
   function startReply(m: Msg) {
     setReplyTo(m);
@@ -544,14 +620,19 @@ export function Conversation(props: {
     }
   }
 
-  async function deleteSelected() {
+  async function deleteSelected(scope: "me" | "all") {
     const ids = [...sel.selected];
     if (!ids.length || deleting) return;
-    if (!confirm(`Hapus ${ids.length} pesan ${kind === "group" ? "untuk semua anggota grup" : "untuk Anda dan lawan bicara"}? Tidak bisa dikembalikan.`)) return;
     setDeleting(true);
     try {
-      const res = kind === "group" ? await groupDeleteMessages({ data: { ids } }) : await chatDeleteMessages({ data: { ids } });
-      toast.success(`${res.deleted} pesan dihapus`);
+      if (scope === "me") {
+        await chatHideMessages({ data: { kind: kind === "group" ? "group" : "dm", ids } });
+        toast.success(`${ids.length} pesan dihapus untuk Anda`);
+      } else {
+        const res = kind === "group" ? await groupDeleteMessages({ data: { ids } }) : await chatDeleteMessages({ data: { ids } });
+        toast.success(`${res.deleted} pesan dihapus untuk semua`);
+      }
+      setDelDialog(false);
       sel.clear();
       load(true);
     } catch (error) {
@@ -559,6 +640,40 @@ export function Conversation(props: {
     } finally {
       setDeleting(false);
     }
+  }
+
+  async function clearChat(scope: "me" | "all") {
+    setMoreOpen(false);
+    const label = kind === "group" ? "grup ini" : title || "percakapan ini";
+    const warn = scope === "me"
+      ? `Kosongkan semua pesan di ${label} dari tampilan Anda? Lawan bicara tetap bisa melihatnya.`
+      : `Hapus SEMUA pesan di ${label} untuk semua orang? Tidak bisa dikembalikan.`;
+    if (!confirm(warn)) return;
+    setDeleting(true);
+    try {
+      if (scope === "me") await chatHideAll({ data: { kind: kind === "group" ? "group" : "dm", target } });
+      else if (kind === "group") await groupClearMessages({ data: { id: Number(target) } });
+      else await chatClear({ data: { with: target } });
+      toast.success("Chat dikosongkan");
+      sel.clear();
+      winRef.current = { limit: PAGE, since: 0 };
+      load(true, winRef.current);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal mengosongkan chat");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function insertEmoji(emoji: string) {
+    const ta = taRef.current;
+    const a = ta?.selectionStart ?? text.length;
+    const b = ta?.selectionEnd ?? text.length;
+    if (text.length - (b - a) + emoji.length > 2000) return;
+    const next = text.slice(0, a) + emoji + text.slice(b);
+    setText(next);
+    const pos = a + emoji.length;
+    window.setTimeout(() => { ta?.focus(); ta?.setSelectionRange(pos, pos); }, 0);
   }
 
   /* ---------- kirim ---------- */
@@ -681,7 +796,7 @@ export function Conversation(props: {
             {one && one.mine ? <button type="button" className={iconBtn} title="Ubah" aria-label="Ubah" onClick={() => startEdit(one)}><Pencil className="size-4" /></button> : null}
             {one ? <button type="button" className={iconBtn} title={one.pinned ? "Lepas sematan" : "Sematkan"} aria-label="Sematkan" onClick={() => void togglePin(one)}>{one.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</button> : null}
             {one && one.mine && kind === "group" ? <button type="button" className={iconBtn} title="Info dibaca" aria-label="Info dibaca" onClick={() => { setSeen(one); sel.clear(); }}><Info className="size-4" /></button> : null}
-            {canDeleteAll ? <button type="button" disabled={deleting} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-danger px-3 text-xs font-bold text-white disabled:opacity-50" onClick={() => void deleteSelected()}><Trash2 className="size-4" />Hapus</button> : null}
+            <button type="button" disabled={deleting} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-danger px-3 text-xs font-bold text-white disabled:opacity-50" onClick={() => setDelDialog(true)}><Trash2 className="size-4" />Hapus</button>
           </div>
           {one ? (
             <div className="flex gap-1 px-3 pb-2">
@@ -689,6 +804,7 @@ export function Conversation(props: {
                 const mineOn = one.reactions.some((r) => r.emoji === e && r.mine);
                 return <button key={e} type="button" className={`grid size-9 place-items-center rounded-full text-lg ${mineOn ? "bg-blue-200" : "bg-white"} shadow-sm`} onClick={() => void react(one, e)}>{e}</button>;
               })}
+              <button type="button" aria-label="Emoji lainnya" title="Emoji lainnya" className="grid size-9 place-items-center rounded-full bg-white shadow-sm" onClick={() => setReactFor(one)}><Plus className="size-4" /></button>
             </div>
           ) : null}
         </div>
@@ -749,7 +865,7 @@ export function Conversation(props: {
                   role={role}
                   onToggle={() => sel.toggle(m.id)}
                   onJump={jumpTo}
-                  onOpenImage={(src, name, id) => setLightbox({ src, name, id })}
+                  onOpenImage={(_src, _name, id) => setLightbox(id)}
                   onSeen={setSeen}
                   onReact={(msg, emoji) => void react(msg, emoji)}
                 />
@@ -758,7 +874,20 @@ export function Conversation(props: {
           })}
         </div>
         {!searchOpen && !sel.active ? (
-          <button type="button" className="absolute right-3 top-2 z-10 grid size-9 place-items-center rounded-full border border-line bg-white shadow" aria-label="Cari pesan" title="Cari pesan" onClick={() => setSearchOpen(true)}><Search className="size-4" /></button>
+          <div className="absolute right-3 top-2 z-10 flex gap-2">
+            <button type="button" className="grid size-9 place-items-center rounded-full border border-line bg-white shadow" aria-label="Cari pesan" title="Cari pesan" onClick={() => setSearchOpen(true)}><Search className="size-4" /></button>
+            <button type="button" className="grid size-9 place-items-center rounded-full border border-line bg-white shadow" aria-label="Menu chat" title="Menu chat" onClick={() => setMoreOpen((v) => !v)}><MoreVertical className="size-4" /></button>
+          </div>
+        ) : null}
+        {moreOpen && !searchOpen && !sel.active ? (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
+            <div className="absolute right-3 top-12 z-20 w-64 rounded-xl border border-line bg-white p-1 shadow-lg">
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMoreOpen(false); sel.setAll(pickable); }}><Check className="size-4" />Pilih semua pesan</button>
+              <button type="button" disabled={deleting || messages.length === 0} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50 disabled:opacity-40" onClick={() => void clearChat("me")}><Trash2 className="size-4" />Kosongkan chat (untuk saya)</button>
+              {canClearAll ? <button type="button" disabled={deleting || messages.length === 0} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-red-50 disabled:opacity-40" onClick={() => void clearChat("all")}><Trash2 className="size-4" />Hapus semua untuk semua orang</button> : null}
+            </div>
+          </>
         ) : null}
         {!atBottom ? (
           <button type="button" className="absolute bottom-3 right-3 z-10 grid size-10 place-items-center rounded-full border border-line bg-white shadow" aria-label="Ke pesan terbaru" onClick={scrollBottom}>
@@ -768,7 +897,12 @@ export function Conversation(props: {
         ) : null}
       </div>
 
-      <div className="border-t border-line">
+      <div className="relative border-t border-line">
+        {emojiOpen ? (
+          <div className="absolute inset-x-2 bottom-full z-30 mb-1 max-w-md">
+            <EmojiPicker onPick={insertEmoji} onClose={() => setEmojiOpen(false)} />
+          </div>
+        ) : null}
         {editing ? (
           <div className="flex items-center gap-2 border-b border-line bg-amber-50 px-3 py-2">
             <Pencil className="size-4 shrink-0 text-amber-700" />
@@ -814,7 +948,7 @@ export function Conversation(props: {
         <form className="flex items-end gap-2 p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
           {!editing ? (
             <div className="relative">
-              <button type="button" className="grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-white" aria-label="Lampirkan" onClick={() => setMenu((v) => !v)}><Paperclip className="size-4" /></button>
+              <button type="button" className="grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-white" aria-label="Lampirkan" onClick={() => { setMenu((v) => !v); setEmojiOpen(false); }}><Paperclip className="size-4" /></button>
               {menu ? (
                 <div className="absolute bottom-12 left-0 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
                   <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); imgInput.current?.click(); }}><ImageIcon className="size-4" />Foto / kamera (bisa banyak)</button>
@@ -825,6 +959,7 @@ export function Conversation(props: {
               ) : null}
             </div>
           ) : null}
+          <button type="button" className={`grid size-11 shrink-0 place-items-center rounded-xl border border-line ${emojiOpen ? "bg-blue-100" : "bg-white"}`} aria-label="Emoji" title="Emoji" onClick={() => { setEmojiOpen((v) => !v); setMenu(false); }}><Smile className="size-5" /></button>
           <textarea
             ref={taRef}
             className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-accent"
@@ -854,13 +989,26 @@ export function Conversation(props: {
 
       {shareModal ? <ShareModal type={shareModal} onClose={() => setShareModal(null)} onPick={(item) => { setShare({ type: shareModal, ...item }); setEditing(null); setShareModal(null); window.setTimeout(() => taRef.current?.focus(), 0); }} /> : null}
 
-      {lightbox ? (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/85 p-4" onClick={() => setLightbox(null)}>
-          <div className="absolute right-3 top-3 flex gap-2">
-            <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Unduh" onClick={(e) => { e.stopPropagation(); void downloadFile(lightbox.id); }}><Download className="size-5" /></button>
-            <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Tutup" onClick={() => setLightbox(null)}><X className="size-5" /></button>
+      {lightbox !== null ? <Lightbox items={galleryItems} startId={lightbox} onClose={() => setLightbox(null)} /> : null}
+
+      {reactFor ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => setReactFor(null)}>
+          <div className="w-full max-w-sm"><EmojiPicker keepOpen={false} onPick={(e) => { const m = reactFor; setReactFor(null); void react(m, e); }} onClose={() => setReactFor(null)} /></div>
+        </div>
+      ) : null}
+
+      {delDialog ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => { if (!deleting) setDelDialog(false); }}>
+          <div className="w-full max-w-sm rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold">Hapus {sel.selected.size} pesan?</h3>
+            <p className="mt-1 text-xs text-muted">Pilih siapa yang tidak akan melihat pesan ini lagi.</p>
+            <div className="mt-3 flex flex-col gap-2">
+              {canDeleteAll ? <button type="button" disabled={deleting} className="h-11 rounded-lg bg-danger px-4 text-sm font-bold text-white disabled:opacity-50" onClick={() => void deleteSelected("all")}>Hapus untuk semua orang</button> : null}
+              <button type="button" disabled={deleting} className="h-11 rounded-lg border border-red-200 px-4 text-sm font-bold text-danger disabled:opacity-50" onClick={() => void deleteSelected("me")}>Hapus untuk saya</button>
+              <button type="button" disabled={deleting} className="h-11 rounded-lg px-4 text-sm font-semibold" onClick={() => setDelDialog(false)}>Batal</button>
+            </div>
+            {!canDeleteAll ? <p className="mt-2 text-[11px] text-muted">“Hapus untuk semua orang” hanya tersedia untuk pesan milik Anda sendiri.</p> : null}
           </div>
-          <img src={lightbox.src} alt={lightbox.name} className="max-h-[88vh] max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       ) : null}
 

@@ -1999,16 +1999,20 @@ export async function chatContacts() {
   const rows = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo,
             (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_messages m
-              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              where ((m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username))
+              and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)
               order by m.id desc limit 1) as last_body,
             (select m.created_at from chat_messages m
-              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              where ((m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username))
+              and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)
               order by m.id desc limit 1) as last_at,
             (select m.sender from chat_messages m
-              where (m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username)
+              where ((m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username))
+              and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)
               order by m.id desc limit 1) as last_sender,
             (select count(*)::int from chat_messages m
-              where m.sender = s.username and m.recipient = $1 and m.read_at is null) as unread
+              where m.sender = s.username and m.recipient = $1 and m.read_at is null and m.deleted_at is null
+              and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)) as unread
      from staff s
      where s.status = 'Aktif' and s.username <> $1
      order by last_at desc nulls last, case s.role when 'Owner' then 0 when 'Admin' then 1 else 2 end, s.name`,
@@ -2417,6 +2421,7 @@ export async function groupDeleteMessages(data: { ids: number[] }) {
 /** Hapus seluruh percakapan pribadi dengan satu staff (hilang untuk kedua pihak). */
 export async function chatClear(data: { with: string }) {
   const me = await requireStaff();
+  await assertChatAdmin(me);
   const db = await sql();
   const other = String(data.with ?? "");
   if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
@@ -2426,6 +2431,47 @@ export async function chatClear(data: { with: string }) {
   );
   await pruneChatFiles(db);
   await audit(me, `Hapus semua chat pribadi dengan ${other} (${rows.length} pesan)`);
+  return { deleted: rows.length };
+}
+
+/** Admin atau Owner saja: hapus seluruh percakapan pribadi untuk kedua pihak. */
+function assertChatAdmin(me: Staff) {
+  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Hanya Admin atau Owner yang bisa menghapus chat untuk semua orang.");
+}
+
+/** "Hapus untuk saya": sembunyikan pesan terpilih hanya dari tampilan saya. Boleh untuk pesan siapa pun di percakapan saya. */
+export async function chatHideMessages(data: { kind: string; ids: number[] }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const kind = asChatKind(data.kind);
+  const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 1000);
+  if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
+  const table = chatTable(kind);
+  const access = kind === "group"
+    ? `m.group_id in (select group_id from chat_group_members where username = $1)`
+    : `(m.sender = $1 or m.recipient = $1)`;
+  const rows = await db.query(
+    `insert into mjs_chat_hidden (kind, message_id, username)
+     select $2, m.id, $1 from ${table} m where m.id = any($3::bigint[]) and ${access}
+     on conflict do nothing returning message_id`,
+    [me.username, kind, ids],
+  );
+  return { deleted: rows.length || ids.length };
+}
+
+/** "Kosongkan chat": sembunyikan semua pesan satu percakapan hanya untuk saya. */
+export async function chatHideAll(data: { kind: string; target: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  const table = chatTable(scope.kind);
+  const tw = chatThreadWhere(scope, me, "m");
+  const rows = await db.query(
+    `insert into mjs_chat_hidden (kind, message_id, username)
+     select '${scope.kind}', m.id, $${tw.params.length + 1} from ${table} m where ${tw.sql}
+     on conflict do nothing returning message_id`,
+    [...tw.params, me.username],
+  );
   return { deleted: rows.length };
 }
 
@@ -2500,6 +2546,8 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
     ? `m.id >= $${n + 1} and m.id in (select x.id from ${table} x where ${tx.sql} order by x.id desc limit 1000)`
     : `m.id in (select x.id from ${table} x where ${tx.sql} order by x.id desc limit ${limit})`;
   const params = since ? [...tw.params, since] : tw.params;
+  const hid = `not exists (select 1 from mjs_chat_hidden h where h.kind = '${scope.kind}' and h.message_id = m.id and h.username = $${params.length + 1})`;
+  const hiddenParams = [...params, me.username];
 
   const rows = await db.query<Record<string, unknown>>(
     `select m.id, m.sender, s.name as sender_name, m.body, m.body_auto, m.created_at, m.deleted_at, m.edited_at, m.pinned_at,
@@ -2512,9 +2560,9 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
      left join mjs_chat_files f on f.id = m.file_id
      left join ${table} r on r.id = m.reply_to
      left join staff rs on rs.username = r.sender
-     where ${tw.sql} and ${win}
+     where ${tw.sql} and ${win} and ${hid}
      order by m.id asc`,
-    params,
+    hiddenParams,
   );
 
   let myLast = 0;
@@ -2567,12 +2615,20 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
 
   const pinRows = await db.query<Record<string, unknown>>(
     `select m.id, s.name, m.body from ${table} m join staff s on s.username = m.sender
-     where ${tw.sql} and m.pinned_at is not null and m.deleted_at is null order by m.pinned_at desc limit 10`,
-    tw.params,
+     where ${tw.sql} and m.pinned_at is not null and m.deleted_at is null
+       and not exists (select 1 from mjs_chat_hidden h where h.kind = '${scope.kind}' and h.message_id = m.id and h.username = $${n + 1})
+     order by m.pinned_at desc limit 10`,
+    [...tw.params, me.username],
   );
 
   const minId = rows.length ? Number(rows[0].id) : 0;
-  const older = minId ? await db.query(`select 1 from ${table} m where ${tw.sql} and m.id < $${n + 1} limit 1`, [...tw.params, minId]) : [];
+  const older = minId
+    ? await db.query(
+        `select 1 from ${table} m where ${tw.sql} and m.id < $${n + 1}
+           and not exists (select 1 from mjs_chat_hidden h where h.kind = '${scope.kind}' and h.message_id = m.id and h.username = $${n + 2}) limit 1`,
+        [...tw.params, minId, me.username],
+      )
+    : [];
 
   const messages = rows.map((row) => {
     const id = Number(row.id);
@@ -2780,7 +2836,7 @@ export async function chatReact(data: { kind: string; id: number; emoji: string 
   const kind = asChatKind(data.kind);
   const id = Number(data.id);
   const emoji = String(data.emoji ?? "");
-  if (!CHAT_REACTIONS.includes(emoji)) throw new Error("Emoji tidak tersedia.");
+  if (!emoji || emoji.length > 16 || !/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u200d\ufe0f\u20e3\u{1f3fb}-\u{1f3ff}#*0-9])+$/u.test(emoji)) throw new Error("Emoji tidak valid.");
   await chatMessageAccess(db, me, kind, id);
   const [existing] = await db.query<{ emoji: string }>(
     `select emoji from mjs_chat_reactions where kind = $1 and message_id = $2 and username = $3`,

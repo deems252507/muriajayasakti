@@ -655,6 +655,20 @@ export const chatClear = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const chatHideMessages = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; ids: number[] }) => ({ kind: String(input?.kind ?? "dm"), ids: (Array.isArray(input?.ids) ? input.ids : []).map(Number) }))
+  .handler(async ({ data }) => {
+    const { chatHideMessages: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatHideAll = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; target: string }) => ({ kind: String(input?.kind ?? "dm"), target: String(input?.target ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatHideAll: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const groupClearMessages = createServerFn({ method: "POST" })
   .validator((input: { id: number }) => ({ id: Number(input?.id) }))
   .handler(async ({ data }) => {
