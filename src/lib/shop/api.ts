@@ -661,3 +661,76 @@ export const groupClearMessages = createServerFn({ method: "POST" })
     const { groupClearMessages: run } = await import("./logic.server");
     return run(data);
   });
+
+// ---- Chat lanjutan: lampiran, balas, ubah, bagikan data toko, sematkan, reaksi ----
+
+export const chatThread = createServerFn({ method: "GET" })
+  .validator((input: { kind: string; target: string; limit?: number; since?: number | null }) => ({
+    kind: String(input?.kind ?? "dm"),
+    target: String(input?.target ?? ""),
+    limit: Number(input?.limit) || 40,
+    since: Number(input?.since) || 0,
+  }))
+  .handler(async ({ data }) => {
+    const { chatThread: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export type ChatUpload = { name: string; data: string };
+export type ChatShareInput = { type: "barang" | "transaksi"; ref: string };
+
+export const chatPost = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; target: string; body?: string; replyTo?: number | null; file?: ChatUpload | null; share?: ChatShareInput | null }) => ({
+    kind: String(input?.kind ?? "dm"),
+    target: String(input?.target ?? ""),
+    body: String(input?.body ?? ""),
+    replyTo: input?.replyTo ? Number(input.replyTo) : null,
+    file: input?.file ? { name: String(input.file.name ?? "file"), data: String(input.file.data ?? "") } : null,
+    share: input?.share ? { type: String(input.share.type ?? ""), ref: String(input.share.ref ?? "") } : null,
+  }))
+  .handler(async ({ data }) => {
+    const { chatPost: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatEdit = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; id: number; body: string }) => ({ kind: String(input?.kind ?? "dm"), id: Number(input?.id), body: String(input?.body ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatEdit: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatReact = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; id: number; emoji: string }) => ({ kind: String(input?.kind ?? "dm"), id: Number(input?.id), emoji: String(input?.emoji ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatReact: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatPin = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; id: number; pinned: boolean }) => ({ kind: String(input?.kind ?? "dm"), id: Number(input?.id), pinned: Boolean(input?.pinned) }))
+  .handler(async ({ data }) => {
+    const { chatPin: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatFileGet = createServerFn({ method: "GET" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { chatFileGet: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatSearch = createServerFn({ method: "GET" })
+  .validator((input: { kind: string; target: string; q: string }) => ({ kind: String(input?.kind ?? "dm"), target: String(input?.target ?? ""), q: String(input?.q ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatSearch: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const chatShareFind = createServerFn({ method: "GET" })
+  .validator((input: { type: string; q: string }) => ({ type: String(input?.type ?? "barang"), q: String(input?.q ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatShareFind: run } = await import("./logic.server");
+    return run(data);
+  });

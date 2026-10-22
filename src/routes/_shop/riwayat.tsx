@@ -32,6 +32,12 @@ function RiwayatPage() {
   const [banks, setBanks] = useState<string[]>([]);
   const [manual, setManual] = useState<{ nomor: string; tujuan: string; keterangan: string; bon: boolean; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
   const [sale, setSale] = useState<{ nomor: string; tujuan: string; diskon: string; metode: string; bank: string; bayar: string; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !sale && !manual) setOpen(""); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, sale, manual]);
 
   /** Buka editor per item untuk nota Kasir / Manual. removeId = baris yang langsung ditandai hapus. */
   async function openEditor(nomor: string, removeId?: number) {
@@ -224,7 +230,7 @@ function RiwayatPage() {
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
                 <button className="text-xs font-bold text-accent" onClick={() => {
                   const nomor = String(inv.nomor);
-                  if (open === nomor) { setOpen(""); return; }
+                  setDetail(null);
                   setOpen(nomor);
                   void getInvoice({ data: { nomor } }).then((res) => setDetail(res ? { invoice: res.invoice as Record<string, unknown>, lines: res.lines as Array<Record<string, unknown>> } : null));
                 }}>Lihat Detail</button>
@@ -244,11 +250,44 @@ function RiwayatPage() {
                 }}>Cetak Nota</button>
               </div>
             </div>
-            {open === inv.nomor && detail ? (
-              <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
-                <p className="text-xs font-bold">Rincian Barang</p>
+          </li>
+        ))}
+        {items.length === 0 ? <li className="py-8 text-center text-sm text-muted">Tidak ada transaksi ditemukan. Coba ubah kata pencarian atau filter tanggal.</li> : null}
+      </ul> : null}
+      <div className="mt-3 flex items-center justify-between text-sm">
+        <span className="text-muted">Menampilkan {items.length} dari {data?.total ?? 0} {view === "barang" ? "baris barang" : "transaksi"} · {todayInput()}</span>
+        <div className="flex items-center gap-2">
+          <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button>
+          <span>Hal: {page}/{pages}</span>
+          <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
+        </div>
+      </div>
+      {view === "transaksi" && open ? (() => {
+        const inv = items.find((x) => String(x.nomor) === open);
+        if (!inv) return null;
+        return (
+          <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-ink/40 p-3 sm:p-4" onClick={() => setOpen("")}>
+            <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl bg-panel shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3 border-b border-line p-4">
+                <div className="min-w-0">
+                  <p className="text-lg font-black">
+                    <span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold uppercase tracking-wide ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source)}</span>
+                    {String(inv.nomor)}
+                  </p>
+                  <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar)}</p>
+                  <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
+                </div>
+                <div className="flex shrink-0 items-start gap-2">
+                  <p className="num text-xl font-black">{rupiah(Number(inv.total))}</p>
+                  <button type="button" className="grid size-9 place-items-center rounded-lg border border-line text-lg font-bold hover:bg-slate-100" aria-label="Tutup" onClick={() => setOpen("")}>×</button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+{detail && String(detail.invoice.nomor) === open ? (
+              <div className="text-sm">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-600">Rincian Barang ({detail.lines.length})</p>
                 {detail.lines.map((line) => (
-                  <div key={String(line.id)} className="mt-2 flex items-start justify-between gap-2 border-t border-slate-200 pt-2">
+                  <div key={String(line.id)} className="mt-2 flex flex-col gap-3 rounded-xl border border-line bg-slate-50 p-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="font-medium">{String(line.jenis)} · <MarkWords text={String(line.custom_item || line.product_nama || "Barang")} q={q} />{line.kode_pajak ? <> (<MarkWords text={String(line.kode_pajak)} q={q} />)</> : null}</p>
                       {line.merek || line.product_merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(line.merek || line.product_merek)} q={q} /></span></div> : null}
@@ -263,7 +302,7 @@ function RiwayatPage() {
                     ) : null}
                   </div>
                 ))}
-                <p className="mt-2 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
+                <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
                 {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
                 {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
                   <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Ubah Nota (per barang)</button>
@@ -275,19 +314,12 @@ function RiwayatPage() {
                   }}>Hapus Transaksi</button>
                 ) : null}
               </div>
-            ) : null}
-          </li>
-        ))}
-        {items.length === 0 ? <li className="py-8 text-center text-sm text-muted">Tidak ada transaksi ditemukan. Coba ubah kata pencarian atau filter tanggal.</li> : null}
-      </ul> : null}
-      <div className="mt-3 flex items-center justify-between text-sm">
-        <span className="text-muted">Menampilkan {items.length} dari {data?.total ?? 0} {view === "barang" ? "baris barang" : "transaksi"} · {todayInput()}</span>
-        <div className="flex items-center gap-2">
-          <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button>
-          <span>Hal: {page}/{pages}</span>
-          <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
-        </div>
-      </div>
+            ) : <p className="py-10 text-center text-sm text-muted">Memuat rincian...</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
       {sale ? (() => {
         const subtotal = editorSubtotal(sale.rows, sale.adds);
         const total = Math.max(0, subtotal - digits(sale.diskon));

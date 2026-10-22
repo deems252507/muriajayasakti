@@ -134,3 +134,11 @@ tbody tr:hover td {
     background: white !important;
   }
 }
+
+@keyframes mjs-flash {
+  0%, 60% { background-color: rgb(253 224 71 / 0.55); }
+  100% { background-color: transparent; }
+}
+.mjs-flash {
+  animation: mjs-flash 1.6s ease-out;
+}

@@ -2064,7 +2064,7 @@ export async function chatUnread() {
     : [];
   const cand: Latest[] = [];
   if (d) cand.push({ ts: new Date(String(d.created_at)).getTime(), kind: "dm", target: String(d.sender), fromName: String(d.name ?? ""), title: String(d.name ?? ""), body: String(d.body ?? "") });
-  if (g) cand.push({ ts: new Date(String(g.created_at)).getTime(), kind: "group", target: `g:${Number(g.group_id)}`, fromName: String(g.name ?? ""), title: `${String(g.group_name ?? "")} · ${String(g.name ?? "")}`, body: String(g.body ?? "") });
+  if (g) cand.push({ ts: new Date(String(g.created_at)).getTime(), kind: "group", target: `g:${Number(g.group_id)}`, fromName: String(g.name ?? ""), title: `${String(g.group_name ?? "")} · ${String(g.name ?? "")}${String(g.body ?? "").toLowerCase().includes(`@${me.name}`.toLowerCase()) ? " menyebut Anda" : ""}`, body: String(g.body ?? "") });
   cand.sort((x, y) => y.ts - x.ts);
   return { unread, latest: cand[0] ?? null };
 }
@@ -2237,6 +2237,7 @@ export async function groupDelete(data: { id: number }) {
   await requireMember(db, data.id, me);
   const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [data.id]);
   await db.query(`delete from chat_groups where id = $1`, [data.id]);
+  await pruneChatFiles(db);
   await audit(me, `Hapus grup chat ${String(g?.nama ?? data.id)}`);
   return { ok: true };
 }
@@ -2385,6 +2386,9 @@ export async function chatDeleteMessages(data: { ids: number[] }) {
     [me.username, ...ids],
   );
   if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
+  const doneIds = rows.map((r) => Number((r as { id: number }).id));
+  const doneMarks = doneIds.map((_, i) => `$${i + 1}`).join(",");
+  await db.query(`delete from chat_files where id in (select file_id from chat_messages where file_id is not null and id in (${doneMarks}))`, doneIds);
   return { deleted: rows.length };
 }
 
@@ -2406,6 +2410,7 @@ export async function groupDeleteMessages(data: { ids: number[] }) {
   const okIds = msgs.map((m) => Number(m.id));
   const okMarks = okIds.map((_, i) => `$${i + 1}`).join(",");
   await db.query(`update chat_group_messages set deleted_at = now() where id in (${okMarks})`, okIds);
+  await db.query(`delete from chat_files where id in (select file_id from chat_group_messages where file_id is not null and id in (${okMarks}))`, okIds);
   return { deleted: okIds.length };
 }
 
@@ -2419,6 +2424,7 @@ export async function chatClear(data: { with: string }) {
     `delete from chat_messages where (sender = $1 and recipient = $2) or (sender = $2 and recipient = $1) returning id`,
     [me.username, other],
   );
+  await pruneChatFiles(db);
   await audit(me, `Hapus semua chat pribadi dengan ${other} (${rows.length} pesan)`);
   return { deleted: rows.length };
 }
@@ -2432,6 +2438,468 @@ export async function groupClearMessages(data: { id: number }) {
   const rows = await db.query(`delete from chat_group_messages where group_id = $1 returning id`, [data.id]);
   await db.query(`update chat_group_members set last_read_id = 0 where group_id = $1`, [data.id]);
   const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [data.id]);
+  await pruneChatFiles(db);
   await audit(me, `Hapus semua chat grup ${String(g?.nama ?? data.id)} (${rows.length} pesan)`);
   return { deleted: rows.length };
+}
+
+
+// ---------------------------------------------------------------------------
+// Chat lanjutan: lampiran, balas, ubah, bagikan data toko, sematkan, reaksi
+// ---------------------------------------------------------------------------
+
+type ChatKind = "dm" | "group";
+type ChatDb = Awaited<ReturnType<typeof sql>>;
+type ChatScope = { kind: ChatKind; other: string; groupId: number };
+
+const CHAT_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const CHAT_FILE_MAX_BYTES = 2_500_000;
+const CHAT_ALLOWED_MIME = /^(image\/(jpeg|png|webp|gif)|application\/pdf|text\/(plain|csv)|application\/(msword|vnd\.ms-excel|vnd\.ms-powerpoint|zip)|application\/vnd\.openxmlformats-officedocument\.[a-z.\-]+)$/;
+
+const asChatKind = (value: unknown): ChatKind => (value === "group" ? "group" : "dm");
+const chatTable = (kind: ChatKind) => (kind === "group" ? "chat_group_messages" : "chat_messages");
+const isoDate = (value: unknown) => new Date(String(value)).toISOString();
+const rupiahText = (value: unknown) => `Rp ${String(Math.round(Number(value) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+
+async function chatScope(db: ChatDb, me: Staff, kindIn: unknown, targetIn: unknown): Promise<ChatScope> {
+  const kind = asChatKind(kindIn);
+  if (kind === "group") {
+    const groupId = Number(targetIn);
+    if (!Number.isInteger(groupId) || groupId <= 0) throw new Error("Grup tidak valid.");
+    await requireMember(db, groupId, me);
+    return { kind, other: "", groupId };
+  }
+  const other = String(targetIn ?? "");
+  if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
+  const rows = await db.query(`select 1 from staff where username = $1`, [other]);
+  if (!rows.length) throw new Error("Staff tidak ditemukan.");
+  return { kind, other, groupId: 0 };
+}
+
+/** Kondisi SQL "pesan ini milik percakapan ini" dengan parameter mulai dari $1. */
+function chatThreadWhere(scope: ChatScope, me: Staff, alias: string) {
+  if (scope.kind === "group") return { sql: `${alias}.group_id = $1`, params: [scope.groupId] as unknown[] };
+  return {
+    sql: `((${alias}.sender = $1 and ${alias}.recipient = $2) or (${alias}.sender = $2 and ${alias}.recipient = $1))`,
+    params: [me.username, scope.other] as unknown[],
+  };
+}
+
+/** Isi percakapan: pesan (dengan balasan, lampiran, reaksi), pesan tersemat, dan status baca anggota grup. */
+export async function chatThread(data: { kind: string; target: string; limit?: number; since?: number | null }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  const table = chatTable(scope.kind);
+  const tw = chatThreadWhere(scope, me, "m");
+  const tx = chatThreadWhere(scope, me, "x");
+  const n = tw.params.length;
+  const limit = Math.min(Math.max(Math.floor(Number(data.limit) || 40), 10), 1000);
+  const since = Number(data.since) > 0 ? Math.floor(Number(data.since)) : 0;
+  const win = since
+    ? `m.id >= $${n + 1} and m.id in (select x.id from ${table} x where ${tx.sql} order by x.id desc limit 1000)`
+    : `m.id in (select x.id from ${table} x where ${tx.sql} order by x.id desc limit ${limit})`;
+  const params = since ? [...tw.params, since] : tw.params;
+
+  const rows = await db.query<Record<string, unknown>>(
+    `select m.id, m.sender, s.name as sender_name, m.body, m.body_auto, m.created_at, m.deleted_at, m.edited_at, m.pinned_at,
+            ${scope.kind === "dm" ? "m.read_at" : "null::timestamptz as read_at"},
+            m.reply_to, m.file_id, f.name as file_name, f.mime as file_mime, f.size as file_size,
+            m.share_kind, m.share_ref, m.share_title, m.share_sub,
+            r.sender as r_sender, rs.name as r_name, r.body as r_body, r.deleted_at as r_deleted
+     from ${table} m
+     join staff s on s.username = m.sender
+     left join chat_files f on f.id = m.file_id
+     left join ${table} r on r.id = m.reply_to
+     left join staff rs on rs.username = r.sender
+     where ${tw.sql} and ${win}
+     order by m.id asc`,
+    params,
+  );
+
+  let myLast = 0;
+  let readers: Array<{ username: string; name: string; lastReadId: number }> = [];
+  if (scope.kind === "group") {
+    const members = await db.query<{ username: string; name: string; last_read_id: number }>(
+      `select gm.username, s.name, gm.last_read_id from chat_group_members gm join staff s on s.username = gm.username where gm.group_id = $1 order by s.name`,
+      [scope.groupId],
+    );
+    myLast = Number(members.find((x) => x.username === me.username)?.last_read_id ?? 0);
+    readers = members
+      .filter((x) => x.username !== me.username)
+      .map((x) => ({ username: String(x.username), name: String(x.name ?? ""), lastReadId: Number(x.last_read_id ?? 0) }));
+  }
+
+  const maxId = rows.length ? Number(rows[rows.length - 1].id) : 0;
+  if (maxId) {
+    if (scope.kind === "dm") {
+      await db.query(
+        `update chat_messages set read_at = now() where sender = $1 and recipient = $2 and read_at is null and id <= $3`,
+        [scope.other, me.username, maxId],
+      );
+    } else {
+      await db.query(
+        `update chat_group_members set last_read_id = greatest(last_read_id, $3) where group_id = $1 and username = $2`,
+        [scope.groupId, me.username, maxId],
+      );
+    }
+  }
+
+  const ids = rows.map((row) => Number(row.id));
+  const reactRows = ids.length
+    ? await db.query<{ message_id: number; emoji: string; username: string; name: string }>(
+        `select cr.message_id, cr.emoji, cr.username, s.name from chat_reactions cr join staff s on s.username = cr.username
+         where cr.kind = $1 and cr.message_id = any($2::bigint[]) order by cr.created_at`,
+        [scope.kind, ids],
+      )
+    : [];
+  const reactMap = new Map<number, Map<string, { emoji: string; count: number; mine: boolean; names: string[] }>>();
+  for (const r of reactRows) {
+    const mid = Number(r.message_id);
+    const byEmoji = reactMap.get(mid) ?? new Map();
+    const entry = byEmoji.get(r.emoji) ?? { emoji: String(r.emoji), count: 0, mine: false, names: [] as string[] };
+    entry.count += 1;
+    entry.names.push(String(r.name ?? r.username));
+    if (r.username === me.username) entry.mine = true;
+    byEmoji.set(r.emoji, entry);
+    reactMap.set(mid, byEmoji);
+  }
+
+  const pinRows = await db.query<Record<string, unknown>>(
+    `select m.id, s.name, m.body from ${table} m join staff s on s.username = m.sender
+     where ${tw.sql} and m.pinned_at is not null and m.deleted_at is null order by m.pinned_at desc limit 10`,
+    tw.params,
+  );
+
+  const minId = rows.length ? Number(rows[0].id) : 0;
+  const older = minId ? await db.query(`select 1 from ${table} m where ${tw.sql} and m.id < $${n + 1} limit 1`, [...tw.params, minId]) : [];
+
+  const messages = rows.map((row) => {
+    const id = Number(row.id);
+    const mine = String(row.sender) === me.username;
+    const deleted = row.deleted_at != null;
+    const fresh = !mine && !deleted && (scope.kind === "dm" ? row.read_at == null : id > myLast);
+    const replyGone = row.r_sender == null || row.r_deleted != null;
+    return {
+      id,
+      mine,
+      deleted,
+      fresh,
+      sender: String(row.sender),
+      name: String(row.sender_name ?? ""),
+      body: deleted ? "" : String(row.body ?? ""),
+      auto: !deleted && Boolean(row.body_auto),
+      createdAt: isoDate(row.created_at),
+      editedAt: row.edited_at && !deleted ? isoDate(row.edited_at) : "",
+      read: row.read_at != null,
+      pinned: row.pinned_at != null && !deleted,
+      reply: !deleted && row.reply_to != null
+        ? {
+            id: Number(row.reply_to),
+            name: replyGone ? "" : String(row.r_sender) === me.username ? "Anda" : String(row.r_name ?? ""),
+            body: replyGone ? "" : String(row.r_body ?? ""),
+            deleted: replyGone,
+          }
+        : null,
+      file: !deleted && row.file_id != null
+        ? { id: Number(row.file_id), name: String(row.file_name ?? "file"), mime: String(row.file_mime ?? ""), size: Number(row.file_size ?? 0) }
+        : null,
+      share: !deleted && row.share_kind
+        ? { kind: String(row.share_kind), ref: String(row.share_ref ?? ""), title: String(row.share_title ?? ""), sub: String(row.share_sub ?? "") }
+        : null,
+      reactions: deleted ? [] : [...(reactMap.get(id)?.values() ?? [])],
+    };
+  });
+
+  return {
+    messages,
+    hasMore: older.length > 0,
+    pins: pinRows.map((p) => ({ id: Number(p.id), name: String(p.name ?? ""), body: String(p.body ?? "") })),
+    readers,
+  };
+}
+
+function parseChatFile(file: unknown) {
+  if (!file || typeof file !== "object") return null;
+  const f = file as { name?: unknown; data?: unknown };
+  const data = String(f.data ?? "");
+  const head = /^data:([a-z0-9.+\-/]+);base64,/i.exec(data.slice(0, 160));
+  if (!head) throw new Error("File tidak valid.");
+  const mime = head[1].toLowerCase();
+  if (!CHAT_ALLOWED_MIME.test(mime)) throw new Error("Jenis file ini tidak didukung. Gunakan foto, PDF, Word, Excel, CSV, atau teks.");
+  const b64 = data.slice(head[0].length);
+  const size = Math.floor((b64.length * 3) / 4) - (b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0);
+  if (size <= 0) throw new Error("File kosong.");
+  if (size > CHAT_FILE_MAX_BYTES) throw new Error("File terlalu besar (maksimal 2,5 MB).");
+  const name = String(f.name ?? "file").replace(/[\\/\u0000-\u001f]/g, "").trim().slice(0, 120) || "file";
+  return { name, mime, size, data };
+}
+
+/** Data toko yang dibagikan disusun ulang dari database (bukan dari kiriman klien). */
+async function buildChatShare(db: ChatDb, share: { type?: unknown; ref?: unknown } | null | undefined) {
+  if (!share) return null;
+  const type = String(share.type ?? "");
+  const ref = String(share.ref ?? "").trim();
+  if (!ref) return null;
+  if (type === "barang") {
+    const [p] = await db.query<Record<string, unknown>>(
+      `select kode, part_number, nama, merek, stok, satuan, harga_jual from products where kode = $1`,
+      [ref],
+    );
+    if (!p) throw new Error("Barang tidak ditemukan.");
+    const pn = String(p.part_number ?? "");
+    const merek = String(p.merek ?? "");
+    return {
+      kind: "barang",
+      ref: pn || String(p.nama),
+      title: String(p.nama),
+      sub: `${pn || String(p.kode)}${merek ? ` · ${merek}` : ""} · Stok ${Number(p.stok ?? 0)} ${String(p.satuan ?? "")} · ${rupiahText(p.harga_jual)}`,
+    };
+  }
+  if (type === "transaksi") {
+    const [i] = await db.query<Record<string, unknown>>(
+      `select nomor, tujuan, total, status_bayar from invoices where nomor = $1`,
+      [ref],
+    );
+    if (!i) throw new Error("Transaksi tidak ditemukan.");
+    return {
+      kind: "transaksi",
+      ref: String(i.nomor),
+      title: `Transaksi ${String(i.nomor)}`,
+      sub: `${String(i.tujuan || "Umum")} · ${rupiahText(i.total)} · ${String(i.status_bayar ?? "")}`,
+    };
+  }
+  throw new Error("Jenis data tidak dikenal.");
+}
+
+const autoBodyFor = (file: { name: string; mime: string } | null, title: string) =>
+  file ? (file.mime.startsWith("image/") ? "📷 Foto" : `📎 ${file.name}`) : `🧾 ${title}`;
+
+/** Kirim pesan: teks, foto/file, balasan, atau data toko yang dibagikan. */
+export async function chatPost(data: {
+  kind: string;
+  target: string;
+  body?: string;
+  replyTo?: number | null;
+  file?: unknown;
+  share?: { type?: unknown; ref?: unknown } | null;
+}) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  if (scope.kind === "dm") {
+    const active = await db.query(`select 1 from staff where username = $1 and status = 'Aktif'`, [scope.other]);
+    if (!active.length) throw new Error("Staff tujuan tidak ditemukan atau tidak aktif.");
+  }
+  const caption = String(data.body ?? "").trim();
+  if (caption.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
+  const file = parseChatFile(data.file);
+  const share = await buildChatShare(db, data.share);
+  if (!caption && !file && !share) throw new Error("Pesan kosong.");
+  const body = caption || autoBodyFor(file, share?.title ?? "");
+
+  let replyTo: number | null = null;
+  const rid = Number(data.replyTo);
+  if (Number.isInteger(rid) && rid > 0) {
+    const tw = chatThreadWhere(scope, me, "m");
+    const ok = await db.query(`select 1 from ${chatTable(scope.kind)} m where m.id = $${tw.params.length + 1} and ${tw.sql}`, [...tw.params, rid]);
+    if (ok.length) replyTo = rid;
+  }
+
+  let fileId: number | null = null;
+  if (file) {
+    const [f] = await db.query<{ id: number }>(
+      `insert into chat_files (owner, name, mime, size, data) values ($1, $2, $3, $4, $5) returning id`,
+      [me.username, file.name, file.mime, file.size, file.data],
+    );
+    fileId = Number(f?.id ?? 0) || null;
+  }
+
+  const extra = [!caption, replyTo, fileId, share?.kind ?? null, share?.ref ?? null, share?.title ?? null, share?.sub ?? null];
+  if (scope.kind === "dm") {
+    const [row] = await db.query<{ id: number }>(
+      `insert into chat_messages (sender, recipient, body, body_auto, reply_to, file_id, share_kind, share_ref, share_title, share_sub)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [me.username, scope.other, body, ...extra],
+    );
+    return { id: Number(row?.id ?? 0) };
+  }
+  const [row] = await db.query<{ id: number }>(
+    `insert into chat_group_messages (group_id, sender, body, body_auto, reply_to, file_id, share_kind, share_ref, share_title, share_sub)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+    [scope.groupId, me.username, body, ...extra],
+  );
+  return { id: Number(row?.id ?? 0) };
+}
+
+/** Ubah isi pesan sendiri (untuk pesan dengan foto/file, yang diubah adalah keterangannya). */
+export async function chatEdit(data: { kind: string; id: number; body: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const kind = asChatKind(data.kind);
+  const table = chatTable(kind);
+  const id = Number(data.id);
+  const [m] = await db.query<Record<string, unknown>>(
+    `select m.sender, m.deleted_at, m.file_id, m.share_title, f.name as file_name, f.mime as file_mime${kind === "group" ? ", m.group_id" : ""}
+     from ${table} m left join chat_files f on f.id = m.file_id where m.id = $1`,
+    [id],
+  );
+  if (!m || m.deleted_at) throw new Error("Pesan tidak ditemukan.");
+  if (String(m.sender) !== me.username) throw new Error("Anda hanya bisa mengubah pesan Anda sendiri.");
+  if (kind === "group") await requireMember(db, Number(m.group_id), me);
+  const text = String(data.body ?? "").trim();
+  if (text.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
+  const hasAttach = m.file_id != null || m.share_title != null;
+  if (!text && !hasAttach) throw new Error("Pesan tidak boleh kosong.");
+  const body = text || autoBodyFor(m.file_id != null ? { name: String(m.file_name ?? "file"), mime: String(m.file_mime ?? "") } : null, String(m.share_title ?? ""));
+  await db.query(`update ${table} set body = $2, body_auto = $3, edited_at = now() where id = $1`, [id, body, !text]);
+  return { ok: true };
+}
+
+async function chatMessageAccess(db: ChatDb, me: Staff, kind: ChatKind, id: number) {
+  const [m] = await db.query<Record<string, unknown>>(
+    kind === "group"
+      ? `select id, group_id, sender, deleted_at, pinned_at from chat_group_messages where id = $1`
+      : `select id, sender, recipient, deleted_at, pinned_at from chat_messages where id = $1`,
+    [id],
+  );
+  if (!m || m.deleted_at) throw new Error("Pesan tidak ditemukan.");
+  if (kind === "group") await requireMember(db, Number(m.group_id), me);
+  else if (String(m.sender) !== me.username && String(m.recipient) !== me.username) throw new Error("Pesan tidak ditemukan.");
+  return m;
+}
+
+/** Beri atau cabut reaksi emoji (satu reaksi per orang per pesan; emoji yang sama = cabut). */
+export async function chatReact(data: { kind: string; id: number; emoji: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const kind = asChatKind(data.kind);
+  const id = Number(data.id);
+  const emoji = String(data.emoji ?? "");
+  if (!CHAT_REACTIONS.includes(emoji)) throw new Error("Emoji tidak tersedia.");
+  await chatMessageAccess(db, me, kind, id);
+  const [existing] = await db.query<{ emoji: string }>(
+    `select emoji from chat_reactions where kind = $1 and message_id = $2 and username = $3`,
+    [kind, id, me.username],
+  );
+  if (existing && existing.emoji === emoji) {
+    await db.query(`delete from chat_reactions where kind = $1 and message_id = $2 and username = $3`, [kind, id, me.username]);
+    return { on: false };
+  }
+  await db.query(
+    `insert into chat_reactions (kind, message_id, username, emoji) values ($1, $2, $3, $4)
+     on conflict (kind, message_id, username) do update set emoji = excluded.emoji, created_at = now()`,
+    [kind, id, me.username, emoji],
+  );
+  return { on: true };
+}
+
+/** Sematkan atau lepas sematan pesan (maksimal 5 per percakapan). */
+export async function chatPin(data: { kind: string; id: number; pinned: boolean }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const kind = asChatKind(data.kind);
+  const id = Number(data.id);
+  const m = await chatMessageAccess(db, me, kind, id);
+  const pinned = Boolean(data.pinned);
+  if (pinned && m.pinned_at == null) {
+    const [c] = kind === "group"
+      ? await db.query<{ n: number }>(`select count(*)::int as n from chat_group_messages where group_id = $1 and pinned_at is not null and deleted_at is null`, [Number(m.group_id)])
+      : await db.query<{ n: number }>(
+          `select count(*)::int as n from chat_messages where ((sender = $1 and recipient = $2) or (sender = $2 and recipient = $1)) and pinned_at is not null and deleted_at is null`,
+          [String(m.sender), String(m.recipient)],
+        );
+    if (Number(c?.n ?? 0) >= 5) throw new Error("Maksimal 5 pesan disematkan. Lepas salah satu dulu.");
+  }
+  await db.query(
+    `update ${chatTable(kind)} set pinned_at = case when $2::boolean then now() else null end, pinned_by = case when $2::boolean then $3 else null end where id = $1`,
+    [id, pinned, me.username],
+  );
+  return { ok: true };
+}
+
+/** Isi foto/file. Hanya bisa dibuka oleh peserta percakapan yang pesannya belum dihapus. */
+export async function chatFileGet(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const [f] = await db.query<Record<string, unknown>>(
+    `select f.name, f.mime, f.size, f.data from chat_files f
+     where f.id = $1 and (
+       exists (select 1 from chat_messages m where m.file_id = f.id and m.deleted_at is null and (m.sender = $2 or m.recipient = $2))
+       or exists (select 1 from chat_group_messages g join chat_group_members gm on gm.group_id = g.group_id and gm.username = $2
+                  where g.file_id = f.id and g.deleted_at is null)
+     )`,
+    [Number(data.id), me.username],
+  );
+  if (!f) throw new Error("File tidak ditemukan atau sudah dihapus.");
+  return { name: String(f.name), mime: String(f.mime), size: Number(f.size ?? 0), dataUrl: String(f.data) };
+}
+
+/** Cari kata di dalam satu percakapan (isi pesan, nama file, data toko yang dibagikan). */
+export async function chatSearch(data: { kind: string; target: string; q: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  const q = String(data.q ?? "").trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const tw = chatThreadWhere(scope, me, "m");
+  const rows = await db.query<Record<string, unknown>>(
+    `select m.id, s.name, m.body, m.created_at
+     from ${chatTable(scope.kind)} m
+     join staff s on s.username = m.sender
+     left join chat_files f on f.id = m.file_id
+     where ${tw.sql} and m.deleted_at is null
+       and position(lower($${tw.params.length + 1}) in lower(m.body || ' ' || coalesce(m.share_title, '') || ' ' || coalesce(m.share_sub, '') || ' ' || coalesce(f.name, ''))) > 0
+     order by m.id desc limit 50`,
+    [...tw.params, q],
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    name: String(r.name ?? ""),
+    body: String(r.body ?? ""),
+    createdAt: isoDate(r.created_at),
+  }));
+}
+
+/** Cari barang atau transaksi untuk dibagikan ke chat. */
+export async function chatShareFind(data: { type: string; q: string }) {
+  await requireStaff();
+  const db = await sql();
+  const tokens = String(data.q ?? "").trim().toLowerCase().slice(0, 80).split(/\s+/).filter(Boolean).slice(0, 4);
+  const params: unknown[] = [];
+  const where = (expr: string) => {
+    const conds = tokens.map((t) => { params.push(t); return `position($${params.length} in ${expr}) > 0`; });
+    return conds.length ? `where ${conds.join(" and ")}` : "";
+  };
+  if (data.type === "transaksi") {
+    const rows = await db.query<Record<string, unknown>>(
+      `select i.nomor, i.tujuan, i.total, i.status_bayar from invoices i
+       ${where("lower(i.nomor || ' ' || i.tujuan || ' ' || i.keterangan)")} order by i.tanggal desc, i.id desc limit 15`,
+      params,
+    );
+    return rows.map((r) => ({
+      ref: String(r.nomor),
+      title: `Transaksi ${String(r.nomor)}`,
+      sub: `${String(r.tujuan || "Umum")} · ${rupiahText(r.total)} · ${String(r.status_bayar ?? "")}`,
+    }));
+  }
+  const rows = await db.query<Record<string, unknown>>(
+    `select p.kode, p.part_number, p.nama, p.merek, p.stok, p.satuan, p.harga_jual from products p
+     ${where("lower(p.nama || ' ' || p.part_number || ' ' || p.merek || ' ' || p.kode)")} order by p.nama limit 15`,
+    params,
+  );
+  return rows.map((r) => ({
+    ref: String(r.kode),
+    title: String(r.nama),
+    sub: `${String(r.part_number || r.kode)}${r.merek ? ` · ${String(r.merek)}` : ""} · Stok ${Number(r.stok ?? 0)} ${String(r.satuan ?? "")} · ${rupiahText(r.harga_jual)}`,
+  }));
+}
+
+/** Hapus file lampiran yang sudah tidak dipakai pesan mana pun. */
+async function pruneChatFiles(db: ChatDb) {
+  await db.query(
+    `delete from chat_files f where f.created_at < now() - interval '1 minute'
+       and not exists (select 1 from chat_messages m where m.file_id = f.id)
+       and not exists (select 1 from chat_group_messages g where g.file_id = f.id)`,
+  );
 }

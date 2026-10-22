@@ -1,15 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, Plus, Send, Users } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { Avatar, GroupFormModal, GroupPanel, PickMark, SelectBar, dayKey, dayLabel, hhmm, listTime, roleStyle, useSelection } from "@/components/shop/chat-group";
-import { chatContacts, chatDeleteMessages, chatMessages, chatSend, groupList } from "@/lib/shop/api";
+import { ArrowLeft, Plus, Users } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Conversation } from "@/components/shop/chat-core";
+import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
+import { chatContacts, groupList } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/_shop/chat")({ component: ChatPage });
 
 type Contact = Awaited<ReturnType<typeof chatContacts>>[number];
-type Message = Awaited<ReturnType<typeof chatMessages>>[number];
-
 type Group = Awaited<ReturnType<typeof groupList>>[number];
 
 function ChatPage() {
@@ -19,35 +17,13 @@ function ChatPage() {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [active, setActive] = useState<string>(() => { try { return sessionStorage.getItem("mjs-chat-with") || ""; } catch { return ""; } });
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const sel = useSelection();
   const [filter, setFilter] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
-  const signature = useRef("");
-  const activeRef = useRef(active);
-  activeRef.current = active;
   const groupId = active.startsWith("g:") ? Number(active.slice(2)) || 0 : 0;
   const dm = groupId ? "" : active;
 
   const loadContacts = useCallback(() => {
     void chatContacts().then(setContacts).catch(() => undefined);
     void groupList().then(setGroups).catch(() => undefined);
-  }, []);
-
-  const loadMessages = useCallback((who: string, force = false) => {
-    if (!who) return;
-    void chatMessages({ data: { with: who } }).then((rows) => {
-      if (activeRef.current !== who) return;
-      const sig = rows.map((r) => `${r.id}${r.read ? "r" : ""}${r.deleted ? "d" : ""}`).join(",");
-      if (force || sig !== signature.current) {
-        signature.current = sig;
-        setMessages(rows);
-      }
-      window.dispatchEvent(new Event("mjs-chat"));
-    }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -58,16 +34,7 @@ function ChatPage() {
 
   useEffect(() => {
     try { sessionStorage.setItem("mjs-chat-with", active); } catch { /* abaikan */ }
-    signature.current = "";
-    setMessages([]);
-    sel.clear();
-    if (!dm) return;
-    loadMessages(dm, true);
-    const timer = window.setInterval(() => { if (!document.hidden) loadMessages(dm); }, 3000);
-    return () => window.clearInterval(timer);
   }, [active]);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, active]);
 
   const current = contacts?.find((c) => c.username === dm) ?? null;
   // Staff yang dipilih tapi sudah tidak aktif / tidak ada: kembali ke daftar.
@@ -75,42 +42,6 @@ function ChatPage() {
   useEffect(() => { if (groups && groupId && !groups.some((g) => g.id === groupId)) setActive(""); }, [groups, groupId]);
   const backToList = useCallback(() => setActive(""), []);
   const afterGroupDeleted = useCallback(() => { setActive(""); loadContacts(); }, [loadContacts]);
-
-  async function send() {
-    const body = text.trim();
-    if (!body || !dm || sending) return;
-    setSending(true);
-    try {
-      await chatSend({ data: { to: dm, body } });
-      setText("");
-      loadMessages(dm, true);
-      loadContacts();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengirim pesan");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  const pickable = messages.filter((m) => m.mine && !m.deleted).map((m) => m.id);
-
-  async function deleteSelected() {
-    const ids = [...sel.selected];
-    if (!ids.length || deleting) return;
-    if (!confirm(`Hapus ${ids.length} pesan? Pesan hilang untuk Anda dan lawan bicara.`)) return;
-    setDeleting(true);
-    try {
-      const res = await chatDeleteMessages({ data: { ids } });
-      toast.success(`${res.deleted} pesan dihapus`);
-      sel.clear();
-      loadMessages(dm, true);
-      loadContacts();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menghapus pesan");
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   const shown = (contacts ?? []).filter((c) => !filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase()));
 
@@ -172,7 +103,7 @@ function ChatPage() {
 
         <section className={`min-h-0 flex-col ${active ? "flex" : "hidden md:flex"}`}>
           {groupId ? (
-            <GroupPanel groupId={groupId} staff={contacts ?? []} onBack={backToList} onChanged={loadContacts} onDeleted={afterGroupDeleted} />
+            <GroupPanel groupId={groupId} staff={contacts ?? []} meUsername={me.username} role={me.role} onBack={backToList} onChanged={loadContacts} onDeleted={afterGroupDeleted} />
           ) : current ? (
             <>
               <div className="flex items-center gap-3 border-b border-line p-3">
@@ -183,46 +114,7 @@ function ChatPage() {
                   <p className="text-[11px] text-muted">{current.role}</p>
                 </div>
               </div>
-              {sel.active ? <SelectBar count={sel.selected.size} total={pickable.length} busy={deleting} onCancel={sel.clear} onAll={() => sel.setAll(pickable)} onDelete={() => void deleteSelected()} /> : null}
-              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-3">
-                {messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">Belum ada pesan. Tulis pesan pertama untuk {current.name}.</p> : null}
-                {messages.map((m, i) => {
-                  const newDay = i === 0 || dayKey(messages[i - 1].createdAt) !== dayKey(m.createdAt);
-                  const pick = m.mine && !m.deleted;
-                  const on = sel.selected.has(m.id);
-                  return (
-                    <div key={m.id}>
-                      {newDay ? <p className="my-2 text-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-muted shadow-sm">{dayLabel(m.createdAt)}</span></p> : null}
-                      <div className={`flex rounded-lg py-0.5 ${m.mine ? "justify-end" : "justify-start"} ${on ? "bg-blue-100/70" : ""}`}>
-                        <div
-                          role={pick ? "button" : undefined}
-                          onClick={pick ? () => sel.toggle(m.id) : undefined}
-                          className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${pick ? "cursor-pointer select-none" : ""} ${m.mine ? "rounded-br-md bg-accent text-white" : "rounded-bl-md bg-white text-ink"}`}
-                        >
-                          {m.deleted ? <p className="italic opacity-70">Pesan ini telah dihapus</p> : <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                          <p className={`mt-0.5 flex items-center justify-end text-[10px] ${m.mine ? "text-white/70" : "text-muted"}`}>
-                            <span>{hhmm(m.createdAt)}{m.mine && !m.deleted ? (m.read ? " · Dibaca" : " · Terkirim") : ""}</span>
-                          </p>
-                        </div>
-                        {sel.active && pick ? <PickMark on={on} /> : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={endRef} />
-              </div>
-              <form className="flex items-end gap-2 border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-                <textarea
-                  className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-accent"
-                  rows={1}
-                  maxLength={2000}
-                  placeholder={`Tulis pesan untuk ${current.name}...`}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                />
-                <button type="submit" disabled={sending || !text.trim()} className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-white disabled:opacity-50" aria-label="Kirim"><Send className="size-4" /></button>
-              </form>
+              <Conversation key={`dm:${dm}`} kind="dm" target={dm} title={current.name} members={[]} meUsername={me.username} role={me.role} moderator={false} onRead={loadContacts} />
             </>
           ) : (
             <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted">Pilih staff atau grup di daftar untuk mulai.</div>

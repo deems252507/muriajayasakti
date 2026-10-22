@@ -1,26 +1,13 @@
-import { ArrowLeft, Check, Copy, Pencil, Pin, PinOff, Plus, Send, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Copy, Pencil, Pin, PinOff, Plus, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  groupCreate, groupDelete, groupDeleteMessages, groupInfo, groupMessages, groupSend, groupUpdate, noteDelete, noteList, noteSave,
+  groupCreate, groupDelete, groupInfo, groupUpdate, noteDelete, noteList, noteSave,
 } from "@/lib/shop/api";
+import { Conversation } from "./chat-core";
+import { dateTime } from "./chat-time";
 
-const TZ = "Asia/Makassar";
-export const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).replace(".", ":");
-export const dayKey = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: TZ });
-export function dayLabel(iso: string) {
-  const key = dayKey(iso);
-  if (key === dayKey(new Date().toISOString())) return "Hari ini";
-  if (key === dayKey(new Date(Date.now() - 86400000).toISOString())) return "Kemarin";
-  return new Date(iso).toLocaleDateString("id-ID", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
-export function listTime(iso: string) {
-  if (!iso) return "";
-  return dayKey(iso) === dayKey(new Date().toISOString())
-    ? hhmm(iso)
-    : new Date(iso).toLocaleDateString("id-ID", { timeZone: TZ, day: "numeric", month: "short" });
-}
-const dateTime = (iso: string) => `${new Date(iso).toLocaleDateString("id-ID", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" })} ${hhmm(iso)}`;
+export { dayKey, dayLabel, hhmm, listTime } from "./chat-time";
 
 export const roleStyle: Record<string, string> = {
   Owner: "bg-purple-100 text-purple-800",
@@ -36,37 +23,8 @@ export function Avatar({ c, size = "size-10" }: { c: { name: string; photo: stri
 
 export type StaffPerson = { username: string; name: string; role: string; photo: string };
 type Info = Awaited<ReturnType<typeof groupInfo>>;
-type GroupMessage = Awaited<ReturnType<typeof groupMessages>>[number];
 type Note = Awaited<ReturnType<typeof noteList>>[number];
 
-
-/** Pilih pesan ala WhatsApp: tap pesan untuk centang, tombol Hapus muncul di bar atas. */
-export function useSelection() {
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const toggle = useCallback((id: number) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }), []);
-  const clear = useCallback(() => setSelected(new Set()), []);
-  const setAll = useCallback((ids: number[]) => setSelected(new Set(ids)), []);
-  return { selected, toggle, clear, setAll, active: selected.size > 0 };
-}
-
-export function SelectBar(props: { count: number; total: number; busy?: boolean; onCancel: () => void; onAll: () => void; onDelete: () => void }) {
-  const { count, total, busy, onCancel, onAll, onDelete } = props;
-  return (
-    <div className="flex items-center gap-2 border-b border-line bg-blue-50 px-3 py-2">
-      <button type="button" className="grid size-9 place-items-center rounded-lg hover:bg-blue-100" onClick={onCancel} aria-label="Batal pilih"><X className="size-5" /></button>
-      <p className="text-sm font-bold">{count} dipilih</p>
-      <div className="ml-auto flex items-center gap-2">
-        {count < total ? <button type="button" className="h-9 rounded-lg px-3 text-xs font-bold text-accent hover:bg-blue-100" onClick={onAll}>Pilih semua</button> : null}
-        <button type="button" disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-danger px-4 text-xs font-bold text-white disabled:opacity-50" onClick={onDelete}><Trash2 className="size-4" />Hapus</button>
-      </div>
-    </div>
-  );
-}
-
-/** Lingkaran centang di samping pesan saat mode pilih aktif. */
-export function PickMark({ on }: { on: boolean }) {
-  return <span className={`mx-1 grid size-5 shrink-0 place-items-center self-center rounded-full border-2 ${on ? "border-accent bg-accent text-white" : "border-slate-300 bg-white"}`}>{on ? <Check className="size-3" strokeWidth={3} /> : null}</span>;
-}
 
 const fieldCls = "w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent";
 
@@ -136,8 +94,8 @@ export function GroupFormModal(props: { info?: Info | null; staff: StaffPerson[]
 }
 
 /** Panel satu grup: tab Chat, Catatan, Anggota. */
-export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; onBack: () => void; onChanged: () => void; onDeleted: () => void }) {
-  const { groupId, staff, onBack, onChanged, onDeleted } = props;
+export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUsername: string; role: string; onBack: () => void; onChanged: () => void; onDeleted: () => void }) {
+  const { groupId, staff, meUsername, role, onBack, onChanged, onDeleted } = props;
   const [tab, setTab] = useState<"chat" | "catatan" | "anggota">("chat");
   const [info, setInfo] = useState<Info | null>(null);
   const [editing, setEditing] = useState(false);
@@ -168,7 +126,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; onBac
         </div>
       </div>
 
-      {tab === "chat" ? <GroupChat groupId={groupId} name={info?.nama ?? ""} onRead={onChanged} moderator={Boolean(info?.canManage)} /> : null}
+      {tab === "chat" ? <Conversation key={`g:${groupId}`} kind="group" target={String(groupId)} title={info?.nama ?? ""} members={info?.members ?? []} meUsername={meUsername} role={role} moderator={Boolean(info?.canManage)} onRead={onChanged} /> : null}
       {tab === "catatan" ? <GroupNotes groupId={groupId} /> : null}
       {tab === "anggota" ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -194,117 +152,6 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; onBac
       ) : null}
 
       {editing && info ? <GroupFormModal info={info} staff={staff} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); loadInfo(); onChanged(); }} /> : null}
-    </>
-  );
-}
-
-function GroupChat({ groupId, name, onRead, moderator }: { groupId: number; name: string; onRead: () => void; moderator: boolean }) {
-  const [messages, setMessages] = useState<GroupMessage[]>([]);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const sel = useSelection();
-  const endRef = useRef<HTMLDivElement>(null);
-  const signature = useRef("");
-
-  const load = useCallback((force = false) => {
-    void groupMessages({ data: { id: groupId } }).then((rows) => {
-      const sig = rows.map((r) => `${r.id}${r.deleted ? "d" : ""}`).join(",");
-      if (force || sig !== signature.current) { signature.current = sig; setMessages(rows); }
-      window.dispatchEvent(new Event("mjs-chat"));
-      onRead();
-    }).catch(() => undefined);
-  }, [groupId, onRead]);
-
-  useEffect(() => {
-    signature.current = "";
-    setMessages([]);
-    sel.clear();
-    load(true);
-    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 3000);
-    return () => window.clearInterval(timer);
-  }, [groupId]);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
-
-  const canPick = (m: GroupMessage) => !m.deleted && (m.mine || moderator);
-  const pickable = messages.filter(canPick).map((m) => m.id);
-
-  async function send() {
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    try {
-      await groupSend({ data: { id: groupId, body } });
-      setText("");
-      load(true);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal mengirim pesan");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function deleteSelected() {
-    const ids = [...sel.selected];
-    if (!ids.length || deleting) return;
-    if (!confirm(`Hapus ${ids.length} pesan untuk semua anggota grup? Tidak bisa dikembalikan.`)) return;
-    setDeleting(true);
-    try {
-      const res = await groupDeleteMessages({ data: { ids } });
-      toast.success(`${res.deleted} pesan dihapus`);
-      sel.clear();
-      load(true);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menghapus pesan");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  return (
-    <>
-      {sel.active ? <SelectBar count={sel.selected.size} total={pickable.length} busy={deleting} onCancel={sel.clear} onAll={() => sel.setAll(pickable)} onDelete={() => void deleteSelected()} /> : null}
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-slate-50 px-3 py-3">
-        {messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">Belum ada pesan di grup ini.</p> : null}
-        {messages.map((m, i) => {
-          const newDay = i === 0 || dayKey(messages[i - 1].createdAt) !== dayKey(m.createdAt);
-          const showName = !m.mine && (newDay || messages[i - 1].mine || messages[i - 1].name !== m.name);
-          const pick = canPick(m);
-          const on = sel.selected.has(m.id);
-          return (
-            <div key={m.id}>
-              {newDay ? <p className="my-2 text-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-muted shadow-sm">{dayLabel(m.createdAt)}</span></p> : null}
-              <div className={`flex rounded-lg py-0.5 ${m.mine ? "justify-end" : "justify-start"} ${on ? "bg-blue-100/70" : ""}`}>
-                {sel.active && pick && !m.mine ? <PickMark on={on} /> : null}
-                <div
-                  role={pick ? "button" : undefined}
-                  onClick={pick ? () => sel.toggle(m.id) : undefined}
-                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${pick ? "cursor-pointer select-none" : ""} ${m.mine ? "rounded-br-md bg-accent text-white" : "rounded-bl-md bg-white text-ink"}`}
-                >
-                  {showName ? <p className="mb-0.5 text-[11px] font-bold text-accent">{m.name}</p> : null}
-                  {m.deleted ? <p className="italic opacity-70">Pesan ini telah dihapus</p> : <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                  <p className={`mt-0.5 flex items-center justify-end text-[10px] ${m.mine ? "text-white/70" : "text-muted"}`}>{hhmm(m.createdAt)}</p>
-                </div>
-                {sel.active && pick && m.mine ? <PickMark on={on} /> : null}
-              </div>
-            </div>
-          );
-        })}
-        <div ref={endRef} />
-      </div>
-      <form className="flex items-end gap-2 border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <textarea
-          className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-accent"
-          rows={1}
-          maxLength={2000}
-          placeholder={`Tulis pesan ke ${name || "grup"}...`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-        />
-        <button type="submit" disabled={sending || !text.trim()} className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-white disabled:opacity-50" aria-label="Kirim"><Send className="size-4" /></button>
-      </form>
     </>
   );
 }
