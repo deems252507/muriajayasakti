@@ -53,7 +53,7 @@ function SettingsPage() {
             e.preventDefault();
             void saveShopProfile({ data: shop }).then(() => {
               setShopProfile(shop);
-              toast.success("Identitas toko disimpan. Menu dan halaman masuk memakai data ini.");
+              toast.success("Identitas toko berhasil disimpan", { description: "Dipakai di menu, halaman masuk, dan struk." });
             }).catch((err: Error) => toast.error(err.message));
           }}>
             <div className="flex items-center gap-3">
@@ -87,7 +87,7 @@ function SettingsPage() {
             </label>
           ))}
         </div>
-        {me.role !== "Kasir" ? <PrimaryButton className="mt-3" onClick={() => void savePajak({ data: { items: pajak.map((item) => ({ id: item.id, persentase: Number(item.persentase) })) } }).then(() => toast.success("Pajak disimpan"))}>Simpan Master Pajak</PrimaryButton> : null}
+        {me.role !== "Kasir" ? <PrimaryButton className="mt-3" onClick={() => void savePajak({ data: { items: pajak.map((item) => ({ id: item.id, persentase: Number(item.persentase) })) } }).then(() => toast.success("Master pajak berhasil disimpan"))}>Simpan Master Pajak</PrimaryButton> : null}
       </Panel>
       <Panel>
         <div className="flex items-center justify-between">
@@ -130,7 +130,7 @@ function SettingsPage() {
         <form className="mt-3 space-y-2" onSubmit={(e) => {
           e.preventDefault();
           void updateOwnProfile({ data: { name: ownName, photo: ownPhoto } })
-            .then(() => { toast.success("Nama dan foto disimpan"); window.location.reload(); })
+            .then(() => { toast.success("Profil berhasil diperbarui"); window.location.reload(); })
             .catch((err: Error) => toast.error(err.message));
         }}>
           <Field label="Nama tampilan"><input className={inputClass} value={ownName} onChange={(e) => setOwnName(e.target.value)} /></Field>
@@ -172,7 +172,7 @@ function SettingsPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
           <form className="w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
-            void saveBank({ data: bank }).then(() => { toast.success("Bank disimpan"); setBankOpen(false); setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); load(); }).catch((err: Error) => toast.error(err.message));
+            void saveBank({ data: bank }).then(() => { toast.success(bank.id ? "Rekening bank berhasil diubah" : "Rekening bank berhasil ditambahkan", { description: bank.nama }); setBankOpen(false); setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); load(); }).catch((err: Error) => toast.error(err.message));
           }}>
             <h3 className="font-extrabold">{bank.id ? "Edit bank" : "Tambah bank"}</h3>
             <div className="mt-3 grid gap-2">
@@ -193,7 +193,7 @@ function SettingsPage() {
           <form className="my-6 w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
             void saveStaff({ data: account }).then(() => {
-              toast.success("Akun disimpan");
+              toast.success("Akun berhasil disimpan", { description: account.name || account.username });
               setAccountOpen(false);
               load();
             }).catch((err: Error) => toast.error(err.message));
@@ -249,7 +249,7 @@ function SettingsPage() {
             toast.error("Konfirmasi password tidak sama.");
             return;
           }
-          void changeOwnPassword({ data: { current, next } }).then(() => { toast.success("Password diganti"); setCurrent(""); setNext(""); setConfirm(""); }).catch((err: Error) => toast.error(err.message));
+          void changeOwnPassword({ data: { current, next } }).then(() => { toast.success("Password berhasil diganti"); setCurrent(""); setNext(""); setConfirm(""); }).catch((err: Error) => toast.error(err.message));
         }}>
           <Field label="Password Saat Ini"><input className={inputClass} type="password" value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
           <Field label="Password Baru"><input className={inputClass} type="password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>

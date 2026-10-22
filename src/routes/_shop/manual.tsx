@@ -150,7 +150,7 @@ function ManualPage() {
         },
       })) as { nomor: string };
       const saved = items;
-      toast.success(`Nota ${res.nomor} tersimpan${bon ? " sebagai Bon" : ""}`, {
+      toast.success(`Nota ${res.nomor} berhasil disimpan${bon ? " sebagai Bon" : ""}`, {
         description: bon ? "Masuk ke menu Bon / Piutang. Pelunasan dilakukan dari sana." : "Nota tidak dicetak otomatis. Bisa dicetak lewat tombol ini atau nanti dari Riwayat Transaksi.",
         duration: 10000,
         action: { label: "Cetak Nota", onClick: () => printManual(res.nomor, tanggal, saved) },

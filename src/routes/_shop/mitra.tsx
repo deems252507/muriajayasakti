@@ -39,7 +39,7 @@ function MitraPage() {
   function remove(row: Partner) {
     if (!window.confirm(`Hapus ${row.tipe.toLowerCase()} "${row.nama}"?`)) return;
     void deletePartner({ data: { id: row.id } })
-      .then(() => { toast.success("Terhapus"); load(); })
+      .then(() => { toast.success(`${row.tipe} berhasil dihapus`, { description: row.nama }); load(); })
       .catch((err: Error) => toast.error(err.message));
   }
 
@@ -123,7 +123,7 @@ function MitraPage() {
           <form className="w-full max-w-md space-y-3 rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
             if (!form.nama.trim()) return toast.error("Nama wajib diisi.");
-            void savePartner({ data: form }).then(() => { toast.success("Tersimpan"); setOpen(false); setTab(form.tipe as Tipe); load(); }).catch((err: Error) => toast.error(err.message));
+            void savePartner({ data: form }).then(() => { toast.success(form.id ? `${form.tipe} berhasil diubah` : `${form.tipe} berhasil ditambahkan`, { description: form.nama }); setOpen(false); setTab(form.tipe as Tipe); load(); }).catch((err: Error) => toast.error(err.message));
           }}>
             <h3 className="font-semibold">{form.id ? `Ubah ${form.tipe}` : `Tambah ${form.tipe}`}</h3>
             <Field label="Nama"><input className={inputClass} autoFocus value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} /></Field>

@@ -177,7 +177,7 @@ function BonPage() {
                             if (Number(inv.total) <= 0) return toast.error("Harga bon masih Rp 0. Klik Edit dulu untuk mengisi harga.");
                             if (!confirm(`Lunasi ${nomor} atas nama ${name} sebesar ${rupiah(Number(inv.total))}?`)) return;
                             void payoffBon({ data: { nomor } })
-                              .then((res) => { toast.success(`Kas masuk ${rupiah(Number((res as { total: number }).total))}`); load(); })
+                              .then((res) => { toast.success(`Bon ${nomor} berhasil dilunasi`, { description: `${name} · kas masuk ${rupiah(Number((res as { total: number }).total))}` }); load(); })
                               .catch((error: Error) => toast.error(error.message));
                           }}>Lunasi</button>
                         </>
@@ -189,7 +189,7 @@ function BonPage() {
                             : `Hapus ${nomor} (${name})? Stok barang dikembalikan.`;
                           if (!confirm(warn)) return;
                           void removeInvoice({ data: { nomor } })
-                            .then(() => { toast.success("Bon dihapus"); load(); })
+                            .then(() => { toast.success(`Bon ${nomor} berhasil dihapus`, { description: "Stok barang dikembalikan." }); load(); })
                             .catch((error: Error) => toast.error(error.message));
                         }}>Hapus</button>
                       ) : null}
@@ -214,7 +214,7 @@ function BonPage() {
             const save = edit.manual
               ? editManual({ data: { nomor: edit.nomor, tujuan: edit.tujuan, keterangan: edit.keterangan, lines, add } })
               : editSale({ data: { nomor: edit.nomor, tujuan: edit.tujuan, diskon: digits(edit.diskon), lines, add } });
-            void save.then(() => { toast.success("Bon diperbarui. Cetak bon lagi untuk kertas yang baru."); closeEdit(); load(); }).catch((error: Error) => toast.error(error.message));
+            void save.then(() => { toast.success(`Bon ${edit.nomor} berhasil diubah`, { description: "Cetak ulang nota untuk kertas yang baru." }); closeEdit(); load(); }).catch((error: Error) => toast.error(error.message));
           }}>
             <h3 className="font-semibold">Edit Bon {edit.nomor}</h3>
             <p className="mt-1 text-xs text-muted">Ubah nama pelanggan, jumlah, satuan (Pcs/Dus), harga{edit.manual ? "" : ", diskon"}, hapus barang, {edit.manual ? "ganti barang, " : ""}atau tambah barang. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>

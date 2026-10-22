@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { StockTable } from "@/components/shop/stock-table";
 import { Barcode, Pencil, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
+import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
@@ -107,7 +108,7 @@ function BarangPage() {
                           updated += result.updated;
                           toast.loading(`Mengimpor ${Math.min(i + size, rows.length)} / ${rows.length} baris...`, { id });
                         }
-                        toast.success(`${created} baru, ${updated} diperbarui`, { id });
+                        toast.success("Impor barang selesai", { id, description: `${created} barang baru ditambahkan, ${updated} barang diperbarui.` });
                       } catch (error) {
                         toast.error(`${(error as Error).message} (sudah masuk: ${created} baru, ${updated} diperbarui — impor ulang aman)`, { id });
                       } finally {
@@ -276,77 +277,30 @@ function BarangPage() {
       </Panel>
       <Panel className="overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-200 text-[11px] font-bold tracking-wide text-slate-900 uppercase shadow-[0_1px_0_#0f172a]">
-            <tr>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number Alt</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Stok Akhir</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap">Harga Jual</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Kode Pajak</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Status Stok</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(() => {
-              let previousKey = "";
-              return data?.items.map((item) => {
-              const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "AMAN";
-              const category = (item.kategori || "TANPA KATEGORI").trim();
-              const groupByPart = dupOnly || sort === "part";
-              // Urutan Part Number (A - Z) / Hanya yang kembar: tanpa baris judul kategori, murni daftar berurutan.
-              const showCategory = !groupByPart && category.toLowerCase() !== previousKey.toLowerCase();
-              previousKey = category;
-              return (
-                <Fragment key={`group-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
-              <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk membuka detail dan ubah sparepart" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
-                <td className="py-3 pr-3">
-                  <div className="font-semibold text-slate-900">
-                    <Mark text={item.nama} q={q} />
-                    {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
-                  </div>
-                  {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
-                </td>
-                <td className="px-2 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || item.kode || ""} q={q} /></td>
-                <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
-                <td className={`num text-center font-semibold ${status === "HABIS" ? "text-red-700" : status === "KRITIS" ? "text-amber-700" : ""}`}>
-                  <div>{item.stok} {item.satuan}</div>
-                  {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}{item.stok % item.isiSatuanAlt ? ` + ${item.stok % item.isiSatuanAlt} ${item.satuan}` : ""}</div> : <div className="text-[11px] text-slate-600">Pcs saja</div>}
-                </td>
-                <td className="num px-3 text-right">{rupiah(item.hargaJual)}{item.hargaJualAlt ? ` · dus ${rupiah(item.hargaJualAlt)}` : ""}</td>
-                <td className="text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
-                <td className="text-center">
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status === "HABIS" ? "bg-red-100 text-red-700" : status === "KRITIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{status}</span>
-                </td>
-                <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
-                  <div className="inline-flex items-center justify-center gap-1">
-                    <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
-                      <Barcode className="h-4 w-4" />
-                    </button>
-                    {canEdit ? (
-                      <>
-                        <button type="button" title="Ubah" aria-label="Ubah" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button type="button" title="Hapus" aria-label="Hapus" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-red-200 bg-white text-danger hover:bg-red-50" onClick={() => { if (confirm("Hapus barang ini?")) void deleteProduct({ data: { id: item.id } }).then(() => load()).catch((e: Error) => toast.error(e.message)); }}>
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-              </Fragment>
-              );
-            });
-            })()}
-          </tbody>
-        </table>
+        <StockTable
+          variant="barang"
+          items={data?.items ?? []}
+          q={q}
+          groupByPart={dupOnly || sort === "part"}
+          onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
+          actions={(item) => (
+            <>
+              <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
+                <Barcode className="h-4 w-4" />
+              </button>
+              {canEdit ? (
+                <>
+                  <button type="button" title="Ubah" aria-label="Ubah" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button type="button" title="Hapus" aria-label="Hapus" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-red-200 bg-white text-danger hover:bg-red-50" onClick={() => { if (confirm(`Hapus barang "${item.nama}"?`)) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              ) : null}
+            </>
+          )}
+        />
         <div className="mt-3 flex items-center justify-between text-sm">
           <span className="text-slate-600">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
           <div className="flex items-center gap-2">
@@ -368,7 +322,7 @@ function BarangPage() {
               }
               const payload = useDus ? form : { ...form, satuanAlt: "", isiSatuanAlt: 0, hargaJualAlt: 0 };
               void saveProduct({ data: payload })
-                .then(() => { setOpen(false); toast.success("Barang tersimpan"); load(); })
+                .then(() => { setOpen(false); toast.success(form.id ? "Barang berhasil diubah" : "Barang berhasil ditambahkan", { description: `${form.nama}${form.partNumber ? ` · ${form.partNumber}` : ""}` }); load(); })
                 .catch((error: Error) => toast.error(error.message));
             }}
           >

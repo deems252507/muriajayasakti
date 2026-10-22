@@ -285,7 +285,7 @@ function ReturPage() {
               })
                 .then((result) => {
                   const info = result as Record<string, unknown>;
-                  toast.success(`${me.role} · Retur ${String(info.id)} tersimpan`);
+                  toast.success(`Retur ${String(info.id)} berhasil disimpan`, { description: `Dicatat oleh ${me.name || me.role}. Nota retur dicetak.` });
                   try { printReturSlip(info); } catch (error) { toast.error(error instanceof Error ? error.message : "Nota retur gagal dicetak"); }
                   setLines([]);
                   setExchange([]);
@@ -327,7 +327,7 @@ function ReturPage() {
                       <button className="ml-3 text-xs font-bold text-danger" onClick={() => {
                         if (!confirm(`Hapus nota retur ${String(row.id)}? Stok dan uang laci dikembalikan.`)) return;
                         void deleteRetur({ data: { id: String(row.id) } })
-                          .then(() => { toast.success("Retur dihapus. Stok dan kas dikembalikan."); loadHistory(); })
+                          .then(() => { toast.success(`Retur ${String(row.id)} berhasil dihapus`, { description: "Stok dan kas dikembalikan." }); loadHistory(); })
                           .catch((error: Error) => toast.error(error.message));
                       }}>Hapus</button>
                     ) : null}

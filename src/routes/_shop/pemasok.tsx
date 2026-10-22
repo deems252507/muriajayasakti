@@ -161,7 +161,7 @@ function PemasokPage() {
   function removeReceipt(row: SupplierReceipt) {
     if (!window.confirm(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi.`)) return;
     void deleteSupplierReceipt({ data: { id: row.id } })
-      .then(() => { toast.success("Penerimaan dihapus dan stok dikurangi."); load(page); })
+      .then(() => { toast.success(`Penerimaan ${row.invoiceNo} berhasil dihapus`, { description: "Stok barang dikurangi sesuai penerimaan." }); load(page); })
       .catch((error: Error) => toast.error(error.message));
   }
 
@@ -346,7 +346,7 @@ function PemasokPage() {
                   const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
                   const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
                   void run
-                    .then(() => { toast.success(editingId ? "Penerimaan diperbarui dan stok disesuaikan." : "Barang masuk tersimpan dan stok bertambah."); setOpen(false); resetForm(); setPage(1); load(1); })
+                    .then(() => { toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: editingId ? "Stok disesuaikan." : "Stok barang bertambah." }); setOpen(false); resetForm(); setPage(1); load(1); })
                     .catch((error: Error) => toast.error(error.message));
                 }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton>
               </div>

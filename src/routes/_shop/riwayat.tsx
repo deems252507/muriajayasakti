@@ -326,7 +326,7 @@ function RiwayatPage() {
                 {me.role === "Admin" ? (
                   <button className="mt-2 text-sm font-bold text-danger" onClick={() => {
                     if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
-                    void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success("Nota dihapus"); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
+                    void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success(`Nota ${String(inv.nomor)} berhasil dihapus`, { description: "Stok dan kas yang terkait sudah dikembalikan." }); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
                   }}>Hapus Transaksi</button>
                 ) : null}
               </div>
@@ -356,7 +356,7 @@ function RiwayatPage() {
               },
             }).then(async () => {
               const res = await getInvoice({ data: { nomor: sale.nomor } });
-              toast.success("Nota diperbaiki. Struk dicetak ulang.");
+              toast.success(`Nota ${sale.nomor} berhasil diubah`, { description: "Struk terbaru dicetak ulang." });
               if (res) printStoredSale(res.invoice as Record<string, unknown>, res.lines as Array<Record<string, unknown>>);
               setSale(null);
               setOpen("");
@@ -419,7 +419,7 @@ function RiwayatPage() {
                 ...editorPayload(manual.rows, manual.adds),
               },
             })
-              .then(() => { toast.success("Nota manual diubah. Stok ikut disesuaikan."); setManual(null); setOpen(""); load(); })
+              .then(() => { toast.success(`Nota manual ${manual.nomor} berhasil diubah`, { description: "Stok dan pajak ikut disesuaikan." }); setManual(null); setOpen(""); load(); })
               .catch((error: Error) => toast.error(error.message));
           }}>
             <h3 className="font-semibold">Ubah {manual.nomor}{manual.bon ? " (Bon)" : ""}</h3>

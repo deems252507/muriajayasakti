@@ -387,7 +387,7 @@ function KasPage() {
               e.preventDefault();
               if (!ket.trim() || digits(jumlah) <= 0) return toast.error("Isi jumlah dan keterangan, contoh: tambahan dari owner.");
               void addCashMove({ data: { jenis: "MASUK", jumlah: digits(jumlah), keterangan: ket.trim(), shiftId: selected } })
-                .then(() => { toast.success("Kas masuk"); setJumlah(""); setKet(""); refresh(); reloadLedger(); })
+                .then(() => { toast.success("Kas masuk berhasil dicatat", { description: `${rupiah(digits(jumlah))} · ${ket.trim()}` }); setJumlah(""); setKet(""); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <input className={`${inputClass} num`} placeholder="Jumlah, contoh 100.000" value={jumlah} onChange={(e) => setJumlah(grouped(digits(e.target.value)))} />
@@ -402,7 +402,7 @@ function KasPage() {
               e.preventDefault();
               if (digits(keluarJumlah) <= 0 || !keluarKet.trim()) return toast.error("Isi jumlah dan keterangan, contoh: beli makan.");
               void addCashMove({ data: { jenis: "KELUAR", jumlah: digits(keluarJumlah), keterangan: keluarKet.trim(), shiftId: selected } })
-                .then(() => { toast.success("Pengeluaran tersimpan"); setKeluarJumlah(""); setKeluarKet(""); refresh(); reloadLedger(); })
+                .then(() => { toast.success("Pengeluaran berhasil dicatat", { description: `${rupiah(digits(keluarJumlah))} · ${keluarKet.trim()}` }); setKeluarJumlah(""); setKeluarKet(""); refresh(); reloadLedger(); })
                 .catch((err: Error) => toast.error(err.message));
             }}>
               <input className={`${inputClass} num`} placeholder="Jumlah, contoh 10.000" value={keluarJumlah} onChange={(e) => setKeluarJumlah(grouped(digits(e.target.value)))} />

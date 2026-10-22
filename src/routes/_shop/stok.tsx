@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { inputClass, Mark, Panel } from "@/components/shop/shell";
+import { inputClass, Panel } from "@/components/shop/shell";
+import { StockTable } from "@/components/shop/stock-table";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
@@ -168,72 +169,18 @@ function StokPage() {
       </div>
       <div className="mt-3 overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-200 text-[11px] font-bold tracking-wide text-slate-900 uppercase shadow-[0_1px_0_#0f172a]">
-            <tr>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Nama Barang</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Kategori</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number</th>
-              <th className="px-3 py-3 text-left whitespace-nowrap">Part Number Alt</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Stok Akhir</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap">Harga Jual</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Kode Pajak</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Status Stok</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-slate-600">Tidak ada barang pada filter yang dipilih.</td></tr> : null}
-            {(() => {
-              let previousKey = "";
-              return data?.items.map((item) => {
-              const label = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "MENIPIS" : "AMAN";
-              const category = (item.kategori || "TANPA KATEGORI").trim();
-              const groupByPart = dupOnly || sort === "part";
-              // Urutan Part Number (A - Z) / Hanya yang kembar: tanpa baris judul kategori, murni daftar berurutan.
-              const showCategory = !groupByPart && category.toLowerCase() !== previousKey.toLowerCase();
-              previousKey = category;
-              return (
-                <Fragment key={`stock-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
-                <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk melihat detail stok" onClick={() => setDetail(item)}>
-                  <td className="px-3 py-3">
-                    <div className="font-semibold text-slate-900">
-                      <Mark text={item.nama} q={q} />
-                      {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
-                    </div>
-                    {item.merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
-                  </td>
-                  <td className="px-3 text-xs font-bold"><Mark text={item.kategori || "-"} q={q} /></td>
-                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumber || "-"} q={q} /></td>
-                  <td className="px-3 font-mono text-xs"><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
-                  <td className="num px-3 text-center font-semibold">
-                    <div>{item.stok} {item.satuan}</div>
-                    {item.satuanAlt && item.isiSatuanAlt > 0 ? <div className="text-[11px] font-medium text-blue-700">{Math.floor(item.stok / item.isiSatuanAlt)} {item.satuanAlt}</div> : null}
-                  </td>
-                  <td className="num px-3 text-right">{rupiah(item.hargaJual)}</td>
-                  <td className="px-3 text-center text-xs"><Mark text={item.kodePajak || "-"} q={q} /></td>
-                  <td className="px-3 text-center">
-                    <button
-                      type="button"
-                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${label === "HABIS" ? "bg-red-100 text-red-700" : label === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
-                      onClick={(event) => { event.stopPropagation(); setDetail(item); }}
-                    >
-                      {label}
-                    </button>
-                  </td>
-                  <td className="whitespace-nowrap px-2 text-center" onClick={(event) => event.stopPropagation()}>
-                    <button type="button" title="Detail" aria-label="Detail" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setDetail(item)}>
-                      <Eye className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-                </Fragment>
-              );
-            });
-            })()}
-          </tbody>
-        </table>
+        <StockTable
+          variant="stok"
+          items={data?.items ?? []}
+          q={q}
+          groupByPart={dupOnly || sort === "part"}
+          onOpen={setDetail}
+          actions={(item) => (
+            <button type="button" title="Detail" aria-label="Detail" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setDetail(item)}>
+              <Eye className="h-4 w-4" />
+            </button>
+          )}
+        />
       </div>
       <div className="mt-3 flex items-center justify-between text-sm">
         <span className="text-slate-600">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>

@@ -253,7 +253,7 @@ function KasirPage() {
       setBayar("");
       setDiskon("");
       setMetode("Tunai");
-      toast.success(`${me.role} · Nota ${result.nomor} tersimpan.`);
+      toast.success(`Nota ${result.nomor} berhasil disimpan`, { description: `Transaksi kasir dicatat oleh ${me.name || me.role}.` });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Gagal menyimpan");
     } finally {
@@ -543,7 +543,7 @@ function KasirPage() {
           }}
         />
       ) : null}
-      {productOpen ? <QuickProduct onClose={() => setProductOpen(false)} onSaved={() => { setProductOpen(false); toast.success("Barang ditambahkan"); }} /> : null}
+      {productOpen ? <QuickProduct onClose={() => setProductOpen(false)} onSaved={() => { setProductOpen(false); toast.success("Barang baru berhasil ditambahkan"); }} /> : null}
       {scanConfirm ? (
         <ScanConfirm
           product={scanConfirm.product}
