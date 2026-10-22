@@ -1739,7 +1739,16 @@ export async function listSoldItems(data: any) {
      from invoices where ${dateWhere.join(" and ")}`,
     dateParams,
   );
-  return { items: items.map(map), days: days.map(map), summary: map(sum ?? {}) };
+  // Ringkasan Transaksi Manual pada periode yang sama: tampil walau filter sumber = Kasir.
+  const manualWhere = dateWhere.map((c, i) => (i === 0 ? `source = 'Manual'` : c));
+  const [man] = await db.query<Record<string, unknown>>(
+    `select count(*)::int as manual_nota,
+            coalesce(sum(total), 0)::bigint as manual_total,
+            coalesce(sum(case when status_bayar = 'Bon' then total else 0 end), 0)::bigint as manual_bon
+     from invoices where ${manualWhere.join(" and ")}`,
+    dateParams,
+  );
+  return { items: items.map(map), days: days.map(map), summary: { ...map(sum ?? {}), ...map(man ?? {}) } };
 }
 
 export async function listBon(data: any): Promise<any> {

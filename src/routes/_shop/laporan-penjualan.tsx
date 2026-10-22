@@ -90,6 +90,13 @@ function LaporanPenjualanPage() {
           <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-muted">Transfer / QRIS</p><p className="num font-black">{rupiah(Number(summary.transfer ?? 0))}</p></div>
           <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-muted">Bon</p><p className="num font-black">{rupiah(Number(summary.bon ?? 0))}</p></div>
         </div>
+        {Number(summary.manual_nota ?? 0) > 0 ? (
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+            <div className="rounded-lg bg-amber-50 p-3"><p className="text-[10px] text-muted">Total Transaksi Manual</p><p className="num font-black">{rupiah(Number(summary.manual_total ?? 0))}</p></div>
+            <div className="rounded-lg bg-amber-50 p-3"><p className="text-[10px] text-muted">Nota Manual</p><p className="num font-black">{grouped(Number(summary.manual_nota ?? 0))}</p></div>
+            <div className="rounded-lg bg-amber-50 p-3"><p className="text-[10px] text-muted">Bon Manual</p><p className="num font-black">{rupiah(Number(summary.manual_bon ?? 0))}</p></div>
+          </div>
+        ) : null}
         <div className="mt-2 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
           <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-muted">Jenis Barang Terjual</p><p className="font-black">{grouped(items.length)}</p></div>
           <div className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-muted">Total Qty (satuan dasar)</p><p className="num font-black">{grouped(totalQty)}</p></div>
@@ -113,7 +120,7 @@ function LaporanPenjualanPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2 bg-slate-50 px-3 py-2">
                     <div>
                       <p className="font-bold">{n.nomor} <span className="ml-1 text-xs font-medium text-muted">{n.source}</span></p>
-                      <p className="text-xs text-muted">{when(n.tanggal)} · Kasir: {n.kasir || "-"} · Pelanggan: {n.tujuan || "Umum"} · {n.metode_bayar || "-"}{n.status_bayar === "Bon" ? " · BON" : ""}</p>
+                      <p className="text-xs text-muted">{when(n.tanggal)} · {n.source === "Manual" ? "Admin" : "Kasir"}: {n.kasir || "-"} · Pelanggan: {n.tujuan || "Umum"} · {n.metode_bayar || "-"}{n.status_bayar === "Bon" ? " · BON" : ""}</p>
                     </div>
                     <p className="num font-black">{rupiah(n.total)}</p>
                   </div>

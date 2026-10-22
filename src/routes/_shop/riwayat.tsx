@@ -240,7 +240,7 @@ function RiwayatPage() {
               <div>
                 <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span><MarkWords text={String(inv.nomor)} q={q} /></p>
                 <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar) === "Bon" ? <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-amber-800">Bon</span> : String(inv.status_bayar)}</p>
-                <p className="text-xs text-muted">Kasir: <MarkWords text={String(inv.kasir || "-")} q={q} /> · Pelanggan/Supplier: <MarkWords text={String(inv.tujuan || "-")} q={q} /></p>
+                <p className="text-xs text-muted">{String(inv.source) === "Manual" ? "Admin" : "Kasir"}: <MarkWords text={String(inv.kasir || "-")} q={q} /> · Pelanggan/Supplier: <MarkWords text={String(inv.tujuan || "-")} q={q} /></p>
               </div>
               <div className="text-right">
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
@@ -291,7 +291,7 @@ function RiwayatPage() {
                     {String(inv.nomor)}
                   </p>
                   <p className="text-xs text-muted">{when(String(inv.tanggal))} · {String(inv.status_bayar)}</p>
-                  <p className="text-xs text-muted">Kasir: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
+                  <p className="text-xs text-muted">{String(inv.source) === "Manual" ? "Admin" : "Kasir"}: {String(inv.kasir || "-")} · Pelanggan/Supplier: {String(inv.tujuan || "-")}</p>
                 </div>
                 <div className="flex shrink-0 items-start gap-2">
                   <p className="num text-xl font-black">{rupiah(Number(inv.total))}</p>

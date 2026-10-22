@@ -669,7 +669,7 @@ export function printSalesReport(
         .join("");
       const status = n.status_bayar === "Bon" ? '<span class="bon">BON</span>' : "";
       return `<table style="margin-top:10px">
-        <tr class="invoice-head"><td colspan="5"><b>${esc(n.nomor)}</b> · ${esc(waktu(n.tanggal))} · ${esc(n.source)}<br>Kasir: ${esc(n.kasir || "-")} · Pelanggan: ${esc(n.tujuan || "Umum")} · Bayar: ${esc(n.metode_bayar || "-")} ${status}</td></tr>
+        <tr class="invoice-head"><td colspan="5"><b>${esc(n.nomor)}</b> · ${esc(waktu(n.tanggal))} · ${esc(n.source)}<br>${n.source === "Manual" ? "Admin" : "Kasir"}: ${esc(n.kasir || "-")} · Pelanggan: ${esc(n.tujuan || "Umum")} · Bayar: ${esc(n.metode_bayar || "-")} ${status}</td></tr>
         <tr><th class="center" style="width:28px">No</th><th>Barang</th><th class="right">Qty</th><th class="right">Harga</th><th class="right">Subtotal</th></tr>
         ${rows}
         ${n.diskon > 0 ? `<tr><td colspan="4" class="right">Diskon</td><td class="right">- ${rp(n.diskon)}</td></tr>` : ""}
@@ -686,7 +686,9 @@ export function printSalesReport(
       <div><span>Tunai</span><span>${rp(summary.tunai)}</span></div>
       <div><span>Transfer / QRIS</span><span>${rp(summary.transfer)}</span></div>
       <div><span>Bon (belum dibayar)</span><span>${rp(summary.bon)}</span></div>
-      <div><span>Diskon</span><span>${rp(summary.diskon)}</span></div>
+      <div><span>Diskon</span><span>${rp(summary.diskon)}</span></div>${Number(summary.manual_nota || 0) > 0 ? `
+      <div><span>Total Transaksi Manual (${num(Number(summary.manual_nota))} nota)</span><b>${rp(summary.manual_total)}</b></div>
+      <div><span>Bon Manual</span><span>${rp(summary.manual_bon)}</span></div>` : ""}
     </div>
     ${body || '<p class="center">Tidak ada transaksi pada periode ini.</p>'}
     <p style="font-size:9px;color:#555">Catatan: retur/tukar belum dikurangkan. Nilai barang = harga satuan × jumlah.</p>`,
