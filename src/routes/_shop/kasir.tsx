@@ -85,8 +85,10 @@ function KasirPage() {
       });
     }
     loadShifts();
-    const timer = setInterval(loadShifts, 8000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => { if (!document.hidden) loadShifts(); }, 20000);
+    const onVisible = () => { if (!document.hidden) loadShifts(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [me.role, me.username, me.shift, me.name]);
   useEffect(() => {
     void listPartners().then(setPartners);

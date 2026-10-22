@@ -63,7 +63,8 @@ function BarangPage() {
   }
   useEffect(() => {
     load(page);
-    const timer = setInterval(() => { if (!importingRef.current) load(page); }, 4000);
+    // Segarkan otomatis tiap 20 detik, hanya saat tab terlihat. Saat tab kembali dibuka, langsung disegarkan (onFocus).
+    const timer = setInterval(() => { if (!importingRef.current && !document.hidden) load(page); }, 20000);
     const onFocus = () => { if (!importingRef.current) load(page); };
     window.addEventListener("focus", onFocus);
     return () => {

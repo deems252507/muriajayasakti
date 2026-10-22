@@ -245,7 +245,12 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       }).catch(() => undefined);
     };
     tick();
-    const timer = window.setInterval(tick, 6000);
+    // 6 detik saat tab terlihat (notifikasi tetap cepat), 30 detik saat tab tersembunyi (hemat; Web Push tetap jalan).
+    let skip = 0;
+    const timer = window.setInterval(() => {
+      if (document.hidden) { skip = (skip + 1) % 5; if (skip) return; } else skip = 0;
+      tick();
+    }, 6000);
     const onChat = () => tick();
     const askPermission = () => {
       if (typeof Notification !== "undefined" && Notification.permission === "default") {

@@ -31,7 +31,7 @@ function ChatPage() {
 
   useEffect(() => {
     loadContacts();
-    const timer = window.setInterval(() => { if (!document.hidden) loadContacts(); }, 5000);
+    const timer = window.setInterval(() => { if (!document.hidden) loadContacts(); }, 8000);
     return () => window.clearInterval(timer);
   }, [loadContacts]);
 
