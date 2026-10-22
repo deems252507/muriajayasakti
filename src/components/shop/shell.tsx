@@ -224,11 +224,23 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
           void showLocalNotification(latest.title, preview, latest.target);
         } else {
-          toast(`Pesan dari ${latest.title}`, {
-            description: preview,
-            duration: 8000,
-            action: { label: "Buka", onClick: () => { sessionStorage.setItem("mjs-chat-with", latest.target); window.location.href = "/chat"; } },
-          });
+          const open = () => { sessionStorage.setItem("mjs-chat-with", latest.target); window.location.href = "/chat"; };
+          toast.custom((id) => (
+            <div role="status" className="flex w-[min(92vw,360px)] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-extrabold text-white">{(latest.title.trim()[0] || "?").toUpperCase()}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-extrabold text-slate-900">{latest.title}</p>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-accent">Pesan baru</span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 break-words text-xs text-slate-600">{preview}</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="h-8 rounded-lg bg-accent px-3 text-xs font-bold text-white" onClick={() => { toast.dismiss(id); open(); }}>Buka Chat</button>
+                  <button type="button" className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600" onClick={() => toast.dismiss(id)}>Tutup</button>
+                </div>
+              </div>
+            </div>
+          ), { id: "chat-toast", duration: 8000 });
         }
       }).catch(() => undefined);
     };

@@ -282,15 +282,17 @@ export function printSaleReceipt(result: {
   reprint?: boolean;
   /** Siapa pembuat nota: nota dari Kasir bertuliskan "Kasir", nota buatan Admin bertuliskan "Admin". */
   creator?: "Admin" | "Kasir";
+  /** Nota manual: tidak menampilkan blok metode bayar kecuali bon. */
+  manual?: boolean;
   tanggalLunas?: string;
   keterangan?: string;
-  lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string; merek?: string; partNumber?: string; partNumbersAlt?: string; alt?: string }>;
+  lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string; merek?: string; partNumber?: string; partNumbersAlt?: string; alt?: string; masuk?: boolean }>;
 }) {
   const lines = Array.isArray(result.lines) ? result.lines : [];
   const items = lines
     .map((line) => {
       const title = `${line.nama || "-"}${line.kodePajak ? ` (${line.kodePajak})` : ""}`;
-      return `<div class="item"><div class="name">${esc(title)}</div>${itemIdentity({ merek: line.merek, partNumber: line.partNumber, partNumbersAlt: line.partNumbersAlt || line.alt })}<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)} x ${esc(money(line.harga))}</span><span>${esc(money(Number(line.harga) * Number(line.qty)))}</span></div></div>`;
+      return `<div class="item"><div class="name">${esc(title)}</div>${itemIdentity({ merek: line.merek, partNumber: line.partNumber, partNumbersAlt: line.partNumbersAlt || line.alt })}${line.masuk ? `<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)}</span><span>Barang masuk</span></div>` : Number(line.harga) > 0 ? `<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)} x ${esc(money(line.harga))}</span><span>${esc(money(Number(line.harga) * Number(line.qty)))}</span></div>` : `<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)}</span><span>-</span></div>`}</div>`;
     })
     .join("");
   const lunasBon = result.status !== "Bon" && Boolean(result.tanggalLunas);
@@ -299,7 +301,9 @@ export function printSaleReceipt(result: {
       ? `<div class="bon">BON / BELUM LUNAS</div>`
       : lunasBon
         ? `<div class="paid">BON LUNAS</div><div class="note" style="text-align:center">Dilunasi: ${esc(whenText(result.tanggalLunas))}</div>`
-        : `<table>${slipRow("Metode", result.metode)}${result.bank ? slipRow("Bank", result.bank) : ""}${result.metode === "Tunai" ? `${slipRow("Terima", money(result.bayarTunai))}${slipRow("Kembali", money(result.kembalian))}` : ""}${result.metode === "Split" ? `${slipRow("Tunai", money(result.bayarTunai))}${slipRow("Transfer", money(result.transfer))}` : ""}${result.metode === "Transfer" ? slipRow("Transfer", money(result.transfer || result.total)) : ""}</table>`;
+        : result.manual
+          ? ""
+          : `<table>${slipRow("Metode", result.metode)}${result.bank ? slipRow("Bank", result.bank) : ""}${result.metode === "Tunai" ? `${slipRow("Terima", money(result.bayarTunai))}${slipRow("Kembali", money(result.kembalian))}` : ""}${result.metode === "Split" ? `${slipRow("Tunai", money(result.bayarTunai))}${slipRow("Transfer", money(result.transfer))}` : ""}${result.metode === "Transfer" ? slipRow("Transfer", money(result.transfer || result.total)) : ""}</table>`;
   openSlip(
     result.nomor,
     `${result.reprint ? `<div class="copy">SALINAN / CETAK ULANG</div>` : ""}
@@ -313,11 +317,11 @@ export function printSaleReceipt(result: {
     ${items || `<div class="item">Tidak ada barang</div>`}
     <hr class="rule">
     <table>
-      ${slipRow("Subtotal", money(result.subtotal))}
+      ${slipRow("Subtotal", money(Number(result.subtotal) > 0 ? result.subtotal : lines.reduce((sum, l) => sum + Number(l.harga) * Number(l.qty), 0)))}
       ${Number(result.diskon) > 0 ? slipRow("Diskon", `- ${money(result.diskon)}`) : ""}
       ${slipRow("TOTAL", money(result.total), true)}
     </table>
-    <hr class="rule">${pay}`,
+    ${pay ? `<hr class="rule">${pay}` : ""}`,
   );
 }
 
@@ -353,54 +357,42 @@ export function printStoredSale(invoice: Record<string, unknown>, lines: Array<R
 }
 
 export function printStoredManual(invoice: Record<string, unknown>, lines: Array<Record<string, unknown>>) {
-  const hargaOf = (line: Record<string, unknown>) => Number(line.harga_satuan || 0);
-  const items = lines
-    .map((line) => {
-      const nama = String(line.custom_item || line.product_nama || "Barang");
-      const keluar = line.jenis !== "MASUK";
-      const arah = keluar ? "KELUAR (-)" : "MASUK (+)";
-      const tujuan = String(line.tujuan || invoice.tujuan || (keluar ? "Pelanggan/Service" : "Supplier/Gudang"));
-      const harga = hargaOf(line);
-      const subtotal = harga * Number(line.jumlah || 0);
-      const priceRow = !keluar
-        ? ""
-        : harga > 0
-          ? `<div class="line" style="font-size:11px"><span>@ ${money(harga)}</span><b>${money(subtotal)}</b></div>`
-          : `<div class="note">Harga belum diisi</div>`;
-      return `<div class="item"><div class="name">${esc(nama)}</div><div class="meta">${[line.merek ? `Merek: ${esc(line.merek)}` : "", `PN: ${esc(line.part_number || line.product_part || "-")}`, line.part_numbers_alt ? `PN Alt: ${esc(line.part_numbers_alt)}` : ""].filter(Boolean).join("<br>")}</div><div class="line" style="margin-top:3px"><span>${arah}</span><span>${esc(line.jumlah)} ${esc(line.satuan || "")}</span></div>${priceRow}<div class="meta">${esc(tujuan)}</div></div>`;
-    })
-    .join("");
-  const masuk = lines.filter((line) => line.jenis === "MASUK").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
-  const keluar = lines.filter((line) => line.jenis !== "MASUK").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
-  const hitung = lines.filter((line) => line.jenis !== "MASUK").reduce((sum, line) => sum + hargaOf(line) * Number(line.jumlah || 0), 0);
+  // Tampilan sama dengan struk kasir; bedanya label pembuat "Admin" dan tanpa metode bayar kecuali bon.
+  const keluar = lines.filter((line) => line.jenis !== "MASUK");
+  const masuk = lines.filter((line) => line.jenis === "MASUK");
+  const toLine = (line: Record<string, unknown>) => ({
+    nama: String(line.custom_item || line.product_nama || line.nama || "Barang"),
+    qty: Number(line.jumlah || 0),
+    satuan: String(line.satuan || ""),
+    harga: Number(line.harga_satuan || 0),
+    kodePajak: String(line.kode_pajak || ""),
+    merek: String(line.merek || line.product_merek || ""),
+    partNumber: String(line.part_number || line.product_part || ""),
+    partNumbersAlt: String(line.part_numbers_alt || line.product_alt || ""),
+  });
+  const hitung = keluar.reduce((sum, line) => sum + Number(line.harga_satuan || 0) * Number(line.jumlah || 0), 0);
   const total = Number(invoice.total || 0) > 0 ? Number(invoice.total) : hitung;
   const isBon = String(invoice.metode_bayar) === "Bon" || String(invoice.status_bayar) === "Bon";
-  const lunas = isBon && String(invoice.status_bayar) === "Lunas";
-  const pay = !isBon
-    ? ""
-    : lunas
-      ? `<div class="paid">BON LUNAS</div>${invoice.tanggal_lunas ? `<div class="note" style="text-align:center">Dilunasi: ${esc(whenText(invoice.tanggal_lunas))}</div>` : ""}`
-      : `<div class="bon">BON / BELUM LUNAS</div>`;
-  openSlip(
-    String(invoice.nomor || "Nota mutasi"),
-    `<div class="copy">*** NOTA MUTASI BARANG ***</div>
-    <div class="copy" style="font-weight:600;letter-spacing:.04em">Dibuat oleh Admin</div>
-    <table>
-      ${slipRow("No Nota", String(invoice.nomor || ""))}
-      ${slipRow("Tgl", whenText(invoice.tanggal))}
-      ${slipRow("Admin", String(invoice.kasir || "-"))}
-      ${invoice.tujuan ? slipRow("Pelanggan", String(invoice.tujuan)) : ""}
-    </table>
-    <hr class="rule">${items}<hr class="rule">
-    <table>
-      ${slipRow("TOTAL MASUK", `+ ${masuk}`, true)}
-      ${slipRow("TOTAL KELUAR", `- ${keluar}`, true)}
-      ${total > 0 ? slipRow("TOTAL NOTA", money(total), true) : ""}
-    </table>
-    ${pay ? `<hr class="rule">${pay}` : ""}
-    ${invoice.keterangan && String(invoice.keterangan) !== "Bon (Hutang)" && String(invoice.keterangan) !== "Bon (Lunas)" ? `<div class="note">Ket: ${esc(invoice.keterangan)}</div>` : ""}`,
-    true,
-  );
+  printSaleReceipt({
+    creator: "Admin",
+    nomor: String(invoice.nomor || ""),
+    waktu: String(invoice.tanggal || ""),
+    kasir: String(invoice.kasir || "-"),
+    customer: String(invoice.tujuan || "Umum"),
+    subtotal: total,
+    diskon: 0,
+    total,
+    status: isBon ? String(invoice.status_bayar || "Bon") : "Lunas",
+    metode: isBon ? "Bon" : "",
+    bank: "",
+    bayarTunai: 0,
+    kembalian: 0,
+    transfer: 0,
+    tanggalLunas: invoice.tanggal_lunas ? String(invoice.tanggal_lunas) : "",
+    manual: true,
+    reprint: false,
+    lines: [...keluar, ...masuk].map((line) => ({ ...toLine(line), masuk: line.jenis === "MASUK" })),
+  });
 }
 
 /** Cetak ulang nota sesuai pembuatnya: nota manual (Admin) memakai format mutasi, nota kasir memakai format struk. */
