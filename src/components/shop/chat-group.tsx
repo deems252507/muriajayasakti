@@ -1,10 +1,10 @@
-import { ArrowLeft, Copy, Pencil, Pin, PinOff, Plus, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Copy, ImagePlus, Pencil, Pin, PinOff, Plus, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  groupCreate, groupDelete, groupInfo, groupUpdate, noteDelete, noteList, noteSave,
+  chatPhotos, chatPost, groupCreate, groupDelete, groupInfo, groupUpdate, noteDelete, noteList, noteSave,
 } from "@/lib/shop/api";
-import { Conversation } from "./chat-core";
+import { Conversation, getFile, Lightbox, prepareAttachment } from "./chat-core";
 import { dateTime } from "./chat-time";
 
 export { dayKey, dayLabel, hhmm, listTime } from "./chat-time";
@@ -96,7 +96,7 @@ export function GroupFormModal(props: { info?: Info | null; staff: StaffPerson[]
 /** Panel satu grup: tab Chat, Catatan, Anggota. */
 export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUsername: string; role: string; onBack: () => void; onChanged: () => void; onDeleted: () => void }) {
   const { groupId, staff, meUsername, role, onBack, onChanged, onDeleted } = props;
-  const [tab, setTab] = useState<"chat" | "catatan" | "anggota">("chat");
+  const [tab, setTab] = useState<"chat" | "catatan" | "foto" | "anggota">("chat");
   const [info, setInfo] = useState<Info | null>(null);
   const [editing, setEditing] = useState(false);
 
@@ -106,7 +106,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
 
   useEffect(() => { setInfo(null); setTab("chat"); loadInfo(); }, [groupId]);
 
-  const tabs: Array<["chat" | "catatan" | "anggota", string]> = [["chat", "Chat"], ["catatan", "Catatan"], ["anggota", "Anggota"]];
+  const tabs: Array<["chat" | "catatan" | "foto" | "anggota", string]> = [["chat", "Chat"], ["catatan", "Catatan"], ["foto", "Foto"], ["anggota", "Anggota"]];
 
   return (
     <>
@@ -128,6 +128,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
 
       {tab === "chat" ? <Conversation key={`g:${groupId}`} kind="group" target={String(groupId)} title={info?.nama ?? ""} members={info?.members ?? []} meUsername={meUsername} role={role} moderator={Boolean(info?.canManage)} onRead={onChanged} /> : null}
       {tab === "catatan" ? <GroupNotes groupId={groupId} /> : null}
+      {tab === "foto" ? <GroupPhotos groupId={groupId} /> : null}
       {tab === "anggota" ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <ul className="divide-y divide-line rounded-lg border border-line bg-white">
@@ -238,6 +239,87 @@ function GroupNotes({ groupId }: { groupId: number }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+type Photo = Awaited<ReturnType<typeof chatPhotos>>[number];
+
+/** Kotak foto: dimuat hanya saat terlihat di layar supaya hemat data. */
+function PhotoTile({ photo, onOpen }: { photo: Photo; onOpen: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let alive = true;
+    const load = () => { getFile(photo.fileId).then((f) => { if (alive) setSrc(f.dataUrl); }).catch(() => undefined); };
+    if (typeof IntersectionObserver === "undefined") { load(); return () => { alive = false; }; }
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { io.disconnect(); load(); } }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => { alive = false; io.disconnect(); };
+  }, [photo.fileId]);
+  return (
+    <button ref={ref} type="button" onClick={onOpen} className="relative aspect-square overflow-hidden rounded-lg bg-slate-200" aria-label={`Foto dari ${photo.sender}`}>
+      {src ? <img src={src} alt={photo.name} className="size-full object-cover" /> : null}
+      <span className="absolute inset-x-0 bottom-0 truncate bg-black/45 px-1.5 py-0.5 text-left text-[10px] text-white">{photo.mine ? "Anda" : photo.sender}</span>
+    </button>
+  );
+}
+
+function GroupPhotos({ groupId }: { groupId: number }) {
+  const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const [busy, setBusy] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(() => {
+    void chatPhotos({ data: { kind: "group", target: String(groupId) } }).then(setPhotos).catch(() => setPhotos([]));
+  }, [groupId]);
+
+  useEffect(() => {
+    setPhotos(null);
+    load();
+    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [groupId]);
+
+  async function upload(files: File[]) {
+    const list = files.filter((f) => f.type.startsWith("image/")).slice(0, 10);
+    if (!list.length) { toast.error("Pilih file foto."); return; }
+    let sent = 0;
+    try {
+      for (const file of list) {
+        setBusy(`Mengirim ${sent + 1}/${list.length}`);
+        const att = await prepareAttachment(file);
+        await chatPost({ data: { kind: "group", target: String(groupId), body: "", file: { name: att.name, data: att.data } } });
+        sent += 1;
+      }
+      toast.success(`${sent} foto terkirim ke grup`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal mengirim foto");
+    } finally {
+      setBusy("");
+      load();
+    }
+  }
+
+  // Galeri berurutan dari foto terlama ke terbaru supaya geser kanan = lebih baru.
+  const ordered = [...(photos ?? [])].reverse();
+  const items = ordered.map((p) => ({ id: p.fileId, name: p.name }));
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted">{photos ? `${photos.length} foto di grup ini` : "Memuat..."}</p>
+        <button type="button" disabled={Boolean(busy)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-bold text-white disabled:opacity-50" onClick={() => input.current?.click()}><ImagePlus className="size-4" />{busy || "Kirim foto"}</button>
+        <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void upload(fs); }} />
+      </div>
+      {photos && photos.length === 0 ? <p className="py-12 text-center text-sm text-muted">Belum ada foto. Klik Kirim foto untuk membagikan foto ke semua anggota grup.</p> : null}
+      <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
+        {(photos ?? []).map((ph) => <PhotoTile key={ph.messageId} photo={ph} onOpen={() => setOpen(ph.fileId)} />)}
+      </div>
+      {open !== null ? <Lightbox items={items} startId={open} onClose={() => setOpen(null)} /> : null}
     </div>
   );
 }

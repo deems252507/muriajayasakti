@@ -2164,10 +2164,10 @@ export async function groupList() {
   const rows = await db.query<Record<string, unknown>>(
     `select g.id, g.nama, g.deskripsi,
             (select count(*)::int from chat_group_members x where x.group_id = g.id) as member_count,
-            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_body,
-            (select m.created_at from chat_group_messages m where m.group_id = g.id order by m.id desc limit 1) as last_at,
-            (select s.name from chat_group_messages m join staff s on s.username = m.sender where m.group_id = g.id order by m.id desc limit 1) as last_name,
-            (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.deleted_at is null and m.id > gm.last_read_id) as unread,
+            (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_group_messages m where m.group_id = g.id and not exists (select 1 from mjs_chat_hidden h where h.kind = 'group' and h.message_id = m.id and h.username = $1) order by m.id desc limit 1) as last_body,
+            (select m.created_at from chat_group_messages m where m.group_id = g.id and not exists (select 1 from mjs_chat_hidden h where h.kind = 'group' and h.message_id = m.id and h.username = $1) order by m.id desc limit 1) as last_at,
+            (select s.name from chat_group_messages m join staff s on s.username = m.sender where m.group_id = g.id and not exists (select 1 from mjs_chat_hidden h where h.kind = 'group' and h.message_id = m.id and h.username = $1) order by m.id desc limit 1) as last_name,
+            (select count(*)::int from chat_group_messages m where m.group_id = g.id and m.sender <> $1 and m.deleted_at is null and m.id > gm.last_read_id and not exists (select 1 from mjs_chat_hidden h where h.kind = 'group' and h.message_id = m.id and h.username = $1)) as unread,
             g.created_at
      from chat_groups g
      join chat_group_members gm on gm.group_id = g.id and gm.username = $1
@@ -3079,4 +3079,33 @@ async function notifyChatPush(db: ChatDb, me: Staff, scope: ChatScope, body: str
   } catch {
     /* notifikasi gagal tidak masalah; pesan tetap terkirim */
   }
+}
+
+
+/** Semua foto yang pernah dikirim di satu percakapan (terbaru dulu), untuk tab Foto. */
+export async function chatPhotos(data: { kind: string; target: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  const table = chatTable(scope.kind);
+  const tw = chatThreadWhere(scope, me, "m");
+  const rows = await db.query<Record<string, unknown>>(
+    `select m.id, m.sender, s.name as sender_name, m.created_at, f.id as file_id, f.name as file_name, f.size as file_size
+     from ${table} m
+     join staff s on s.username = m.sender
+     join mjs_chat_files f on f.id = m.file_id
+     where ${tw.sql} and m.deleted_at is null and f.mime like 'image/%'
+       and not exists (select 1 from mjs_chat_hidden h where h.kind = '${scope.kind}' and h.message_id = m.id and h.username = $${tw.params.length + 1})
+     order by m.id desc limit 200`,
+    [...tw.params, me.username],
+  );
+  return rows.map((r) => ({
+    messageId: Number(r.id),
+    fileId: Number(r.file_id),
+    name: String(r.file_name ?? "foto"),
+    size: Number(r.file_size ?? 0),
+    sender: String(r.sender_name ?? ""),
+    mine: String(r.sender) === me.username,
+    createdAt: isoDate(r.created_at),
+  }));
 }

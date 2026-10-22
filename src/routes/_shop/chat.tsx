@@ -5,7 +5,7 @@ import { Conversation } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
 import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
 import { toast } from "sonner";
-import { chatClear, chatContacts, chatHideAll, groupList } from "@/lib/shop/api";
+import { chatClear, chatContacts, chatHideAll, groupDelete, groupList } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/_shop/chat")({ component: ChatPage });
 
@@ -76,6 +76,22 @@ function ChatPage() {
     }
   }
 
+  const [groupMenu, setGroupMenu] = useState<number | null>(null);
+  async function groupAction(g: Group, action: "clear" | "delete") {
+    setGroupMenu(null);
+    const ask = action === "clear" ? `Kosongkan chat grup "${g.nama}" dari tampilan Anda? Anggota lain tetap bisa melihatnya.` : `Hapus grup "${g.nama}"? Semua chat dan catatan ikut terhapus untuk SEMUA anggota dan tidak bisa dikembalikan.`;
+    if (!confirm(ask)) return;
+    try {
+      if (action === "clear") await chatHideAll({ data: { kind: "group", target: String(g.id) } });
+      else await groupDelete({ data: { id: g.id } });
+      if (action === "delete" && active === `g:${g.id}`) setActive("");
+      toast.success(action === "clear" ? "Chat grup dikosongkan" : "Grup dihapus");
+      loadContacts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal");
+    }
+  }
+
   // Seperti WhatsApp: daftar hanya berisi obrolan yang ada pesannya (atau yang sedang dibuka). Mulai chat baru lewat "Pesan baru".
   const shown = (contacts ?? []).filter((c) => (c.lastAt || c.unread > 0 || c.username === dm) && (!filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase())));
 
@@ -99,8 +115,8 @@ function ChatPage() {
             </li>
             {groups && groups.length === 0 ? <li className="border-b border-line px-3 py-3 text-xs text-muted">{canMakeGroup ? "Belum ada grup. Klik + Grup untuk membuat grup berisi catatan dan chat khusus." : "Anda belum masuk grup mana pun."}</li> : null}
             {(groups ?? []).filter((g) => !filter.trim() || g.nama.toLowerCase().includes(filter.trim().toLowerCase())).map((g) => (
-              <li key={`g${g.id}`}>
-                <button type="button" onClick={() => setActive(`g:${g.id}`)} className={`flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left hover:bg-blue-50 ${active === `g:${g.id}` ? "bg-blue-50" : ""}`}>
+              <li key={`g${g.id}`} className="relative">
+                <button type="button" onClick={() => setActive(`g:${g.id}`)} onContextMenu={(e) => { e.preventDefault(); setGroupMenu(g.id); }} className={`flex w-full items-center gap-3 border-b border-line py-3 pl-3 pr-9 text-left hover:bg-blue-50 ${active === `g:${g.id}` ? "bg-blue-50" : ""}`}>
                   <span className="grid size-10 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-800"><Users className="size-4" /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -113,6 +129,16 @@ function ChatPage() {
                     </div>
                   </div>
                 </button>
+                <button type="button" aria-label="Menu grup" className="absolute right-1 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-slate-500 hover:bg-slate-200" onClick={() => setGroupMenu(groupMenu === g.id ? null : g.id)}><MoreVertical className="size-4" /></button>
+                {groupMenu === g.id ? (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setGroupMenu(null)} />
+                    <div className="absolute right-2 top-10 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
+                      <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => void groupAction(g, "clear")}><Trash2 className="size-4" />Kosongkan chat (untuk saya)</button>
+                      {canMakeGroup ? <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-red-50" onClick={() => void groupAction(g, "delete")}><Trash2 className="size-4" />Hapus grup</button> : null}
+                    </div>
+                  </>
+                ) : null}
               </li>
             ))}
             <li className="bg-slate-100 px-3 py-1.5"><span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Pesan pribadi</span></li>

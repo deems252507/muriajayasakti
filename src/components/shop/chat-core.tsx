@@ -14,7 +14,7 @@ type ChatKind = "dm" | "group";
 type Thread = Awaited<ReturnType<typeof chatThread>>;
 export type Msg = Thread["messages"][number];
 export type Person = { username: string; name: string };
-type Attach = { name: string; mime: string; data: string; image: boolean };
+export type Attach = { name: string; mime: string; data: string; image: boolean };
 type ShareDraft = { type: "barang" | "transaksi"; ref: string; title: string; sub: string };
 type Win = { limit: number; since: number };
 
@@ -30,9 +30,27 @@ const BG_PRESETS = [
   { key: "grad", label: "Gradasi", value: "linear-gradient(160deg,#dbeafe,#fce7f3)" },
 ];
 function loadChatBg() { try { return localStorage.getItem(BG_KEY) ?? ""; } catch { return ""; } }
-function bgStyle(value: string): CSSProperties {
+type BgFit = "cover" | "contain" | "tile";
+type BgOpt = { fit: BgFit; dim: number };
+const BG_OPT_KEY = "mjs-chat-bg-opt";
+function loadBgOpt(): BgOpt {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BG_OPT_KEY) ?? "{}") as Partial<BgOpt>;
+    return { fit: raw.fit === "contain" || raw.fit === "tile" ? raw.fit : "cover", dim: Math.min(70, Math.max(0, Number(raw.dim) || 0)) };
+  } catch { return { fit: "cover", dim: 0 }; }
+}
+function bgStyle(value: string, opt: BgOpt = { fit: "cover", dim: 0 }): CSSProperties {
   if (!value) return {};
-  if (value.startsWith("img:")) return { backgroundImage: `url(${value.slice(4)})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "local" };
+  if (value.startsWith("img:")) {
+    const layer = opt.dim > 0 ? `linear-gradient(rgba(0,0,0,${opt.dim / 100}),rgba(0,0,0,${opt.dim / 100})), ` : "";
+    return {
+      backgroundImage: `${layer}url(${value.slice(4)})`,
+      backgroundSize: opt.fit === "tile" ? "auto" : opt.fit === "contain" ? "contain" : "cover",
+      backgroundRepeat: opt.fit === "tile" ? "repeat" : "no-repeat",
+      backgroundPosition: "center",
+      backgroundColor: "#0f172a",
+    };
+  }
   if (value.startsWith("linear-gradient")) return { backgroundImage: value };
   return { backgroundColor: value };
 }
@@ -64,7 +82,7 @@ export function PickMark({ on }: { on: boolean }) {
 
 type FileData = Awaited<ReturnType<typeof chatFileGet>>;
 const fileCache = new Map<number, Promise<FileData>>();
-function getFile(id: number) {
+export function getFile(id: number) {
   let promise = fileCache.get(id);
   if (!promise) {
     if (fileCache.size > 60) { const oldest = fileCache.keys().next().value; if (oldest !== undefined) fileCache.delete(oldest); }
@@ -133,7 +151,7 @@ const EXT_MIME: Record<string, string> = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 
-async function prepareAttachment(file: File): Promise<Attach> {
+export async function prepareAttachment(file: File): Promise<Attach> {
   if (file.type.startsWith("image/") && !file.type.includes("svg")) {
     const data = await resizeImage(file);
     if (dataBytes(data) > MAX_FILE) throw new Error("Foto terlalu besar.");
@@ -227,7 +245,7 @@ function ShareCard({ share, mine, role, disabled }: { share: { kind: string; ref
       className={`mb-1 flex w-60 max-w-full items-start gap-2 rounded-lg border p-2 text-left ${mine ? "border-white/30 bg-white/15" : "border-line bg-slate-50"}`}
       onClick={() => {
         if (disabled || !canOpen) return;
-        try { sessionStorage.setItem("mjs-find", share.ref); } catch { /* abaikan */ }
+        try { sessionStorage.setItem(share.kind === "barang" ? "mjs-find" : "mjs-open-invoice", share.ref); } catch { /* abaikan */ }
         window.location.href = share.kind === "barang" ? "/barang" : "/riwayat";
       }}
     >
@@ -245,7 +263,7 @@ function ShareCard({ share, mine, role, disabled }: { share: { kind: string; ref
 /* Galeri foto: geser kiri/kanan antar foto percakapan                 */
 /* ------------------------------------------------------------------ */
 
-function Lightbox({ items, startId, onClose }: { items: Array<{ id: number; name: string }>; startId: number; onClose: () => void }) {
+export function Lightbox({ items, startId, onClose }: { items: Array<{ id: number; name: string }>; startId: number; onClose: () => void }) {
   const [idx, setIdx] = useState(() => Math.max(0, items.findIndex((i) => i.id === startId)));
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
@@ -459,6 +477,7 @@ export function Conversation(props: {
   const [reactFor, setReactFor] = useState<Msg | null>(null);
   const [bgOpen, setBgOpen] = useState(false);
   const [bg, setBg] = useState<string>(() => loadChatBg());
+  const [bgOpt, setBgOpt] = useState<BgOpt>(() => loadBgOpt());
   const bgInput = useRef<HTMLInputElement>(null);
   const [seen, setSeen] = useState<Msg | null>(null);
   const [pinIdx, setPinIdx] = useState(0);
@@ -695,13 +714,18 @@ export function Conversation(props: {
     try { if (value) localStorage.setItem(BG_KEY, value); else localStorage.removeItem(BG_KEY); } catch { toast.error("Latar terlalu besar untuk disimpan di perangkat ini."); }
   }
 
+  function changeBgOpt(patch: Partial<BgOpt>) {
+    const next = { ...bgOpt, ...patch };
+    setBgOpt(next);
+    try { localStorage.setItem(BG_OPT_KEY, JSON.stringify(next)); } catch { /* abaikan */ }
+  }
+
   async function pickBgImage(file: File | undefined) {
     if (!file) return;
     if (!file.type.startsWith("image/")) { toast.error("Pilih file gambar."); return; }
     try {
       const url = await resizeImage(file, 1100, 0.6);
       applyBg(`img:${url}`);
-      setBgOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Gambar tidak bisa dipakai");
     }
@@ -884,7 +908,7 @@ export function Conversation(props: {
       ) : null}
 
       <div className="relative min-h-0 flex-1 bg-slate-50">
-        <div ref={listRef} onScroll={onScroll} style={bgStyle(bg)} className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3">
+        <div ref={listRef} onScroll={onScroll} style={bgStyle(bg, bgOpt)} className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3">
           {thread?.hasMore ? <div className="py-1 text-center"><button type="button" disabled={loadingOlder} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-accent shadow-sm disabled:opacity-50" onClick={loadOlder}>{loadingOlder ? "Memuat..." : "Muat pesan lebih lama"}</button></div> : null}
           {thread && messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">{kind === "group" ? "Belum ada pesan di grup ini." : `Belum ada pesan. Tulis pesan pertama untuk ${title}.`}</p> : null}
           {thread === null ? <p className="py-10 text-center text-sm text-muted">Memuat...</p> : null}
@@ -1039,12 +1063,29 @@ export function Conversation(props: {
             <p className="mt-1 text-xs text-muted">Berlaku untuk semua chat di perangkat ini.</p>
             <div className="mt-3 grid grid-cols-4 gap-2">
               {BG_PRESETS.map((b) => (
-                <button key={b.key} type="button" aria-label={b.label} title={b.label} onClick={() => { applyBg(b.value); setBgOpen(false); }} style={bgStyle(b.value)} className={`h-16 rounded-lg border-2 ${bg === b.value ? "border-accent" : "border-line"}`}>
+                <button key={b.key} type="button" aria-label={b.label} title={b.label} onClick={() => applyBg(b.value)} style={bgStyle(b.value)} className={`h-16 rounded-lg border-2 ${bg === b.value ? "border-accent" : "border-line"}`}>
                   <span className="block px-1 text-[10px] font-bold text-slate-700 [text-shadow:0_0_3px_#fff]">{b.label}</span>
                 </button>
               ))}
             </div>
             <button type="button" className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-line text-sm font-bold" onClick={() => bgInput.current?.click()}><ImageIcon className="size-4" />Pilih foto sendiri</button>
+            {bg.startsWith("img:") ? (
+              <div className="mt-3 space-y-3 rounded-lg border border-line bg-white p-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-600">Ukuran gambar</p>
+                  <div className="mt-1 grid grid-cols-3 gap-1">
+                    {([["cover", "Penuh"], ["contain", "Pas"], ["tile", "Ulang"]] as Array<[BgFit, string]>).map(([key, label]) => (
+                      <button key={key} type="button" onClick={() => changeBgOpt({ fit: key })} className={`h-9 rounded-lg border text-xs font-bold ${bgOpt.fit === key ? "border-accent bg-blue-50 text-accent" : "border-line"}`}>{label}</button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted">{bgOpt.fit === "cover" ? "Menutupi seluruh area (sisi gambar bisa terpotong)." : bgOpt.fit === "contain" ? "Seluruh gambar terlihat tanpa terpotong." : "Gambar diulang seperti pola."}</p>
+                </div>
+                <label className="block text-xs font-bold text-slate-600">Gelapkan gambar: {bgOpt.dim}%
+                  <input type="range" min={0} max={70} step={5} value={bgOpt.dim} onChange={(e) => changeBgOpt({ dim: Number(e.target.value) })} className="mt-1 w-full" />
+                </label>
+              </div>
+            ) : null}
+            <button type="button" className="mt-3 h-11 w-full rounded-lg bg-accent text-sm font-bold text-white" onClick={() => setBgOpen(false)}>Selesai</button>
             <input ref={bgInput} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void pickBgImage(f); }} />
           </div>
         </div>

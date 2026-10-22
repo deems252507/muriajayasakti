@@ -32,6 +32,22 @@ function RiwayatPage() {
   const [banks, setBanks] = useState<string[]>([]);
   const [manual, setManual] = useState<{ nomor: string; tujuan: string; keterangan: string; bon: boolean; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
   const [sale, setSale] = useState<{ nomor: string; tujuan: string; diskon: string; metode: string; bank: string; bayar: string; rows: EditorRow[]; adds: EditorAdd[] } | null>(null);
+  // Dibuka dari chat ("Buka di aplikasi"): langsung tampilkan detail nota itu, apa pun filter yang tersimpan.
+  useEffect(() => {
+    let nomor = "";
+    try { nomor = sessionStorage.getItem("mjs-open-invoice") ?? ""; sessionStorage.removeItem("mjs-open-invoice"); } catch { /* abaikan */ }
+    if (!nomor) return;
+    setView("transaksi");
+    setDetail(null);
+    setOpen(nomor);
+    void getInvoice({ data: { nomor } })
+      .then((res) => {
+        if (!res) { toast.error(`Nota ${nomor} tidak ditemukan`); setOpen(""); return; }
+        setDetail({ invoice: res.invoice as Record<string, unknown>, lines: res.lines as Array<Record<string, unknown>> });
+      })
+      .catch((error: Error) => { toast.error(error.message || "Gagal memuat nota"); setOpen(""); });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !sale && !manual) setOpen(""); };
@@ -263,7 +279,7 @@ function RiwayatPage() {
         </div>
       </div>
       {view === "transaksi" && open ? (() => {
-        const inv = items.find((x) => String(x.nomor) === open);
+        const inv = items.find((x) => String(x.nomor) === open) ?? (detail && String(detail.invoice.nomor).toLowerCase() === open.toLowerCase() ? detail.invoice : null);
         if (!inv) return null;
         return (
           <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-ink/40 p-3 sm:p-4" onClick={() => setOpen("")}>
@@ -283,7 +299,7 @@ function RiwayatPage() {
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
-{detail && String(detail.invoice.nomor) === open ? (
+{detail && String(detail.invoice.nomor).toLowerCase() === open.toLowerCase() ? (
               <div className="text-sm">
                 <p className="text-xs font-extrabold uppercase tracking-wide text-slate-600">Rincian Barang ({detail.lines.length})</p>
                 {detail.lines.map((line) => (

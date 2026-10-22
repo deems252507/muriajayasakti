@@ -774,3 +774,10 @@ export const pushUnsubscribe = createServerFn({ method: "POST" })
     const { pushUnsubscribe: run } = await import("./logic.server");
     return run(data);
   });
+
+export const chatPhotos = createServerFn({ method: "GET" })
+  .validator((input: { kind: string; target: string }) => ({ kind: String(input?.kind ?? "dm"), target: String(input?.target ?? "") }))
+  .handler(async ({ data }) => {
+    const { chatPhotos: run } = await import("./logic.server");
+    return run(data);
+  });
