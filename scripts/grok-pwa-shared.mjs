@@ -157,8 +157,17 @@ export function renderInstallPageHtml(template, { host, url } = {}) {
     .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)));
 }
 
+// Domain sendiri (bukan *.grok.me), mis. Vercel: pakai nama dan ikon toko, bukan "Grok App".
+const SHOP_APP_NAME = "Muria Jaya Sakti";
+const SHOP_ICONS = [
+  { src: "/brand/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+  { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+];
+
 export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
+  const host = String(hostHeader ?? "").split(",")[0].trim().split(":")[0].toLowerCase();
+  const ownDomain = !host.endsWith(".grok.me");
+  const name = ownDomain ? SHOP_APP_NAME : appNameFromHost(hostHeader);
   return JSON.stringify(
     {
       name,
@@ -167,15 +176,17 @@ export function renderWebManifest(hostHeader) {
       start_url: "/",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
-      icons: [
-        {
-          src: "/__grok/icon-180.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
-      ],
+      background_color: ownDomain ? "#0b1220" : "#000000",
+      theme_color: ownDomain ? "#0b1220" : "#000000",
+      icons: ownDomain
+        ? SHOP_ICONS
+        : [
+            {
+              src: "/__grok/icon-180.png",
+              sizes: "180x180",
+              type: "image/png",
+            },
+          ],
     },
     null,
     2,

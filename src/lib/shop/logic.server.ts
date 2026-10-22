@@ -42,9 +42,19 @@ const defaultPasswords: Record<string, string> = {
   siang: "siang123",
 };
 
+// scrypt sengaja lambat dan memblokir server. Hasilnya di-cache per (akun + hash), jadi hanya dihitung sekali
+// per proses; kalau password diganti, hash berubah dan otomatis dihitung ulang.
+const defaultCheck = new Map<string, boolean>();
 function stillDefault(username: string, hash: string) {
   const password = defaultPasswords[username];
-  return Boolean(password && verifyPassword(password, hash));
+  if (!password) return false;
+  const key = `${username}:${hash}`;
+  const hit = defaultCheck.get(key);
+  if (hit !== undefined) return hit;
+  const result = verifyPassword(password, hash);
+  if (defaultCheck.size > 50) defaultCheck.clear();
+  defaultCheck.set(key, result);
+  return result;
 }
 
 function cleanError(error: unknown) {
