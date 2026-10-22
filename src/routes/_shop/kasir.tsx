@@ -310,7 +310,7 @@ function KasirPage() {
             const dusStok = dusOk ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
             const habis = item.stok <= 0;
             return (
-              <div key={item.id} className="flex min-h-28 cursor-pointer flex-col justify-between rounded-lg border border-slate-200 p-3 text-left hover:border-blue-500 hover:bg-blue-50" onClick={() => addProduct(item, false, false)}>
+              <div key={item.id} className={`flex min-h-28 cursor-pointer flex-col justify-between rounded-lg border p-3 text-left ${habis ? "border-red-300 bg-red-50 hover:border-red-500" : "border-slate-200 hover:border-blue-500 hover:bg-blue-50"}`} onClick={() => addProduct(item, false, false)}>
                 <div>
                   <p className="line-clamp-2 text-xs font-semibold">
                     <Mark text={item.nama} q={q} />
@@ -324,7 +324,7 @@ function KasirPage() {
                 <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="btn-tight bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}>Pcs</button>
                   {dusOk ? <button type="button" className="btn-tight bg-blue-700 text-white shadow-sm" onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button> : null}
-                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
+                  <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-600 text-white" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-2">
                   <span className="text-[11px] font-bold text-green-600">

@@ -33,7 +33,7 @@ export const Route = createRootRoute({
         <AuthProvider>
           <Outlet />
         </AuthProvider>
-        <Toaster position="top-center" />
+        <Toaster position="top-center" richColors closeButton />
         <Scripts />
       </body>
     </html>

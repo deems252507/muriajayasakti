@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { installStockAlerts } from "@/lib/shop/alerts";
 import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
@@ -178,6 +179,7 @@ export function MarkWords({ text, q }: { text: string; q: string }) {
 
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { installStockAlerts(); }, []);
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });

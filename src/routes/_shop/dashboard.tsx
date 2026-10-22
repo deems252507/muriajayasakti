@@ -130,6 +130,16 @@ function AdminDash({ data, readOnly = false }: { data: NonNullable<Awaited<Retur
           )}
         </div>
       </section>
+      {data.habis > 0 ? (
+        <Link to="/stok" className="flex items-center gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-red-800 shadow-sm hover:bg-red-100">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-red-600 text-lg font-black text-white">!</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold">{data.habis} barang stok HABIS{data.kritis > 0 ? ` · ${data.kritis} hampir habis` : ""}</span>
+            <span className="block text-xs text-red-700/80">Barang tidak bisa dijual sampai di-restock. Ketuk untuk melihat daftar stok.</span>
+          </span>
+          <span className="text-xs font-extrabold">Lihat →</span>
+        </Link>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Stat label="Penjualan Hari Ini" value={rupiah(data.today.sales)} hint={`${data.today.trx} trx`} tone="ok" />
         <Stat label="Penjualan Bulan" value={rupiah(data.month)} hint={`${data.monthTrx} trx`} tone="info" />
@@ -221,14 +231,14 @@ function AdminDash({ data, readOnly = false }: { data: NonNullable<Awaited<Retur
               {data.low.map((item) => {
                 const habis = item.stok <= 0;
                 return (
-                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                  <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border border-l-4 p-3 ${habis ? "border-red-200 border-l-red-600 bg-red-50" : "border-amber-200 border-l-amber-500 bg-amber-50"}`}>
                     <div className="min-w-0">
                       <p className="truncate text-xs font-bold">{item.nama}</p>
                       <p className="truncate font-mono text-[10px] text-muted">{item.partNumber || "-"}</p>
                     </div>
                     <div className="text-right">
                       <p className={`text-xs font-black ${habis ? "text-danger" : "text-orange-500"}`}>{item.stok} {item.satuan}</p>
-                      <span className={`text-[10px] font-bold ${habis ? "text-danger" : "text-warn"}`}>{habis ? "HABIS" : "KRITIS"}</span>
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-extrabold ${habis ? "bg-red-600 text-white" : "bg-amber-500 text-white"}`}>{habis ? "HABIS" : "KRITIS"}</span>
                     </div>
                   </div>
                 );

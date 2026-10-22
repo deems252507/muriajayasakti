@@ -240,6 +240,9 @@ function openSlip(title: string, body: string, plain = false) {
   .strong { font-weight: 800; font-size: 14px; }
   .bon { margin-top: 4px; border: 1.5px solid #8f2d2d; color: #8f2d2d; text-align: center; font-weight: 800; padding: 6px; }
   .copy { text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .08em; margin-top: 6px; }
+  .paid { margin-top: 4px; border: 1.5px solid #166534; color: #166534; text-align: center; font-weight: 800; padding: 6px; }
+  .note { font-size: 10px; color: #444; margin-top: 4px; }
+  .by { text-align: center; font-size: 10px; margin-top: 8px; color: #333; }
   .thanks { text-align: center; margin: 8px 0 0; font-size: 11px; }
 </style></head><body>
   <div class="shop"><div class="brand">${esc(shop.nama)}</div>${plain || !shop.tagline ? "" : `<div class="sub">${esc(shop.tagline)}</div>`}<div class="addr">${esc(shop.alamat)}${shop.telepon ? `<br>${esc(shop.telepon)}` : ""}</div></div>
@@ -277,6 +280,10 @@ export function printSaleReceipt(result: {
   kasir: string;
   waktu?: string;
   reprint?: boolean;
+  /** Siapa pembuat nota: nota dari Kasir bertuliskan "Kasir", nota buatan Admin bertuliskan "Admin". */
+  creator?: "Admin" | "Kasir";
+  tanggalLunas?: string;
+  keterangan?: string;
   lines: Array<{ nama: string; qty: number; satuan: string; harga: number; kodePajak?: string; merek?: string; partNumber?: string; partNumbersAlt?: string; alt?: string }>;
 }) {
   const lines = Array.isArray(result.lines) ? result.lines : [];
@@ -286,17 +293,20 @@ export function printSaleReceipt(result: {
       return `<div class="item"><div class="name">${esc(title)}</div>${itemIdentity({ merek: line.merek, partNumber: line.partNumber, partNumbersAlt: line.partNumbersAlt || line.alt })}<div class="line"><span>${esc(line.qty)} ${esc(line.satuan)} x ${esc(money(line.harga))}</span><span>${esc(money(Number(line.harga) * Number(line.qty)))}</span></div></div>`;
     })
     .join("");
+  const lunasBon = result.status !== "Bon" && Boolean(result.tanggalLunas);
   const pay =
     result.status === "Bon"
       ? `<div class="bon">BON / BELUM LUNAS</div>`
-      : `<table>${slipRow("Metode", result.metode)}${result.bank ? slipRow("Bank", result.bank) : ""}${result.metode === "Tunai" ? `${slipRow("Terima", money(result.bayarTunai))}${slipRow("Kembali", money(result.kembalian))}` : ""}${result.metode === "Split" ? `${slipRow("Tunai", money(result.bayarTunai))}${slipRow("Transfer", money(result.transfer))}` : ""}${result.metode === "Transfer" ? slipRow("Transfer", money(result.transfer || result.total)) : ""}</table>`;
+      : lunasBon
+        ? `<div class="paid">BON LUNAS</div><div class="note" style="text-align:center">Dilunasi: ${esc(whenText(result.tanggalLunas))}</div>`
+        : `<table>${slipRow("Metode", result.metode)}${result.bank ? slipRow("Bank", result.bank) : ""}${result.metode === "Tunai" ? `${slipRow("Terima", money(result.bayarTunai))}${slipRow("Kembali", money(result.kembalian))}` : ""}${result.metode === "Split" ? `${slipRow("Tunai", money(result.bayarTunai))}${slipRow("Transfer", money(result.transfer))}` : ""}${result.metode === "Transfer" ? slipRow("Transfer", money(result.transfer || result.total)) : ""}</table>`;
   openSlip(
     result.nomor,
     `${result.reprint ? `<div class="copy">SALINAN / CETAK ULANG</div>` : ""}
     <table>
       ${slipRow("No", result.nomor)}
       ${slipRow("Waktu", whenText(result.waktu || new Date().toISOString()))}
-      ${slipRow("Kasir", result.kasir)}
+      ${slipRow(result.creator || "Kasir", result.kasir)}
       ${slipRow("Pelanggan", result.customer || "Umum")}
     </table>
     <hr class="rule">
@@ -313,6 +323,8 @@ export function printSaleReceipt(result: {
 
 export function printStoredSale(invoice: Record<string, unknown>, lines: Array<Record<string, unknown>>) {
   printSaleReceipt({
+    creator: String(invoice.source) === "Manual" ? "Admin" : "Kasir",
+    tanggalLunas: invoice.tanggal_lunas ? String(invoice.tanggal_lunas) : "",
     nomor: String(invoice.nomor || ""),
     waktu: String(invoice.tanggal || ""),
     kasir: String(invoice.kasir || "-"),
@@ -341,28 +353,60 @@ export function printStoredSale(invoice: Record<string, unknown>, lines: Array<R
 }
 
 export function printStoredManual(invoice: Record<string, unknown>, lines: Array<Record<string, unknown>>) {
+  const hargaOf = (line: Record<string, unknown>) => Number(line.harga_satuan || 0);
   const items = lines
     .map((line) => {
       const nama = String(line.custom_item || line.product_nama || "Barang");
-      const arah = line.jenis === "MASUK" ? "MASUK (+)" : "KELUAR (-)";
-      const tujuan = String(line.tujuan || invoice.tujuan || (line.jenis === "MASUK" ? "Supplier/Gudang" : "Pelanggan/Service"));
-      return `<div style="margin-bottom:9px"><div style="font-weight:bold">${esc(nama)}</div><div class="meta">${[line.merek ? `Merek: ${esc(line.merek)}` : "", `PN: ${esc(line.part_number || "-")}`, line.part_numbers_alt ? `PN Alt: ${esc(line.part_numbers_alt)}` : ""].filter(Boolean).join("<br>")}</div><div style="display:flex;justify-content:space-between;margin-top:3px"><span>${arah}</span><span>${esc(line.jumlah)} ${esc(line.satuan || "")}</span></div>${line.jenis === "KELUAR" && Number(line.harga_satuan) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px"><span>@ ${money(Number(line.harga_satuan))}</span><span>${money(Number(line.harga_satuan) * Number(line.jumlah))}</span></div>` : ""}<div style="font-size:10px">${esc(tujuan)}</div></div>`;
+      const keluar = line.jenis !== "MASUK";
+      const arah = keluar ? "KELUAR (-)" : "MASUK (+)";
+      const tujuan = String(line.tujuan || invoice.tujuan || (keluar ? "Pelanggan/Service" : "Supplier/Gudang"));
+      const harga = hargaOf(line);
+      const subtotal = harga * Number(line.jumlah || 0);
+      const priceRow = !keluar
+        ? ""
+        : harga > 0
+          ? `<div class="line" style="font-size:11px"><span>@ ${money(harga)}</span><b>${money(subtotal)}</b></div>`
+          : `<div class="note">Harga belum diisi</div>`;
+      return `<div class="item"><div class="name">${esc(nama)}</div><div class="meta">${[line.merek ? `Merek: ${esc(line.merek)}` : "", `PN: ${esc(line.part_number || line.product_part || "-")}`, line.part_numbers_alt ? `PN Alt: ${esc(line.part_numbers_alt)}` : ""].filter(Boolean).join("<br>")}</div><div class="line" style="margin-top:3px"><span>${arah}</span><span>${esc(line.jumlah)} ${esc(line.satuan || "")}</span></div>${priceRow}<div class="meta">${esc(tujuan)}</div></div>`;
     })
     .join("");
   const masuk = lines.filter((line) => line.jenis === "MASUK").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
-  const keluar = lines.filter((line) => line.jenis === "KELUAR").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
+  const keluar = lines.filter((line) => line.jenis !== "MASUK").reduce((sum, line) => sum + Number(line.jumlah_dasar || line.jumlah || 0), 0);
+  const hitung = lines.filter((line) => line.jenis !== "MASUK").reduce((sum, line) => sum + hargaOf(line) * Number(line.jumlah || 0), 0);
+  const total = Number(invoice.total || 0) > 0 ? Number(invoice.total) : hitung;
+  const isBon = String(invoice.metode_bayar) === "Bon" || String(invoice.status_bayar) === "Bon";
+  const lunas = isBon && String(invoice.status_bayar) === "Lunas";
+  const pay = !isBon
+    ? ""
+    : lunas
+      ? `<div class="paid">BON LUNAS</div>${invoice.tanggal_lunas ? `<div class="note" style="text-align:center">Dilunasi: ${esc(whenText(invoice.tanggal_lunas))}</div>` : ""}`
+      : `<div class="bon">BON / BELUM LUNAS</div>`;
   openSlip(
     String(invoice.nomor || "Nota mutasi"),
     `<div class="copy">*** NOTA MUTASI BARANG ***</div>
+    <div class="copy" style="font-weight:600;letter-spacing:.04em">Dibuat oleh Admin</div>
     <table>
       ${slipRow("No Nota", String(invoice.nomor || ""))}
       ${slipRow("Tgl", whenText(invoice.tanggal))}
-      ${slipRow("Kasir", String(invoice.kasir || "-"))}
+      ${slipRow("Admin", String(invoice.kasir || "-"))}
+      ${invoice.tujuan ? slipRow("Pelanggan", String(invoice.tujuan)) : ""}
     </table>
     <hr class="rule">${items}<hr class="rule">
-    <table>${slipRow("TOTAL MASUK", `+ ${masuk}`, true)}${slipRow("TOTAL KELUAR", `- ${keluar}`, true)}</table>`,
+    <table>
+      ${slipRow("TOTAL MASUK", `+ ${masuk}`, true)}
+      ${slipRow("TOTAL KELUAR", `- ${keluar}`, true)}
+      ${total > 0 ? slipRow("TOTAL NOTA", money(total), true) : ""}
+    </table>
+    ${pay ? `<hr class="rule">${pay}` : ""}
+    ${invoice.keterangan && String(invoice.keterangan) !== "Bon (Hutang)" && String(invoice.keterangan) !== "Bon (Lunas)" ? `<div class="note">Ket: ${esc(invoice.keterangan)}</div>` : ""}`,
     true,
   );
+}
+
+/** Cetak ulang nota sesuai pembuatnya: nota manual (Admin) memakai format mutasi, nota kasir memakai format struk. */
+export function printStoredNota(invoice: Record<string, unknown>, lines: Array<Record<string, unknown>>) {
+  if (String(invoice.source) === "Manual") printStoredManual(invoice, lines);
+  else printStoredSale(invoice, lines);
 }
 
 export function printReturSlip(row: Record<string, unknown>) {
@@ -569,7 +613,7 @@ export function printDebtReport(rows: Array<Record<string, unknown>>, start: str
       const color = inv.status_bayar === "Lunas" ? "#16a34a" : "#dc2626";
       const lunasInfo = inv.status_bayar === "Lunas" && inv.tanggal_lunas ? `<br><span style="font-size:9px;color:#16a34a">Lunas: ${esc(whenText(inv.tanggal_lunas))}</span>` : "";
       const ket = inv.keterangan ? `<br><b>Keterangan:</b> ${esc(inv.keterangan)}` : "";
-      return `<div style="border:1px solid #ccc;margin-bottom:10px"><div style="display:flex;justify-content:space-between;padding:8px;background:#f8f9fa;border-bottom:1px solid #ccc"><div style="font-size:10px"><b>Inv:</b> ${esc(inv.nomor)}<br><b>Tgl Bon:</b> ${esc(whenText(inv.tanggal))} ${lunasInfo}${ket}</div><div style="text-align:right;font-size:10px"><b style="color:${color}">${esc(String(inv.status_bayar || "").toUpperCase())}</b><br><b>Total: ${money(inv.total)}</b></div></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr><th style="padding:4px 8px;text-align:left;border-bottom:1px solid #ddd">Nama Barang</th><th style="padding:4px 8px;text-align:center;border-bottom:1px solid #ddd">Qty</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Harga</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Subtotal</th></tr></thead><tbody>${itemRows || `<tr><td colspan="4" class="center">Tidak ada barang</td></tr>`}</tbody></table></div>`;
+      return `<div style="border:1px solid #ccc;margin-bottom:10px"><div style="display:flex;justify-content:space-between;padding:8px;background:#f8f9fa;border-bottom:1px solid #ccc"><div style="font-size:10px"><b>Inv:</b> ${esc(inv.nomor)}<br><b>${String(inv.source) === "Manual" ? "Dibuat Admin" : "Kasir"}:</b> ${esc(inv.kasir || "-")}<br><b>Tgl Bon:</b> ${esc(whenText(inv.tanggal))} ${lunasInfo}${ket}</div><div style="text-align:right;font-size:10px"><b style="color:${color}">${esc(String(inv.status_bayar || "").toUpperCase())}</b><br><b>Total: ${money(inv.total)}</b></div></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr><th style="padding:4px 8px;text-align:left;border-bottom:1px solid #ddd">Nama Barang</th><th style="padding:4px 8px;text-align:center;border-bottom:1px solid #ddd">Qty</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Harga</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Subtotal</th></tr></thead><tbody>${itemRows || `<tr><td colspan="4" class="center">Tidak ada barang</td></tr>`}</tbody></table></div>`;
     }).join("");
     cards += `<div style="margin-bottom:25px;border-left:4px solid #dc2626;padding-left:15px"><div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:10px"><h3 style="margin:0;font-size:14px">${esc(name)}</h3><div style="font-size:11px;text-align:right">Sisa Piutang: <b style="color:#dc2626;font-size:13px">${money(piutang)}</b> <span style="color:#999">| Histori Lunas: <b style="color:#16a34a">${money(sudah)}</b></span></div></div>${notes}</div>`;
   }

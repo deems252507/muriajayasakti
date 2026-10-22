@@ -1772,31 +1772,24 @@ export async function listBon(data: any): Promise<any> {
       params.push(data.end);
       where.push(`tanggal < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
     }
-    if (data.withItems) {
-      const rows = await db.query(
-        `select i.nomor, i.tanggal, i.tujuan, i.status_bayar, i.keterangan, i.total, i.tanggal_lunas, i.kasir,
-           coalesce((
-             select json_agg(json_build_object(
-               'nama', coalesce(nullif(l.custom_item, ''), p.nama, 'Barang'),
-               'kode_pajak', coalesce(p.kode_pajak, ''),
-               'qty', l.jumlah,
-               'satuan', l.satuan,
-               'harga', l.harga_satuan
-             ) order by l.id)
-             from invoice_lines l
-             left join products p on p.id = l.product_id
-             where l.invoice_id = i.id
-           ), '[]'::json) as items
-         from invoices i
-         where ${where.join(" and ")}
-         order by i.tanggal desc, i.id desc
-         limit 5000`,
-        params,
-      );
-      return rows;
-    }
     const rows = await db.query(
-      `select * from invoices where ${where.join(" and ")} order by tanggal desc, id desc limit 5000`,
+      `select i.*,
+         coalesce((
+           select json_agg(json_build_object(
+             'nama', coalesce(nullif(l.custom_item, ''), p.nama, 'Barang'),
+             'kode_pajak', coalesce(p.kode_pajak, ''),
+             'qty', l.jumlah,
+             'satuan', l.satuan,
+             'harga', l.harga_satuan
+           ) order by l.id)
+           from invoice_lines l
+           left join products p on p.id = l.product_id
+           where l.invoice_id = i.id
+         ), '[]'::json) as items
+       from invoices i
+       where ${where.join(" and ")}
+       order by i.tanggal desc, i.id desc
+       limit 5000`,
       params,
     );
     return rows;

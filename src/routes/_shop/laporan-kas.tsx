@@ -5,7 +5,7 @@ import { PeriodPicker } from "@/components/shop/period";
 import { Panel } from "@/components/shop/shell";
 import { getInvoice, shiftLedger } from "@/lib/shop/api";
 import { rupiah, todayInput, when } from "@/lib/shop/format";
-import { printCashDaily, printReturSlip, printStoredSale } from "@/lib/shop/print";
+import { printCashDaily, printReturSlip, printStoredNota } from "@/lib/shop/print";
 
 export const Route = createFileRoute("/_shop/laporan-kas")({ component: LaporanKasPage });
 
@@ -94,7 +94,7 @@ function LaporanKasPage() {
                 <td className="py-2">{when(String(inv.tanggal))}<div><button className="text-xs font-bold text-accent" onClick={() => {
                   void getInvoice({ data: { nomor: String(inv.nomor) } }).then((res) => {
                     if (!res) return toast.error("Nota tidak ditemukan");
-                    printStoredSale(res.invoice as Record<string, unknown>, res.lines as Array<Record<string, unknown>>);
+                    printStoredNota(res.invoice as Record<string, unknown>, res.lines as Array<Record<string, unknown>>);
                   }).catch((error: Error) => toast.error(error.message));
                 }}>{String(inv.nomor)}</button></div></td>
                 <td>{jenis}<div className="text-[11px] text-muted">{String(inv.tujuan || "Umum")} · {String(inv.keterangan || "-")}</div></td>
