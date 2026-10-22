@@ -19,6 +19,7 @@ type Win = { limit: number; since: number };
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const MAX_FILE = 2_500_000;
+const MAX_ATTACH = 10;
 const PAGE = 40;
 
 /* ------------------------------------------------------------------ */
@@ -350,8 +351,9 @@ export function Conversation(props: {
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [editing, setEditing] = useState<Msg | null>(null);
   const draftBeforeEdit = useRef("");
-  const [attach, setAttach] = useState<Attach | null>(null);
+  const [attachments, setAttachments] = useState<Attach[]>([]);
   const [attaching, setAttaching] = useState(false);
+  const [progress, setProgress] = useState("");
   const [share, setShare] = useState<ShareDraft | null>(null);
   const [menu, setMenu] = useState(false);
   const [shareModal, setShareModal] = useState<"barang" | "transaksi" | null>(null);
@@ -504,7 +506,7 @@ export function Conversation(props: {
     draftBeforeEdit.current = text;
     setEditing(m);
     setReplyTo(null);
-    setAttach(null);
+    setAttachments([]);
     setShare(null);
     setText(m.auto ? "" : m.body);
     sel.clear();
@@ -561,15 +563,22 @@ export function Conversation(props: {
 
   /* ---------- kirim ---------- */
 
-  async function attachFile(file: File) {
+  async function attachFiles(files: File[]) {
+    if (!files.length) return;
+    const room = MAX_ATTACH - attachments.length;
+    if (room <= 0) { toast.error(`Maksimal ${MAX_ATTACH} file sekali kirim.`); return; }
+    if (files.length > room) toast.error(`Hanya ${room} file pertama yang dipakai (maksimal ${MAX_ATTACH} sekali kirim).`);
     setAttaching(true);
-    try {
-      setAttach(await prepareAttachment(file));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Gagal menyiapkan file");
-    } finally {
-      setAttaching(false);
+    const ready: Attach[] = [];
+    for (const file of files.slice(0, room)) {
+      try {
+        ready.push(await prepareAttachment(file));
+      } catch (error) {
+        toast.error(`${file.name}: ${error instanceof Error ? error.message : "gagal disiapkan"}`);
+      }
     }
+    setAttachments((prev) => [...prev, ...ready].slice(0, MAX_ATTACH));
+    setAttaching(false);
   }
 
   async function send() {
@@ -590,29 +599,45 @@ export function Conversation(props: {
       }
       return;
     }
-    if (!body && !attach && !share) return;
+    if (!body && attachments.length === 0 && !share) return;
     setSending(true);
+    // Beberapa foto dikirim sebagai pesan berurutan; teks, balasan, dan data toko ikut di pesan pertama.
+    const list: Array<Attach | null> = attachments.length ? attachments : [null];
+    let sent = 0;
     try {
-      await chatPost({
-        data: {
-          kind,
-          target,
-          body,
-          replyTo: replyTo?.id ?? null,
-          file: attach ? { name: attach.name, data: attach.data } : null,
-          share: share ? { type: share.type, ref: share.ref } : null,
-        },
-      });
+      for (const att of list) {
+        await chatPost({
+          data: {
+            kind,
+            target,
+            body: sent === 0 ? body : "",
+            replyTo: sent === 0 ? (replyTo?.id ?? null) : null,
+            file: att ? { name: att.name, data: att.data } : null,
+            share: sent === 0 && share ? { type: share.type, ref: share.ref } : null,
+          },
+        });
+        sent += 1;
+        if (list.length > 1) setProgress(`${sent}/${list.length}`);
+      }
       setText("");
       setReplyTo(null);
-      setAttach(null);
+      setAttachments([]);
       setShare(null);
       setMention(null);
       load(true);
     } catch (error) {
+      if (sent > 0) {
+        // Sebagian sudah terkirim: sisakan yang belum, supaya kirim ulang tidak menggandakan.
+        setAttachments(attachments.slice(sent));
+        setText("");
+        setReplyTo(null);
+        setShare(null);
+        load(true);
+      }
       toast.error(error instanceof Error ? error.message : "Gagal mengirim pesan");
     } finally {
       setSending(false);
+      setProgress("");
     }
   }
 
@@ -761,11 +786,17 @@ export function Conversation(props: {
             <button type="button" className={iconBtn} aria-label="Batal balas" onClick={() => setReplyTo(null)}><X className="size-4" /></button>
           </div>
         ) : null}
-        {attach || attaching ? (
-          <div className="flex items-center gap-2 border-b border-line bg-slate-50 px-3 py-2">
-            {attach?.image ? <img src={attach.data} alt="" className="size-12 shrink-0 rounded-lg object-cover" /> : <FileText className="size-8 shrink-0 text-slate-600" />}
-            <p className="min-w-0 flex-1 truncate text-xs">{attaching ? "Menyiapkan file..." : <><b>{attach?.name}</b><span className="text-muted"> · {fmtSize(dataBytes(attach?.data ?? ""))}</span></>}</p>
-            <button type="button" className={iconBtn} aria-label="Hapus lampiran" onClick={() => setAttach(null)}><X className="size-4" /></button>
+        {attachments.length > 0 || attaching ? (
+          <div className="flex items-center gap-3 overflow-x-auto border-b border-line bg-slate-50 px-3 py-2">
+            {attachments.map((a, i) => (
+              <div key={`${a.name}-${i}`} className="relative shrink-0">
+                {a.image ? <img src={a.data} alt="" className="size-14 rounded-lg object-cover" /> : <div className="grid size-14 place-items-center rounded-lg border border-line bg-white"><FileText className="size-6 text-slate-600" /></div>}
+                <button type="button" aria-label="Hapus lampiran" disabled={sending} className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-slate-800 text-white disabled:opacity-50" onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}><X className="size-3" /></button>
+                {!a.image ? <p className="mt-0.5 w-14 truncate text-[9px]">{a.name}</p> : null}
+              </div>
+            ))}
+            {attaching ? <span className="shrink-0 text-xs text-muted">Menyiapkan...</span> : null}
+            <span className="ml-auto shrink-0 text-[11px] text-muted">{progress ? `Mengirim ${progress}` : `${attachments.length}/${MAX_ATTACH}`}</span>
           </div>
         ) : null}
         {share ? (
@@ -786,7 +817,7 @@ export function Conversation(props: {
               <button type="button" className="grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-white" aria-label="Lampirkan" onClick={() => setMenu((v) => !v)}><Paperclip className="size-4" /></button>
               {menu ? (
                 <div className="absolute bottom-12 left-0 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); imgInput.current?.click(); }}><ImageIcon className="size-4" />Foto / kamera</button>
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); imgInput.current?.click(); }}><ImageIcon className="size-4" />Foto / kamera (bisa banyak)</button>
                   <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); docInput.current?.click(); }}><FileText className="size-4" />Dokumen (PDF, Word, Excel)</button>
                   <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("barang"); }}><Package className="size-4" />Bagikan barang</button>
                   <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("transaksi"); }}><Receipt className="size-4" />Bagikan transaksi</button>
@@ -804,8 +835,8 @@ export function Conversation(props: {
             onChange={(e) => { setText(e.target.value); updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
             onPaste={(e) => {
               if (editing) return;
-              const img = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
-              if (img) { e.preventDefault(); void attachFile(img); }
+              const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+              if (imgs.length) { e.preventDefault(); void attachFiles(imgs); }
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -815,10 +846,10 @@ export function Conversation(props: {
               }
             }}
           />
-          <button type="submit" disabled={sending || attaching || (!text.trim() && !attach && !share && !(editing && (editing.file || editing.share)))} className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-white disabled:opacity-50" aria-label="Kirim"><Send className="size-4" /></button>
+          <button type="submit" disabled={sending || attaching || (!text.trim() && attachments.length === 0 && !share && !(editing && (editing.file || editing.share)))} className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-white disabled:opacity-50" aria-label="Kirim"><Send className="size-4" /></button>
         </form>
-        <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void attachFile(f); }} />
-        <input ref={docInput} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.pptx,.csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void attachFile(f); }} />
+        <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void attachFiles(fs); }} />
+        <input ref={docInput} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.pptx,.csv,.txt" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void attachFiles(fs); }} />
       </div>
 
       {shareModal ? <ShareModal type={shareModal} onClose={() => setShareModal(null)} onPick={(item) => { setShare({ type: shareModal, ...item }); setEditing(null); setShareModal(null); window.setTimeout(() => taRef.current?.focus(), 0); }} /> : null}

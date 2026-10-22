@@ -25,6 +25,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
+import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
 import type { Product, Staff } from "@/lib/shop/types";
 
@@ -219,10 +220,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         beep();
         const preview = latest.body.length > 80 ? `${latest.body.slice(0, 80)}...` : latest.body;
         if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
-          try {
-            const n = new Notification(`Pesan dari ${latest.title}`, { body: preview, tag: "mjs-chat" });
-            n.onclick = () => { window.focus(); sessionStorage.setItem("mjs-chat-with", latest.target); window.location.href = "/chat"; };
-          } catch { /* abaikan */ }
+          void showLocalNotification(latest.title, preview, latest.target);
         } else {
           toast(`Pesan dari ${latest.title}`, {
             description: preview,
@@ -236,8 +234,20 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     const timer = window.setInterval(tick, 6000);
     const onChat = () => tick();
     const askPermission = () => {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") void Notification.requestPermission();
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        void Notification.requestPermission().then(() => syncPush()).catch(() => undefined);
+      }
     };
+    // Daftarkan service worker dan pastikan perangkat ini terdaftar untuk notifikasi di luar aplikasi.
+    void syncPush().catch(() => undefined);
+    // Klik notifikasi saat aplikasi masih terbuka: buka chat yang dimaksud.
+    const onWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "open-chat") return;
+      const target = String(event.data.target ?? "");
+      if (pathRef.current === "/chat") window.dispatchEvent(new CustomEvent("mjs-open-chat", { detail: target }));
+      else { try { sessionStorage.setItem("mjs-chat-with", target); } catch { /* abaikan */ } window.location.href = "/chat"; }
+    };
+    if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", onWorkerMessage);
     window.addEventListener("mjs-chat", onChat);
     window.addEventListener("focus", tick);
     window.addEventListener("click", askPermission, { once: true });
@@ -247,6 +257,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       window.removeEventListener("mjs-chat", onChat);
       window.removeEventListener("focus", tick);
       window.removeEventListener("click", askPermission);
+      if ("serviceWorker" in navigator) navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
       document.title = baseTitle;
     };
   }, []);
@@ -346,7 +357,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-medium text-danger"
                 onClick={() => {
                   if (!confirm("Yakin keluar dari aplikasi?")) return;
-                  void logout().then(() => {
+                  void disablePush().catch(() => undefined).then(() => logout()).then(() => {
                     clearPersistedState();
                     window.location.href = "/";
                   });

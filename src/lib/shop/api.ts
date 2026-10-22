@@ -734,3 +734,29 @@ export const chatShareFind = createServerFn({ method: "GET" })
     const { chatShareFind: run } = await import("./logic.server");
     return run(data);
   });
+
+// ---- Notifikasi di luar aplikasi (Web Push) ----
+
+export const pushPublicKey = createServerFn({ method: "GET" }).handler(async () => {
+  const { pushPublicKey: run } = await import("./logic.server");
+  return run();
+});
+
+export const pushSubscribe = createServerFn({ method: "POST" })
+  .validator((input: { endpoint: string; p256dh: string; auth: string; userAgent?: string }) => ({
+    endpoint: String(input?.endpoint ?? ""),
+    p256dh: String(input?.p256dh ?? ""),
+    auth: String(input?.auth ?? ""),
+    userAgent: String(input?.userAgent ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { pushSubscribe: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const pushUnsubscribe = createServerFn({ method: "POST" })
+  .validator((input: { endpoint: string }) => ({ endpoint: String(input?.endpoint ?? "") }))
+  .handler(async ({ data }) => {
+    const { pushUnsubscribe: run } = await import("./logic.server");
+    return run(data);
+  });

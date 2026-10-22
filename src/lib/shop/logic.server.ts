@@ -2388,7 +2388,7 @@ export async function chatDeleteMessages(data: { ids: number[] }) {
   if (!rows.length) throw new Error("Pesan tidak ditemukan atau bukan pesan Anda.");
   const doneIds = rows.map((r) => Number((r as { id: number }).id));
   const doneMarks = doneIds.map((_, i) => `$${i + 1}`).join(",");
-  await db.query(`delete from chat_files where id in (select file_id from chat_messages where file_id is not null and id in (${doneMarks}))`, doneIds);
+  await db.query(`delete from mjs_chat_files where id in (select file_id from chat_messages where file_id is not null and id in (${doneMarks}))`, doneIds);
   return { deleted: rows.length };
 }
 
@@ -2410,7 +2410,7 @@ export async function groupDeleteMessages(data: { ids: number[] }) {
   const okIds = msgs.map((m) => Number(m.id));
   const okMarks = okIds.map((_, i) => `$${i + 1}`).join(",");
   await db.query(`update chat_group_messages set deleted_at = now() where id in (${okMarks})`, okIds);
-  await db.query(`delete from chat_files where id in (select file_id from chat_group_messages where file_id is not null and id in (${okMarks}))`, okIds);
+  await db.query(`delete from mjs_chat_files where id in (select file_id from chat_group_messages where file_id is not null and id in (${okMarks}))`, okIds);
   return { deleted: okIds.length };
 }
 
@@ -2509,7 +2509,7 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
             r.sender as r_sender, rs.name as r_name, r.body as r_body, r.deleted_at as r_deleted
      from ${table} m
      join staff s on s.username = m.sender
-     left join chat_files f on f.id = m.file_id
+     left join mjs_chat_files f on f.id = m.file_id
      left join ${table} r on r.id = m.reply_to
      left join staff rs on rs.username = r.sender
      where ${tw.sql} and ${win}
@@ -2548,7 +2548,7 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
   const ids = rows.map((row) => Number(row.id));
   const reactRows = ids.length
     ? await db.query<{ message_id: number; emoji: string; username: string; name: string }>(
-        `select cr.message_id, cr.emoji, cr.username, s.name from chat_reactions cr join staff s on s.username = cr.username
+        `select cr.message_id, cr.emoji, cr.username, s.name from mjs_chat_reactions cr join staff s on s.username = cr.username
          where cr.kind = $1 and cr.message_id = any($2::bigint[]) order by cr.created_at`,
         [scope.kind, ids],
       )
@@ -2709,27 +2709,31 @@ export async function chatPost(data: {
   let fileId: number | null = null;
   if (file) {
     const [f] = await db.query<{ id: number }>(
-      `insert into chat_files (owner, name, mime, size, data) values ($1, $2, $3, $4, $5) returning id`,
+      `insert into mjs_chat_files (owner, name, mime, size, data) values ($1, $2, $3, $4, $5) returning id`,
       [me.username, file.name, file.mime, file.size, file.data],
     );
     fileId = Number(f?.id ?? 0) || null;
   }
 
   const extra = [!caption, replyTo, fileId, share?.kind ?? null, share?.ref ?? null, share?.title ?? null, share?.sub ?? null];
+  let newId = 0;
   if (scope.kind === "dm") {
     const [row] = await db.query<{ id: number }>(
       `insert into chat_messages (sender, recipient, body, body_auto, reply_to, file_id, share_kind, share_ref, share_title, share_sub)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
       [me.username, scope.other, body, ...extra],
     );
-    return { id: Number(row?.id ?? 0) };
+    newId = Number(row?.id ?? 0);
+  } else {
+    const [row] = await db.query<{ id: number }>(
+      `insert into chat_group_messages (group_id, sender, body, body_auto, reply_to, file_id, share_kind, share_ref, share_title, share_sub)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [scope.groupId, me.username, body, ...extra],
+    );
+    newId = Number(row?.id ?? 0);
   }
-  const [row] = await db.query<{ id: number }>(
-    `insert into chat_group_messages (group_id, sender, body, body_auto, reply_to, file_id, share_kind, share_ref, share_title, share_sub)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-    [scope.groupId, me.username, body, ...extra],
-  );
-  return { id: Number(row?.id ?? 0) };
+  await notifyChatPush(db, me, scope, body);
+  return { id: newId };
 }
 
 /** Ubah isi pesan sendiri (untuk pesan dengan foto/file, yang diubah adalah keterangannya). */
@@ -2741,7 +2745,7 @@ export async function chatEdit(data: { kind: string; id: number; body: string })
   const id = Number(data.id);
   const [m] = await db.query<Record<string, unknown>>(
     `select m.sender, m.deleted_at, m.file_id, m.share_title, f.name as file_name, f.mime as file_mime${kind === "group" ? ", m.group_id" : ""}
-     from ${table} m left join chat_files f on f.id = m.file_id where m.id = $1`,
+     from ${table} m left join mjs_chat_files f on f.id = m.file_id where m.id = $1`,
     [id],
   );
   if (!m || m.deleted_at) throw new Error("Pesan tidak ditemukan.");
@@ -2779,15 +2783,15 @@ export async function chatReact(data: { kind: string; id: number; emoji: string 
   if (!CHAT_REACTIONS.includes(emoji)) throw new Error("Emoji tidak tersedia.");
   await chatMessageAccess(db, me, kind, id);
   const [existing] = await db.query<{ emoji: string }>(
-    `select emoji from chat_reactions where kind = $1 and message_id = $2 and username = $3`,
+    `select emoji from mjs_chat_reactions where kind = $1 and message_id = $2 and username = $3`,
     [kind, id, me.username],
   );
   if (existing && existing.emoji === emoji) {
-    await db.query(`delete from chat_reactions where kind = $1 and message_id = $2 and username = $3`, [kind, id, me.username]);
+    await db.query(`delete from mjs_chat_reactions where kind = $1 and message_id = $2 and username = $3`, [kind, id, me.username]);
     return { on: false };
   }
   await db.query(
-    `insert into chat_reactions (kind, message_id, username, emoji) values ($1, $2, $3, $4)
+    `insert into mjs_chat_reactions (kind, message_id, username, emoji) values ($1, $2, $3, $4)
      on conflict (kind, message_id, username) do update set emoji = excluded.emoji, created_at = now()`,
     [kind, id, me.username, emoji],
   );
@@ -2823,7 +2827,7 @@ export async function chatFileGet(data: { id: number }) {
   const me = await requireStaff();
   const db = await sql();
   const [f] = await db.query<Record<string, unknown>>(
-    `select f.name, f.mime, f.size, f.data from chat_files f
+    `select f.name, f.mime, f.size, f.data from mjs_chat_files f
      where f.id = $1 and (
        exists (select 1 from chat_messages m where m.file_id = f.id and m.deleted_at is null and (m.sender = $2 or m.recipient = $2))
        or exists (select 1 from chat_group_messages g join chat_group_members gm on gm.group_id = g.group_id and gm.username = $2
@@ -2847,7 +2851,7 @@ export async function chatSearch(data: { kind: string; target: string; q: string
     `select m.id, s.name, m.body, m.created_at
      from ${chatTable(scope.kind)} m
      join staff s on s.username = m.sender
-     left join chat_files f on f.id = m.file_id
+     left join mjs_chat_files f on f.id = m.file_id
      where ${tw.sql} and m.deleted_at is null
        and position(lower($${tw.params.length + 1}) in lower(m.body || ' ' || coalesce(m.share_title, '') || ' ' || coalesce(m.share_sub, '') || ' ' || coalesce(f.name, ''))) > 0
      order by m.id desc limit 50`,
@@ -2898,8 +2902,125 @@ export async function chatShareFind(data: { type: string; q: string }) {
 /** Hapus file lampiran yang sudah tidak dipakai pesan mana pun. */
 async function pruneChatFiles(db: ChatDb) {
   await db.query(
-    `delete from chat_files f where f.created_at < now() - interval '1 minute'
+    `delete from mjs_chat_files f where f.created_at < now() - interval '1 minute'
        and not exists (select 1 from chat_messages m where m.file_id = f.id)
        and not exists (select 1 from chat_group_messages g where g.file_id = f.id)`,
   );
+}
+
+
+// ---------------------------------------------------------------------------
+// Notifikasi di luar aplikasi (Web Push)
+// ---------------------------------------------------------------------------
+
+async function loadWebPush() {
+  const mod: any = await import("web-push");
+  return mod.default ?? mod;
+}
+
+/** Kunci VAPID: dari environment kalau ada, kalau tidak dibuat otomatis sekali lalu disimpan di database. */
+async function ensureVapid(db: ChatDb): Promise<{ pub: string; priv: string }> {
+  const envPub = process.env.VAPID_PUBLIC_KEY;
+  const envPriv = process.env.VAPID_PRIVATE_KEY;
+  if (envPub && envPriv) return { pub: envPub, priv: envPriv };
+  const read = async () => {
+    const rows = await db.query<{ key: string; value: string }>(`select key, value from mjs_push_config where key in ('vapid_public', 'vapid_private')`);
+    const map = new Map(rows.map((r) => [String(r.key), String(r.value)]));
+    const pub = map.get("vapid_public");
+    const priv = map.get("vapid_private");
+    return pub && priv ? { pub, priv } : null;
+  };
+  const have = await read();
+  if (have) return have;
+  const webpush = await loadWebPush();
+  const keys = webpush.generateVAPIDKeys();
+  await db.query(
+    `insert into mjs_push_config (key, value) values ('vapid_public', $1), ('vapid_private', $2) on conflict (key) do nothing`,
+    [keys.publicKey, keys.privateKey],
+  );
+  const after = await read();
+  if (!after) throw new Error("Gagal menyiapkan kunci notifikasi.");
+  return after;
+}
+
+export async function pushPublicKey() {
+  await requireStaff();
+  const db = await sql();
+  const keys = await ensureVapid(db);
+  return { key: keys.pub };
+}
+
+export async function pushSubscribe(data: { endpoint: string; p256dh: string; auth: string; userAgent?: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const endpoint = String(data.endpoint ?? "");
+  const p256dh = String(data.p256dh ?? "");
+  const auth = String(data.auth ?? "");
+  if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || !p256dh || !auth) throw new Error("Data langganan notifikasi tidak valid.");
+  await db.query(
+    `insert into mjs_push_subscriptions (endpoint, username, p256dh, auth, user_agent) values ($1, $2, $3, $4, $5)
+     on conflict (endpoint) do update set username = excluded.username, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent`,
+    [endpoint, me.username, p256dh, auth, String(data.userAgent ?? "").slice(0, 200)],
+  );
+  return { ok: true };
+}
+
+export async function pushUnsubscribe(data: { endpoint: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  await db.query(`delete from mjs_push_subscriptions where endpoint = $1 and username = $2`, [String(data.endpoint ?? ""), me.username]);
+  return { ok: true };
+}
+
+async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: string; body: string; tag: string; target: string }) {
+  if (!usernames.length) return;
+  const subs = await db.query<{ endpoint: string; p256dh: string; auth: string }>(
+    `select endpoint, p256dh, auth from mjs_push_subscriptions where username = any($1::text[])`,
+    [usernames],
+  );
+  if (!subs.length) return;
+  const webpush = await loadWebPush();
+  const keys = await ensureVapid(db);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@muriajayasakti.com", keys.pub, keys.priv);
+  const text = JSON.stringify(payload);
+  await Promise.allSettled(
+    subs.map(async (s) => {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, text, { TTL: 21600, urgency: "high" });
+      } catch (error) {
+        const code = (error as { statusCode?: number })?.statusCode;
+        if (code === 404 || code === 410) await db.query(`delete from mjs_push_subscriptions where endpoint = $1`, [s.endpoint]);
+      }
+    }),
+  );
+}
+
+/** Kirim notifikasi ke penerima pesan. Tidak boleh menggagalkan pengiriman pesan. */
+async function notifyChatPush(db: ChatDb, me: Staff, scope: ChatScope, body: string) {
+  try {
+    let users: string[];
+    let title: string;
+    let target: string;
+    let tag: string;
+    if (scope.kind === "dm") {
+      users = [scope.other];
+      title = me.name;
+      target = me.username;
+      tag = `chat-${me.username}`;
+    } else {
+      const members = await db.query<{ username: string }>(`select username from chat_group_members where group_id = $1 and username <> $2`, [scope.groupId, me.username]);
+      users = members.map((m) => String(m.username));
+      const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [scope.groupId]);
+      title = `${String(g?.nama ?? "Grup")} · ${me.name}`;
+      target = `g:${scope.groupId}`;
+      tag = `chat-g${scope.groupId}`;
+    }
+    const preview = body.length > 120 ? `${body.slice(0, 120)}…` : body;
+    await Promise.race([
+      sendChatPush(db, users, { title, body: preview, tag, target }),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  } catch {
+    /* notifikasi gagal tidak masalah; pesan tetap terkirim */
+  }
 }

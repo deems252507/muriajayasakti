@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft, Plus, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Conversation } from "@/components/shop/chat-core";
+import { PushToggle } from "@/components/shop/push-toggle";
 import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
 import { chatContacts, groupList } from "@/lib/shop/api";
 
@@ -36,6 +37,21 @@ function ChatPage() {
     try { sessionStorage.setItem("mjs-chat-with", active); } catch { /* abaikan */ }
   }, [active]);
 
+  // Buka chat dari klik notifikasi (aplikasi tertutup: lewat #open=..., sedang terbuka: lewat event).
+  useEffect(() => {
+    const match = /#open=([^&]+)/.exec(window.location.hash);
+    if (match) {
+      setActive(decodeURIComponent(match[1]));
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    const onOpen = (event: Event) => {
+      const target = String((event as CustomEvent).detail ?? "");
+      if (target) setActive(target);
+    };
+    window.addEventListener("mjs-open-chat", onOpen);
+    return () => window.removeEventListener("mjs-open-chat", onOpen);
+  }, []);
+
   const current = contacts?.find((c) => c.username === dm) ?? null;
   // Staff yang dipilih tapi sudah tidak aktif / tidak ada: kembali ke daftar.
   useEffect(() => { if (contacts && dm && !current) setActive(""); }, [contacts, dm, current]);
@@ -52,6 +68,7 @@ function ChatPage() {
           <div className="border-b border-line p-3">
             <h2 className="font-extrabold">Chat Staff</h2>
             <p className="text-xs text-muted">Pesan pribadi dan grup khusus (chat + catatan bersama).</p>
+            <PushToggle />
             <input className="mt-2 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent" placeholder="Cari nama staff" value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto">
