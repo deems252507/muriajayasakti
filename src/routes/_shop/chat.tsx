@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, MessageSquarePlus, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, MessageSquarePlus, MoreVertical, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Conversation } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
 import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
-import { chatContacts, groupList } from "@/lib/shop/api";
+import { toast } from "sonner";
+import { chatClear, chatContacts, chatHideAll, groupList } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/_shop/chat")({ component: ChatPage });
 
@@ -60,7 +61,23 @@ function ChatPage() {
   const backToList = useCallback(() => setActive(""), []);
   const afterGroupDeleted = useCallback(() => { setActive(""); loadContacts(); }, [loadContacts]);
 
-  const shown = (contacts ?? []).filter((c) => !filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
+  async function deleteChat(c: Contact, scope: "me" | "all") {
+    setRowMenu(null);
+    if (!confirm(scope === "me" ? `Hapus obrolan dengan ${c.name}? Obrolan hilang dari daftar Anda. Untuk chat lagi, pakai Pesan baru.` : `Hapus obrolan dengan ${c.name} untuk SEMUA orang? Tidak bisa dikembalikan.`)) return;
+    try {
+      if (scope === "me") await chatHideAll({ data: { kind: "dm", target: c.username } });
+      else await chatClear({ data: { with: c.username } });
+      if (active === c.username) setActive("");
+      toast.success("Obrolan dihapus");
+      loadContacts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal menghapus obrolan");
+    }
+  }
+
+  // Seperti WhatsApp: daftar hanya berisi obrolan yang ada pesannya (atau yang sedang dibuka). Mulai chat baru lewat "Pesan baru".
+  const shown = (contacts ?? []).filter((c) => (c.lastAt || c.unread > 0 || c.username === dm) && (!filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase())));
 
   return (
     <section className="overflow-hidden rounded-2xl border border-white/80 bg-panel shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
@@ -100,10 +117,10 @@ function ChatPage() {
             ))}
             <li className="bg-slate-100 px-3 py-1.5"><span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Pesan pribadi</span></li>
             {contacts === null ? <li className="p-4 text-center text-sm text-muted">Memuat...</li> : null}
-            {contacts && shown.length === 0 ? <li className="p-4 text-center text-sm text-muted">Tidak ada staff lain.</li> : null}
+            {contacts && shown.length === 0 ? <li className="p-4 text-center text-sm text-muted">Belum ada obrolan. Klik Pesan baru untuk mulai chat.</li> : null}
             {shown.map((c) => (
-              <li key={c.username}>
-                <button type="button" onClick={() => setActive(c.username)} className={`flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left hover:bg-blue-50 ${dm === c.username ? "bg-blue-50" : ""}`}>
+              <li key={c.username} className="relative">
+                <button type="button" onClick={() => setActive(c.username)} onContextMenu={(e) => { e.preventDefault(); setRowMenu(c.username); }} className={`flex w-full items-center gap-3 border-b border-line py-3 pl-3 pr-9 text-left hover:bg-blue-50 ${dm === c.username ? "bg-blue-50" : ""}`}>
                   <Avatar c={c} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -117,6 +134,16 @@ function ChatPage() {
                     </div>
                   </div>
                 </button>
+                <button type="button" aria-label="Menu obrolan" className="absolute right-1 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-slate-500 hover:bg-slate-200" onClick={() => setRowMenu(rowMenu === c.username ? null : c.username)}><MoreVertical className="size-4" /></button>
+                {rowMenu === c.username ? (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setRowMenu(null)} />
+                    <div className="absolute right-2 top-10 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
+                      <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => void deleteChat(c, "me")}><Trash2 className="size-4" />Hapus obrolan</button>
+                      {me.role === "Admin" || me.role === "Owner" ? <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-red-50" onClick={() => void deleteChat(c, "all")}><Trash2 className="size-4" />Hapus untuk semua orang</button> : null}
+                    </div>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>

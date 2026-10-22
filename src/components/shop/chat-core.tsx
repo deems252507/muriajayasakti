@@ -1,8 +1,8 @@
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Receipt, Search, Send, Smile, Trash2, X,
+  Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import {
   chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, groupClearMessages, groupDeleteMessages,
@@ -17,6 +17,25 @@ export type Person = { username: string; name: string };
 type Attach = { name: string; mime: string; data: string; image: boolean };
 type ShareDraft = { type: "barang" | "transaksi"; ref: string; title: string; sub: string };
 type Win = { limit: number; since: number };
+
+const BG_KEY = "mjs-chat-bg";
+const BG_PRESETS = [
+  { key: "default", label: "Bawaan", value: "" },
+  { key: "wa", label: "Krem", value: "#efeae2" },
+  { key: "mint", label: "Hijau", value: "#d9fdd3" },
+  { key: "sky", label: "Biru", value: "#dbeafe" },
+  { key: "rose", label: "Merah muda", value: "#fce7f3" },
+  { key: "sand", label: "Pasir", value: "#fef3c7" },
+  { key: "night", label: "Gelap", value: "#1e293b" },
+  { key: "grad", label: "Gradasi", value: "linear-gradient(160deg,#dbeafe,#fce7f3)" },
+];
+function loadChatBg() { try { return localStorage.getItem(BG_KEY) ?? ""; } catch { return ""; } }
+function bgStyle(value: string): CSSProperties {
+  if (!value) return {};
+  if (value.startsWith("img:")) return { backgroundImage: `url(${value.slice(4)})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "local" };
+  if (value.startsWith("linear-gradient")) return { backgroundImage: value };
+  return { backgroundColor: value };
+}
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const MAX_FILE = 2_500_000;
@@ -83,7 +102,7 @@ function fileToDataUrl(file: Blob): Promise<string> {
 
 const dataBytes = (url: string) => Math.floor(((url.length - url.indexOf(",") - 1) * 3) / 4);
 
-async function resizeImage(file: File): Promise<string> {
+async function resizeImage(file: File, maxSide = 1280, quality = 0.75): Promise<string> {
   const src = await fileToDataUrl(file);
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new window.Image();
@@ -91,7 +110,7 @@ async function resizeImage(file: File): Promise<string> {
     el.onerror = () => reject(new Error("Gambar tidak bisa dibuka"));
     el.src = src;
   });
-  const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.max(1, Math.round(img.naturalWidth * scale));
   const h = Math.max(1, Math.round(img.naturalHeight * scale));
   const canvas = document.createElement("canvas");
@@ -102,7 +121,7 @@ async function resizeImage(file: File): Promise<string> {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(img, 0, 0, w, h);
-  let out = canvas.toDataURL("image/jpeg", 0.75);
+  let out = canvas.toDataURL("image/jpeg", quality);
   if (dataBytes(out) > MAX_FILE) out = canvas.toDataURL("image/jpeg", 0.5);
   return out;
 }
@@ -364,10 +383,13 @@ function Bubble(p: BubbleProps) {
           <p className={`mt-0.5 flex items-center justify-end gap-1.5 text-[10px] ${tone}`}>
             {m.pinned ? <Pin className="size-3" /> : null}
             {m.editedAt ? <span>diedit</span> : null}
-            <span>{hhmm(m.createdAt)}{kind === "dm" && m.mine && !m.deleted ? (m.read ? " · Dibaca" : " · Terkirim") : ""}</span>
+            <span>{hhmm(m.createdAt)}</span>
+            {kind === "dm" && m.mine && !m.deleted ? (
+              <CheckCheck aria-label={m.read ? "Sudah dibaca" : "Terkirim, belum dibaca"} className={`size-4 ${m.read ? "text-sky-300" : "text-white/60"}`} strokeWidth={2.5} />
+            ) : null}
             {kind === "group" && m.mine && !m.deleted && p.readers.length > 0 ? (
-              <button type="button" data-act="1" className="font-semibold hover:underline" onClick={() => { if (!selecting) p.onSeen(m); }}>
-                {readCount >= p.readers.length ? "· Dibaca semua" : `· Dibaca ${readCount}/${p.readers.length}`}
+              <button type="button" data-act="1" className="inline-flex items-center" aria-label="Info dibaca" onClick={() => { if (!selecting) p.onSeen(m); }}>
+                <CheckCheck className={`size-4 ${readCount >= p.readers.length ? "text-sky-300" : "text-white/60"}`} strokeWidth={2.5} />
               </button>
             ) : null}
           </p>
@@ -435,6 +457,9 @@ export function Conversation(props: {
   const [moreOpen, setMoreOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [reactFor, setReactFor] = useState<Msg | null>(null);
+  const [bgOpen, setBgOpen] = useState(false);
+  const [bg, setBg] = useState<string>(() => loadChatBg());
+  const bgInput = useRef<HTMLInputElement>(null);
   const [seen, setSeen] = useState<Msg | null>(null);
   const [pinIdx, setPinIdx] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
@@ -665,6 +690,23 @@ export function Conversation(props: {
     }
   }
 
+  function applyBg(value: string) {
+    setBg(value);
+    try { if (value) localStorage.setItem(BG_KEY, value); else localStorage.removeItem(BG_KEY); } catch { toast.error("Latar terlalu besar untuk disimpan di perangkat ini."); }
+  }
+
+  async function pickBgImage(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Pilih file gambar."); return; }
+    try {
+      const url = await resizeImage(file, 1100, 0.6);
+      applyBg(`img:${url}`);
+      setBgOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gambar tidak bisa dipakai");
+    }
+  }
+
   function insertEmoji(emoji: string) {
     const ta = taRef.current;
     const a = ta?.selectionStart ?? text.length;
@@ -842,7 +884,7 @@ export function Conversation(props: {
       ) : null}
 
       <div className="relative min-h-0 flex-1 bg-slate-50">
-        <div ref={listRef} onScroll={onScroll} className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3">
+        <div ref={listRef} onScroll={onScroll} style={bgStyle(bg)} className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3">
           {thread?.hasMore ? <div className="py-1 text-center"><button type="button" disabled={loadingOlder} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-accent shadow-sm disabled:opacity-50" onClick={loadOlder}>{loadingOlder ? "Memuat..." : "Muat pesan lebih lama"}</button></div> : null}
           {thread && messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">{kind === "group" ? "Belum ada pesan di grup ini." : `Belum ada pesan. Tulis pesan pertama untuk ${title}.`}</p> : null}
           {thread === null ? <p className="py-10 text-center text-sm text-muted">Memuat...</p> : null}
@@ -884,6 +926,7 @@ export function Conversation(props: {
             <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
             <div className="absolute right-3 top-12 z-20 w-64 rounded-xl border border-line bg-white p-1 shadow-lg">
               <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMoreOpen(false); sel.setAll(pickable); }}><Check className="size-4" />Pilih semua pesan</button>
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMoreOpen(false); setBgOpen(true); }}><Palette className="size-4" />Latar belakang chat</button>
               <button type="button" disabled={deleting || messages.length === 0} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50 disabled:opacity-40" onClick={() => void clearChat("me")}><Trash2 className="size-4" />Kosongkan chat (untuk saya)</button>
               {canClearAll ? <button type="button" disabled={deleting || messages.length === 0} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-red-50 disabled:opacity-40" onClick={() => void clearChat("all")}><Trash2 className="size-4" />Hapus semua untuk semua orang</button> : null}
             </div>
@@ -988,6 +1031,24 @@ export function Conversation(props: {
       </div>
 
       {shareModal ? <ShareModal type={shareModal} onClose={() => setShareModal(null)} onPick={(item) => { setShare({ type: shareModal, ...item }); setEditing(null); setShareModal(null); window.setTimeout(() => taRef.current?.focus(), 0); }} /> : null}
+
+      {bgOpen ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => setBgOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between"><h3 className="font-bold">Latar belakang chat</h3><button type="button" className={iconBtn} aria-label="Tutup" onClick={() => setBgOpen(false)}><X className="size-4" /></button></div>
+            <p className="mt-1 text-xs text-muted">Berlaku untuk semua chat di perangkat ini.</p>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {BG_PRESETS.map((b) => (
+                <button key={b.key} type="button" aria-label={b.label} title={b.label} onClick={() => { applyBg(b.value); setBgOpen(false); }} style={bgStyle(b.value)} className={`h-16 rounded-lg border-2 ${bg === b.value ? "border-accent" : "border-line"}`}>
+                  <span className="block px-1 text-[10px] font-bold text-slate-700 [text-shadow:0_0_3px_#fff]">{b.label}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-line text-sm font-bold" onClick={() => bgInput.current?.click()}><ImageIcon className="size-4" />Pilih foto sendiri</button>
+            <input ref={bgInput} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void pickBgImage(f); }} />
+          </div>
+        </div>
+      ) : null}
 
       {lightbox !== null ? <Lightbox items={galleryItems} startId={lightbox} onClose={() => setLightbox(null)} /> : null}
 
