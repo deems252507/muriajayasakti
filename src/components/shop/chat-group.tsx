@@ -99,6 +99,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
   const [tab, setTab] = useState<"chat" | "catatan" | "foto" | "anggota">("chat");
   const [info, setInfo] = useState<Info | null>(null);
   const [editing, setEditing] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   const loadInfo = useCallback(() => {
     void groupInfo({ data: { id: groupId } }).then(setInfo).catch((error: Error) => { toast.error(error.message); onDeleted(); });
@@ -114,10 +115,11 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
         <div className="flex items-center gap-3">
           <button type="button" className="grid size-10 place-items-center rounded-lg border border-line md:hidden" onClick={onBack} aria-label="Kembali"><ArrowLeft className="size-4" /></button>
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-800"><Users className="size-4" /></span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold">{info?.nama ?? "Memuat..."}</p>
             <p className="truncate text-[11px] text-muted">{info ? `${info.members.length} anggota${info.deskripsi ? ` · ${info.deskripsi}` : ""}` : ""}</p>
           </div>
+          {info?.canManage ? <button type="button" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-bold hover:bg-slate-100" onClick={() => setRenaming(true)}><Pencil className="size-3.5" />Ubah nama</button> : null}
         </div>
         <div className="mt-2 inline-flex rounded-lg bg-slate-100 p-1">
           {tabs.map(([key, label]) => (
@@ -152,6 +154,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
         </div>
       ) : null}
 
+      {renaming && info ? <RenameGroupModal info={info} onClose={() => setRenaming(false)} onSaved={() => { setRenaming(false); loadInfo(); onChanged(); }} /> : null}
       {editing && info ? <GroupFormModal info={info} staff={staff} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); loadInfo(); onChanged(); }} /> : null}
     </>
   );
@@ -320,6 +323,46 @@ function GroupPhotos({ groupId }: { groupId: number }) {
         {(photos ?? []).map((ph) => <PhotoTile key={ph.messageId} photo={ph} onOpen={() => setOpen(ph.fileId)} />)}
       </div>
       {open !== null ? <Lightbox items={items} startId={open} onClose={() => setOpen(null)} /> : null}
+    </div>
+  );
+}
+
+/** Ubah nama dan deskripsi grup dengan cepat; anggota tidak berubah. */
+function RenameGroupModal(props: { info: Info; onClose: () => void; onSaved: () => void }) {
+  const { info, onClose, onSaved } = props;
+  const [nama, setNama] = useState(info.nama);
+  const [deskripsi, setDeskripsi] = useState(info.deskripsi ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!nama.trim()) return toast.error("Isi nama grup.");
+    setBusy(true);
+    try {
+      await groupUpdate({ data: { id: info.id, nama, deskripsi, members: info.members.map((m) => m.username) } });
+      toast.success("Nama grup diubah");
+      onSaved();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal mengubah nama grup");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4" onClick={onClose}>
+      <form className="w-full max-w-sm rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <h3 className="font-bold">Ubah nama grup</h3>
+        <label className="mt-3 block text-sm font-medium">Nama grup
+          <input className={`${fieldCls} mt-1 h-11`} maxLength={60} value={nama} onChange={(e) => setNama(e.target.value)} autoFocus />
+        </label>
+        <label className="mt-2 block text-sm font-medium">Deskripsi (opsional)
+          <input className={`${fieldCls} mt-1 h-11`} maxLength={300} value={deskripsi} onChange={(e) => setDeskripsi(e.target.value)} />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="h-11 px-3 text-sm" onClick={onClose}>Batal</button>
+          <button type="submit" disabled={busy} className="h-11 rounded-lg bg-accent px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? "Menyimpan..." : "Simpan"}</button>
+        </div>
+      </form>
     </div>
   );
 }

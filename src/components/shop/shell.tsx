@@ -244,6 +244,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     const onWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type !== "open-chat") return;
       const target = String(event.data.target ?? "");
+      if (event.data.reply) { try { sessionStorage.setItem("mjs-chat-focus", "1"); } catch { /* abaikan */ } }
       if (pathRef.current === "/chat") window.dispatchEvent(new CustomEvent("mjs-open-chat", { detail: target }));
       else { try { sessionStorage.setItem("mjs-chat-with", target); } catch { /* abaikan */ } window.location.href = "/chat"; }
     };

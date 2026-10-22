@@ -2788,7 +2788,7 @@ export async function chatPost(data: {
     );
     newId = Number(row?.id ?? 0);
   }
-  await notifyChatPush(db, me, scope, body);
+  await notifyChatPush(db, me, scope, body, { caption, hasImage: Boolean(file?.mime.startsWith("image/")), hasFile: Boolean(file) });
   return { id: newId };
 }
 
@@ -3028,7 +3028,7 @@ export async function pushUnsubscribe(data: { endpoint: string }) {
   return { ok: true };
 }
 
-async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: string; body: string; tag: string; target: string }) {
+async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: string; body: string; tag: string; target: string; mention?: boolean }) {
   if (!usernames.length) return;
   const subs = await db.query<{ endpoint: string; p256dh: string; auth: string }>(
     `select endpoint, p256dh, auth from mjs_push_subscriptions where username = any($1::text[])`,
@@ -3052,28 +3052,34 @@ async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: s
 }
 
 /** Kirim notifikasi ke penerima pesan. Tidak boleh menggagalkan pengiriman pesan. */
-async function notifyChatPush(db: ChatDb, me: Staff, scope: ChatScope, body: string) {
+async function notifyChatPush(db: ChatDb, me: Staff, scope: ChatScope, body: string, info: { caption: string; hasImage: boolean; hasFile: boolean }) {
   try {
-    let users: string[];
-    let title: string;
-    let target: string;
-    let tag: string;
+    // Foto/file yang diberi keterangan: tampilkan ikon + keterangannya, bukan hanya teks.
+    const icon = info.hasImage ? "📷 " : info.hasFile ? "📎 " : "";
+    const text = info.hasFile && info.caption ? `${icon}${info.caption}` : body;
+    const preview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
     if (scope.kind === "dm") {
-      users = [scope.other];
-      title = me.name;
-      target = me.username;
-      tag = `chat-${me.username}`;
-    } else {
-      const members = await db.query<{ username: string }>(`select username from chat_group_members where group_id = $1 and username <> $2`, [scope.groupId, me.username]);
-      users = members.map((m) => String(m.username));
-      const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [scope.groupId]);
-      title = `${String(g?.nama ?? "Grup")} · ${me.name}`;
-      target = `g:${scope.groupId}`;
-      tag = `chat-g${scope.groupId}`;
+      await Promise.race([
+        sendChatPush(db, [scope.other], { title: me.name, body: preview, tag: `chat-${me.username}`, target: me.username }),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
+      return;
     }
-    const preview = body.length > 120 ? `${body.slice(0, 120)}…` : body;
+    const members = await db.query<{ username: string; name: string }>(
+      `select gm.username, s.name from chat_group_members gm join staff s on s.username = gm.username where gm.group_id = $1 and gm.username <> $2`,
+      [scope.groupId, me.username],
+    );
+    const [g] = await db.query<{ nama: string }>(`select nama from chat_groups where id = $1`, [scope.groupId]);
+    const groupName = String(g?.nama ?? "Grup");
+    const lower = body.toLowerCase();
+    const mentioned = members.filter((m) => m.name && lower.includes(`@${String(m.name).toLowerCase()}`)).map((m) => String(m.username));
+    const others = members.map((m) => String(m.username)).filter((u) => !mentioned.includes(u));
+    const base = { body: preview, tag: `chat-g${scope.groupId}`, target: `g:${scope.groupId}` };
     await Promise.race([
-      sendChatPush(db, users, { title, body: preview, tag, target }),
+      Promise.allSettled([
+        sendChatPush(db, others, { ...base, title: `${groupName} · ${me.name}` }),
+        sendChatPush(db, mentioned, { ...base, title: `${me.name} menyebut Anda di ${groupName}`, mention: true }),
+      ]),
       new Promise((resolve) => setTimeout(resolve, 4000)),
     ]);
   } catch {

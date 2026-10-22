@@ -44,6 +44,7 @@ function ChatPage() {
     const match = /#open=([^&]+)/.exec(window.location.hash);
     if (match) {
       setActive(decodeURIComponent(match[1]));
+      if (/[#&]reply=1/.test(window.location.hash)) { try { sessionStorage.setItem("mjs-chat-focus", "1"); } catch { /* abaikan */ } }
       window.history.replaceState(null, "", window.location.pathname);
     }
     const onOpen = (event: Event) => {

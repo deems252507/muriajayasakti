@@ -17,14 +17,32 @@ self.addEventListener("push", (event) => {
     (async () => {
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       if (!isSafari && wins.some((c) => c.visibilityState === "visible")) return;
-      await self.registration.showNotification(data.title || "Pesan baru", {
-        body: data.body || "",
-        tag: data.tag || "mjs-chat",
+      // Pesan beruntun dari percakapan yang sama digabung: "Nama (3 pesan)" dengan beberapa baris terakhir.
+      const tag = data.tag || "mjs-chat";
+      let lines = [];
+      let count = 0;
+      try {
+        const prev = await self.registration.getNotifications({ tag });
+        for (const n of prev) {
+          const d = n.data || {};
+          if (Array.isArray(d.lines) && d.lines.length > lines.length) lines = d.lines;
+          count = Math.max(count, Number(d.count) || 1);
+        }
+      } catch (e) { /* abaikan */ }
+      const baseTitle = data.title || "Pesan baru";
+      const bodyText = data.body || "";
+      lines = [...lines, bodyText].slice(-5);
+      count += 1;
+      await self.registration.showNotification(count > 1 ? baseTitle + " (" + count + " pesan)" : baseTitle, {
+        body: count > 1 ? lines.join("\n") : bodyText,
+        tag,
         renotify: true,
         icon: "/__grok/icon-180.png",
         badge: "/__grok/icon-180.png",
-        vibrate: [120, 60, 120],
-        data: { target: data.target || "" },
+        vibrate: data.mention ? [200, 80, 200, 80, 200] : [120, 60, 120],
+        requireInteraction: Boolean(data.mention),
+        actions: [{ action: "open", title: "Buka" }, { action: "reply", title: "Balas" }],
+        data: { target: data.target || "", lines, count, reply: false },
       });
     })(),
   );
@@ -33,17 +51,18 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = (event.notification.data && event.notification.data.target) || "";
+  const reply = event.action === "reply";
   event.waitUntil(
     (async () => {
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of wins) {
         if ("focus" in client) {
           await client.focus();
-          client.postMessage({ type: "open-chat", target });
+          client.postMessage({ type: "open-chat", target, reply });
           return;
         }
       }
-      await self.clients.openWindow("/chat" + (target ? "#open=" + encodeURIComponent(target) : ""));
+      await self.clients.openWindow("/chat" + (target ? "#open=" + encodeURIComponent(target) + (reply ? "&reply=1" : "") : ""));
     })(),
   );
 });

@@ -524,6 +524,14 @@ export function Conversation(props: {
     return () => { alive.current = false; window.clearInterval(timer); };
   }, [load]);
 
+  // Dibuka dari tombol "Balas" di notifikasi: langsung fokus ke kolom ketik.
+  useEffect(() => {
+    if (!thread) return;
+    let focus = false;
+    try { focus = sessionStorage.getItem("mjs-chat-focus") === "1"; if (focus) sessionStorage.removeItem("mjs-chat-focus"); } catch { /* abaikan */ }
+    if (focus) window.setTimeout(() => taRef.current?.focus(), 150);
+  }, [thread === null]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Simpan draft ketik per percakapan.
   useEffect(() => {
     if (editing) return;
