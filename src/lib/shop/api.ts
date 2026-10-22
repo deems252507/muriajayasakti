@@ -62,9 +62,8 @@ export const searchProducts = createServerFn({ method: "GET" })
   });
 
 export const listProducts = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; partNumber?: string; dupOnly?: boolean; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
+  .validator((input: { q?: string; dupOnly?: boolean; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
-    partNumber: String(input?.partNumber ?? "").trim(),
     dupOnly: Boolean(input?.dupOnly),
     kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : String(input?.kategori ?? "").trim(),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
