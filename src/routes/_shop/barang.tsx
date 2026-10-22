@@ -9,6 +9,8 @@ import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
+const partKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export const Route = createFileRoute("/_shop/barang")({ component: BarangPage });
 
 const empty = {
@@ -42,6 +44,7 @@ function BarangPage() {
     setQ(saved);
   }, []);
   const [partNumber, setPartNumber] = usePersistedState("barang:partNumber", "");
+  const [dupOnly, setDupOnly] = usePersistedState("barang:dupOnly", false);
   const [kategori, setKategori] = usePersistedState<string[]>("barang:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [page, setPage] = useState(1);
@@ -56,7 +59,7 @@ function BarangPage() {
   const importingRef = useRef(false);
 
   function load(next = page) {
-    void listProducts({ data: { q, partNumber, page: next, sort, kategori } })
+    void listProducts({ data: { q, partNumber, dupOnly, page: next, sort, kategori } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat daftar barang."));
   }
@@ -69,7 +72,7 @@ function BarangPage() {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [q, partNumber, page, sort, kategori]);
+  }, [q, partNumber, dupOnly, page, sort, kategori]);
 
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
 
@@ -140,6 +143,7 @@ function BarangPage() {
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
             <input className={inputClass} placeholder="Filter part number" value={partNumber} onChange={(e) => { setPage(1); setPartNumber(e.target.value); }} />
+        <label className="flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold" title="Tampilkan hanya barang dengan part number dan merek yang sama, otomatis berkelompok"><input type="checkbox" checked={dupOnly} onChange={(e) => { setPage(1); setDupOnly(e.target.checked); }} />Hanya yang kembar</label>
             <details className="relative min-w-[240px]" id="kategori-barang-dropdown">
               <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
                 <span className="truncate">
@@ -255,11 +259,12 @@ function BarangPage() {
             </details>
             <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="nama">Kategori, Nama (A - Z)</option>
+<option value="part">Part Number, Merek (kembar berdekatan)</option>
               <option value="nama_desc">Nama (Z - A)</option>
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
             </select>
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
           </div>
         </div>
         {canEdit ? (
@@ -291,15 +296,18 @@ function BarangPage() {
           </thead>
           <tbody>
             {(() => {
-              let previousCategory = "";
+              let previousKey = "";
               return data?.items.map((item) => {
               const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "AMAN";
               const category = (item.kategori || "TANPA KATEGORI").trim();
-              const showCategory = category.toLowerCase() !== previousCategory.toLowerCase();
-              previousCategory = category;
+              const groupByPart = dupOnly || sort === "part";
+              const groupKey = groupByPart ? `${partKey(item.partNumber || "")}|${(item.merek || "").trim().toLowerCase()}` : category.toLowerCase();
+              const groupLabel = groupByPart ? `${item.partNumber || "TANPA PART NUMBER"} · ${(item.merek || "TANPA MEREK").trim()}` : category.toUpperCase();
+              const showCategory = groupKey !== previousKey;
+              previousKey = groupKey;
               return (
                 <Fragment key={`group-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
+                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{groupLabel}</td></tr> : null}
               <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk membuka detail dan ubah sparepart" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
                 <td className="py-3 pr-3">
                   <div className="font-semibold text-slate-900">

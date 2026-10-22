@@ -9,12 +9,15 @@ import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
+const partKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
 
 function StokPage() {
   const [q, setQ] = usePersistedState("stok:q", "");
   const [sort, setSort] = usePersistedState("stok:sort", "nama");
   const [partNumber, setPartNumber] = usePersistedState("stok:partNumber", "");
+  const [dupOnly, setDupOnly] = usePersistedState("stok:dupOnly", false);
   const [kategori, setKategori] = usePersistedState<string[]>("stok:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [status, setStatus] = usePersistedState("stok:status", "");
@@ -23,16 +26,17 @@ function StokPage() {
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<Product | null>(null);
   useEffect(() => {
-    void listProducts({ data: { q, partNumber, sort, page, kategori, status } })
+    void listProducts({ data: { q, partNumber, dupOnly, sort, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat laporan stok."));
-  }, [q, partNumber, sort, page, kategori, status]);
+  }, [q, partNumber, dupOnly, sort, page, kategori, status]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
         <input className={inputClass} placeholder="Cari nama, part number, merek, atau kategori" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
         <input className={inputClass} placeholder="Filter part number" value={partNumber} onChange={(e) => { setPage(1); setPartNumber(e.target.value); }} />
+        <label className="flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold" title="Tampilkan hanya barang dengan part number dan merek yang sama, otomatis berkelompok"><input type="checkbox" checked={dupOnly} onChange={(e) => { setPage(1); setDupOnly(e.target.checked); }} />Hanya yang kembar</label>
         <details className="relative min-w-[240px]" id="kategori-dropdown">
           <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
             <span className="truncate">
@@ -151,13 +155,14 @@ function StokPage() {
         </select>
         <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="nama">Kategori, Nama (A - Z)</option>
+<option value="part">Part Number, Merek (kembar berdekatan)</option>
           <option value="nama_desc">Nama (Z - A)</option>
           <option value="stok_desc">Stok Terbesar</option>
           <option value="stok_asc">Stok Terkecil</option>
         </select>
-        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setPartNumber(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
-          void listProducts({ data: { q, partNumber, sort, page: 1, kategori, status, all: true } }).then((res) => {
+          void listProducts({ data: { q, partNumber, dupOnly, sort, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
               printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal });
@@ -184,15 +189,18 @@ function StokPage() {
           <tbody>
             {data?.items.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-slate-600">Tidak ada barang pada filter yang dipilih.</td></tr> : null}
             {(() => {
-              let previousCategory = "";
+              let previousKey = "";
               return data?.items.map((item) => {
               const label = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "MENIPIS" : "AMAN";
               const category = (item.kategori || "TANPA KATEGORI").trim();
-              const showCategory = category.toLowerCase() !== previousCategory.toLowerCase();
-              previousCategory = category;
+              const groupByPart = dupOnly || sort === "part";
+              const groupKey = groupByPart ? `${partKey(item.partNumber || "")}|${(item.merek || "").trim().toLowerCase()}` : category.toLowerCase();
+              const groupLabel = groupByPart ? `${item.partNumber || "TANPA PART NUMBER"} · ${(item.merek || "TANPA MEREK").trim()}` : category.toUpperCase();
+              const showCategory = groupKey !== previousKey;
+              previousKey = groupKey;
               return (
                 <Fragment key={`stock-${item.id}`}>
-                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td></tr> : null}
+                {showCategory ? <tr><td colSpan={9} className="border-y border-blue-200 bg-blue-100 px-2 py-2 text-xs font-extrabold tracking-wide text-blue-900">{groupLabel}</td></tr> : null}
                 <tr key={item.id} className="cursor-pointer border-t border-slate-300 bg-white hover:bg-blue-50" title="Klik baris untuk melihat detail stok" onClick={() => setDetail(item)}>
                   <td className="px-3 py-3">
                     <div className="font-semibold text-slate-900">

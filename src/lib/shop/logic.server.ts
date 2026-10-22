@@ -461,6 +461,20 @@ export async function listProducts(data: any) {
         `(regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') like $${params.length} or regexp_replace(lower(part_numbers_alt), '[^a-z0-9]', '', 'g') like $${params.length})`,
       );
     }
+    // Hanya barang kembar: part number sama (abaikan strip/spasi/huruf besar) DAN merek sama.
+    if (data.dupOnly) {
+      where.push(
+        `id in (
+           select id from (
+             select id, count(*) over (
+               partition by regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g'), lower(btrim(merek))
+             ) as c
+             from products
+             where regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') <> ''
+           ) dup where c > 1
+         )`,
+      );
+    }
     const categories = Array.isArray(data.kategori) ? data.kategori.map((v: unknown) => String(v).trim().toLowerCase()).filter(Boolean) : (data.kategori ? [String(data.kategori).trim().toLowerCase()] : []);
     if (categories.length) {
       params.push(categories);
@@ -472,7 +486,7 @@ export async function listProducts(data: any) {
     const clause = where.length ? `where ${where.join(" and ")}` : "";
     // Saat filter part number aktif dan urutan masih bawaan, kelompokkan per part number lalu merek
     // supaya barang dengan part number sama berdekatan (mudah cek duplikat).
-    const partGrouped = Boolean(partFilter) && (!data.sort || data.sort === "nama");
+    const partGrouped = Boolean(data.dupOnly) || data.sort === "part" || (Boolean(partFilter) && (!data.sort || data.sort === "nama"));
     const order =
       partGrouped
         ? "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc"
