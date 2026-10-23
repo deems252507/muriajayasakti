@@ -323,7 +323,7 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
       <button type="button" className={`${nav} left-3`} aria-label="Foto sebelumnya" disabled={pos <= 0} onClick={(e) => { e.stopPropagation(); go(-1); }}><ChevronLeft className="size-6" /></button>
       <button type="button" className={`${nav} right-3`} aria-label="Foto berikutnya" disabled={pos >= items.length - 1} onClick={(e) => { e.stopPropagation(); go(1); }}><ChevronRight className="size-6" /></button>
       {failed ? <p className="text-sm text-white">Foto tidak bisa dimuat</p> : !src ? <p className="text-sm text-white/80">Memuat foto...</p> : (
-        <img src={src} alt={cur.name} className="max-h-[84vh] max-w-full select-none rounded-lg object-contain" draggable={false} onClick={(e) => e.stopPropagation()} />
+        <img src={src} alt={cur.name} className="max-h-[84dvh] max-w-full select-none rounded-lg object-contain" draggable={false} onClick={(e) => e.stopPropagation()} />
       )}
       <p className="absolute bottom-3 left-0 right-0 truncate px-16 text-center text-xs text-white/70">{cur.name}{items.length > 1 ? " · geser untuk foto lain" : ""}</p>
     </div>
@@ -1125,7 +1125,7 @@ export function Conversation(props: {
 
       {seen ? (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/40 p-4" onClick={() => setSeen(null)}>
-          <div className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[80dvh] w-full max-w-sm overflow-y-auto rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between"><h3 className="font-bold">Info pesan</h3><button type="button" className={iconBtn} aria-label="Tutup" onClick={() => setSeen(null)}><X className="size-4" /></button></div>
             <p className="mt-2 text-xs font-bold text-slate-600">Dibaca oleh ({readers.filter((r) => r.lastReadId >= seen.id).length})</p>
             <ul className="mt-1 divide-y divide-line rounded-lg border border-line bg-white">
@@ -1160,7 +1160,7 @@ function ShareModal({ type, onClose, onPick }: { type: "barang" | "transaksi"; o
   }, [q, type]);
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-bold">{type === "barang" ? "Bagikan barang" : "Bagikan transaksi"}</h3>
           <button type="button" className="grid size-9 place-items-center rounded-lg hover:bg-slate-100" aria-label="Tutup" onClick={onClose}><X className="size-4" /></button>

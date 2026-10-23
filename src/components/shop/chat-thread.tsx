@@ -638,7 +638,7 @@ export function Thread(props: { scope: Scope; target: string; name: string; meUs
 
       {lightbox ? (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-black/85 p-4" onClick={() => setLightbox(null)}>
-          <img src={lightbox.src} alt={lightbox.name} className="max-h-[88vh] max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={lightbox.src} alt={lightbox.name} className="max-h-[88dvh] max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
           <div className="absolute right-4 top-4 flex gap-2">
             <a href={lightbox.src} download={lightbox.name} className="rounded-lg bg-white px-3 py-2 text-xs font-bold" onClick={(e) => e.stopPropagation()}>Unduh</a>
             <button type="button" className="grid size-9 place-items-center rounded-lg bg-white" aria-label="Tutup" onClick={() => setLightbox(null)}><X className="size-4" /></button>

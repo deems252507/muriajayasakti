@@ -179,7 +179,32 @@ export function MarkWords({ text, q }: { text: string; q: string }) {
 
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   useEffect(() => { installStockAlerts(); }, []);
+  // Ukur tinggi layar yang BENAR-BENAR terlihat (memperhitungkan bar alamat & keyboard HP)
+  // dan tinggi header, lalu simpan sebagai CSS variable untuk halaman yang butuh tinggi penuh (chat).
+  useEffect(() => {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    const sync = () => {
+      root.style.setProperty("--app-vh", `${Math.round(vv && vv.scale <= 1.01 ? vv.height : window.innerHeight)}px`); // saat di-zoom pakai innerHeight
+      root.style.setProperty("--shell-header-h", `${Math.round(headerRef.current?.getBoundingClientRect().height ?? 0)}px`);
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    vv?.addEventListener("resize", sync);
+    const ro = typeof ResizeObserver !== "undefined" && headerRef.current ? new ResizeObserver(sync) : null;
+    if (ro && headerRef.current) ro.observe(headerRef.current);
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+      vv?.removeEventListener("resize", sync);
+      ro?.disconnect();
+      root.style.removeProperty("--app-vh");
+      root.style.removeProperty("--shell-header-h");
+    };
+  }, []);
   const [brand, setBrand] = useState("MURIA JAYA SAKTI");
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -323,7 +348,8 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                       key={item.to}
                       to={item.to}
                       onClick={() => setOpen(false)}
-                      className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white text-ink shadow-sm font-semibold" : "text-white/75 hover:bg-white/8 hover:text-white"}`}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white text-ink shadow-sm font-semibold" : "text-white/75 hover:bg-white/20 hover:text-white"}`}
                     >
                       <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
                       {item.label}
@@ -341,7 +367,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       </aside>
       {open ? <button className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup" /> : null}
       <div className="min-w-0">
-        <header className="no-print sticky top-0 z-20 border-b border-white/60 bg-white/80 px-3 py-3 backdrop-blur-md sm:px-5">
+        <header ref={headerRef} className="no-print sticky top-0 z-20 border-b border-white/60 bg-white/80 px-3 py-3 backdrop-blur-md sm:px-5">
           <div className="flex items-center gap-3">
             <button className="grid size-11 place-items-center rounded-xl border border-line bg-white md:hidden" onClick={() => setOpen(true)} aria-label="Menu">
               <Menu className="size-5" />

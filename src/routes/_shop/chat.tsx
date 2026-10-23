@@ -97,9 +97,9 @@ function ChatPage() {
   const shown = (contacts ?? []).filter((c) => (c.lastAt || c.unread > 0 || c.username === dm) && (!filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase())));
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-white/80 bg-panel shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
-      <div className="grid h-[calc(100vh-9.5rem)] min-h-[420px] md:grid-cols-[320px_1fr]">
-        <aside className={`min-h-0 flex-col border-r border-line ${active ? "hidden md:flex" : "flex"}`}>
+    <section className="chat-scope overflow-hidden rounded-2xl border border-white/80 bg-panel shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
+      <div className="chat-shell grid grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className={`min-h-0 min-w-0 flex-col border-r border-line ${active ? "hidden md:flex" : "flex"}`}>
           <div className="border-b border-line p-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-extrabold">Chat Staff</h2>
@@ -176,7 +176,7 @@ function ChatPage() {
           </ul>
         </aside>
 
-        <section className={`min-h-0 flex-col ${active ? "flex" : "hidden md:flex"}`}>
+        <section className={`min-h-0 min-w-0 flex-col ${active ? "flex" : "hidden md:flex"}`}>
           {groupId ? (
             <GroupPanel groupId={groupId} staff={contacts ?? []} meUsername={me.username} role={me.role} onBack={backToList} onChanged={loadContacts} onDeleted={afterGroupDeleted} />
           ) : current ? (
@@ -220,7 +220,7 @@ function NewChatModal(props: { contacts: Contact[]; canMakeGroup: boolean; onClo
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-panel p-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-bold">Pesan baru</h3>
           <button type="button" className="grid size-9 place-items-center rounded-lg hover:bg-slate-100" aria-label="Tutup" onClick={onClose}><X className="size-4" /></button>

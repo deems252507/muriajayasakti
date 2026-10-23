@@ -61,7 +61,7 @@ export function GroupFormModal(props: { info?: Info | null; staff: StaffPerson[]
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
-      <form className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <form className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-panel p-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <h3 className="font-bold">{info ? "Atur Grup" : "Grup Baru"}</h3>
         <p className="mt-1 text-xs text-muted">Hanya anggota yang bisa melihat chat dan catatan grup. Anda otomatis menjadi anggota.</p>
         <label className="mt-3 block text-sm font-medium">Nama grup
@@ -121,9 +121,9 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
           </div>
           {info?.canManage ? <button type="button" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-bold hover:bg-slate-100" onClick={() => setRenaming(true)}><Pencil className="size-3.5" />Ubah nama</button> : null}
         </div>
-        <div className="mt-2 inline-flex rounded-lg bg-slate-100 p-1">
+        <div className="mt-2 flex w-full max-w-full overflow-x-auto rounded-lg bg-slate-100 p-1">
           {tabs.map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setTab(key)} className={`h-8 rounded-md px-4 text-xs font-bold ${tab === key ? "bg-white text-slate-900 shadow" : "text-slate-600"}`}>{label}</button>
+            <button key={key} type="button" onClick={() => setTab(key)} className={`h-8 min-w-0 flex-1 whitespace-nowrap rounded-md px-3 text-xs font-bold ${tab === key ? "bg-white text-slate-900 shadow" : "text-slate-600"}`}>{label}</button>
           ))}
         </div>
       </div>

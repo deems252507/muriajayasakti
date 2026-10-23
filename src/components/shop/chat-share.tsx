@@ -87,7 +87,7 @@ export function ShareToChat({ data, onClose }: { data: ShareRef; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 border-b border-line p-4">
           <div className="min-w-0">
             <h3 className="font-bold">Bagikan ke chat</h3>

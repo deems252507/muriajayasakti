@@ -38,7 +38,7 @@
   }
 }
 
-button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not(.btn-tight) {
+button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not(.btn-tight):not(.chat-scope button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -51,13 +51,130 @@ button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not(.btn-ti
   line-height: 1.15;
   letter-spacing: 0.01em;
 }
-button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not(.btn-tight):not([class*="bg-"]) {
+button:not([aria-label]):not(.size-5):not(.btn-inline):not(.qty-btn):not(.btn-tight):not(.chat-scope button):not([class*="bg-"]) {
   background: #fff;
   border: 1px solid #475569;
   color: #0f172a;
 }
-button:not(:disabled):hover {
-  filter: brightness(0.96);
+/* ==========================================================================
+   Umpan balik interaksi: hover / ditekan / fokus keyboard
+   Berlaku untuk SEMUA elemen yang bisa diklik, supaya jelas mana yang akan
+   diklik. Memakai :where() agar specificity rendah dan urutan aturan yang
+   menentukan (Tier A -> Tier B -> ditekan -> khusus).
+   Efek:
+   - latar menggelap (overlay inset, teks tetap tajam di semua warna tombol)
+   - cincin biru bergaris putih (terlihat di latar terang maupun gelap)
+   - sedikit terangkat + bayangan
+   ========================================================================== */
+
+/* Elemen yang dianggap "bisa diklik" */
+:where(
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    summary[class*="rounded"],
+    a[href][class*="rounded"],
+    label[class*="cursor-pointer"][class*="rounded"],
+    div[class*="cursor-pointer"][class*="rounded-lg"]
+  ) {
+  transition:
+    background-color 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.12s ease,
+    color 0.12s ease;
+}
+
+/* Tier A: tombol / kartu mandiri -> overlay gelap + cincin + terangkat */
+@media (hover: hover) {
+  :where(
+      button,
+      [role="button"],
+      [role="tab"],
+      [role="menuitem"],
+      summary[class*="rounded"],
+      a[href][class*="rounded"],
+      label[class*="cursor-pointer"][class*="rounded"],
+      div[class*="cursor-pointer"][class*="rounded-lg"]
+    ):where(:not(:disabled):not([aria-disabled="true"]):not([class*="inset-0"])):hover {
+    box-shadow:
+      inset 0 0 0 999px rgba(15, 23, 42, 0.14),
+      0 0 0 1px #fff,
+      0 0 0 3px var(--color-accent, #1d4ed8),
+      0 6px 14px rgba(15, 23, 42, 0.22);
+    transform: translateY(-1px);
+  }
+}
+
+/* Tier B: baris daftar / item dropdown / baris tabel -> blok biru + garis kiri */
+@media (hover: hover) {
+  :where(tr, label, li)[class*="cursor-pointer"]:hover,
+  :where(button[class*="text-left"]):where(:not(:disabled)):hover {
+    box-shadow:
+      inset 0 0 0 999px rgba(29, 78, 216, 0.13),
+      inset 4px 0 0 var(--color-accent, #1d4ed8);
+    transform: none;
+  }
+}
+
+/* Tombol teks (tanpa kotak): garis bawah + warna, bukan cincin */
+@media (hover: hover) {
+  button.btn-inline:not(:disabled):hover,
+  :where(label, summary)[class*="cursor-pointer"]:not([class*="rounded"]):hover {
+    box-shadow: none;
+    transform: none;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+}
+
+/* Saat ditekan (juga untuk layar sentuh yang tidak punya hover) */
+:where(
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    summary[class*="rounded"],
+    a[href][class*="rounded"],
+    label[class*="cursor-pointer"][class*="rounded"],
+    div[class*="cursor-pointer"][class*="rounded-lg"]
+  ):where(:not(:disabled):not([aria-disabled="true"]):not([class*="inset-0"])):active {
+  box-shadow:
+    inset 0 0 0 999px rgba(15, 23, 42, 0.26),
+    0 0 0 1px #fff,
+    0 0 0 3px var(--color-accent, #1d4ed8);
+  transform: translateY(1px) scale(0.97);
+  transition-duration: 0.04s;
+}
+:where(tr, label, li)[class*="cursor-pointer"]:active,
+:where(button[class*="text-left"]):where(:not(:disabled)):active,
+button.btn-inline:not(:disabled):active {
+  box-shadow:
+    inset 0 0 0 999px rgba(29, 78, 216, 0.24),
+    inset 4px 0 0 var(--color-accent, #1d4ed8);
+  transform: none;
+}
+
+/* Fokus keyboard (Tab): outline jelas */
+:where(button, [role="button"], [role="tab"], [role="menuitem"], summary, a[href]):focus-visible {
+  outline: 3px solid var(--color-accent, #1d4ed8);
+  outline-offset: 2px;
+}
+
+/* Menu samping (latar gelap): item yang disentuh kursor jelas terang + garis biru */
+aside nav a:not([aria-current="page"]):hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  box-shadow: inset 4px 0 0 #60a5fa;
+  transform: translateX(3px);
+}
+aside nav a:not([aria-current="page"]):active {
+  background-color: rgba(255, 255, 255, 0.3);
+  transform: translateX(3px) scale(0.98);
+}
+aside nav a:focus-visible {
+  outline-color: #93c5fd;
 }
 button:disabled {
   opacity: 0.45;
@@ -87,6 +204,54 @@ button.qty-btn {
   border-radius: 0.6rem;
   font-size: 1rem;
   font-weight: 900;
+}
+
+/* ==========================================================================
+   Layout HP: tinggi layar nyata, chat, anti-zoom iOS
+   ========================================================================== */
+:root {
+  --app-vh: 100vh; /* cadangan; diganti nilai nyata oleh Shell (visualViewport) */
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-vh: 100dvh;
+  }
+}
+
+/* Chat mengisi sisa layar di bawah header (header + padding halaman dikurangi).
+   Tinggi header diukur otomatis oleh Shell, jadi aman di semua ukuran HP. */
+.chat-shell {
+  height: calc(var(--app-vh) - var(--shell-header-h, 7.5rem) - 2.25rem);
+  min-height: 300px;
+}
+@media (min-width: 768px) {
+  .chat-shell {
+    height: calc(var(--app-vh) - var(--shell-header-h, 5rem) - 2.75rem);
+    min-height: 420px;
+  }
+}
+
+/* Teks/lampiran panjang tidak boleh melebarkan atau terpotong */
+.chat-scope {
+  overscroll-behavior: contain;
+}
+.chat-scope .whitespace-pre-wrap,
+.chat-scope .break-words {
+  overflow-wrap: anywhere;
+}
+.chat-scope img,
+.chat-scope video {
+  max-width: 100%;
+}
+
+/* iPhone otomatis memperbesar (zoom) halaman saat mengetik di kolom berfont < 16px,
+   sehingga tampilan bergeser/terpotong. Paksa 16px di layar kecil. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
