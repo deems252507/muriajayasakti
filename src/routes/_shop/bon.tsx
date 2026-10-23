@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { editManual, editSale, getInvoice, listBon, payoffBon, removeInvoice } from "@/lib/shop/api";
+import { editManual, editSale, getInvoice, listBon, listPartners, payoffBon, removeInvoice } from "@/lib/shop/api";
+import { PartnerPicker } from "@/components/shop/partner-picker";
+import type { Partner } from "@/lib/shop/types";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PeriodPicker } from "@/components/shop/period";
 import { digits, grouped, rupiah, when } from "@/lib/shop/format";
@@ -22,6 +24,8 @@ function BonPage() {
   const [end, setEnd] = usePersistedState("bon:end", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [edit, setEdit] = useState<EditState | null>(null);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  useEffect(() => { void listPartners().then(setPartners).catch(() => setPartners([])); }, []);
 
   function closeEdit() { setEdit(null); }
 
@@ -217,10 +221,11 @@ function BonPage() {
             void save.then(() => { toast.success(`Bon ${edit.nomor} berhasil diubah`, { description: "Cetak ulang nota untuk kertas yang baru." }); closeEdit(); load(); }).catch((error: Error) => toast.error(error.message));
           }}>
             <h3 className="font-semibold">Edit Bon {edit.nomor}</h3>
-            <p className="mt-1 text-xs text-muted">Ubah nama pelanggan, jumlah, satuan (Pcs/Dus), harga{edit.manual ? "" : ", diskon"}, hapus barang, {edit.manual ? "ganti barang, " : ""}atau tambah barang. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>
-            <label className="mt-3 block text-sm">Nama pelanggan
-              <input className={`${inputClass} mt-1`} value={edit.tujuan} onChange={(e) => setEdit({ ...edit, tujuan: e.target.value })} />
-            </label>
+            <p className="mt-1 text-xs text-muted">Ubah nama pelanggan, jumlah, satuan, harga{edit.manual ? "" : ", diskon"}, hapus barang, {edit.manual ? "ganti barang, " : ""}atau tambah barang. Stok dan piutang ikut berubah. Setelah simpan, cetak bon lagi.</p>
+            <div className="mt-3 text-sm">
+              <label htmlFor="bon-tujuan">Nama pelanggan</label>
+              <div className="mt-1"><PartnerPicker id="bon-tujuan" partners={partners} tipe="Pelanggan" value={edit.tujuan} onChange={(tujuan) => setEdit({ ...edit, tujuan })} placeholder="Ketik atau pilih pelanggan" /></div>
+            </div>
             <ItemEditor rows={edit.rows} adds={edit.adds} onRows={(rows) => setEdit({ ...edit, rows })} onAdds={(adds) => setEdit({ ...edit, adds })} withSwap={edit.manual} lockKeluar />
             {edit.manual ? null : (
               <label className="mt-3 block text-sm">Diskon

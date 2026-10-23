@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -175,13 +175,13 @@ function KasirPage() {
 
   function addProduct(product: Product, isAlt: boolean, locked: boolean) {
     if (isAlt && (!product.satuanAlt || product.isiSatuanAlt <= 0)) {
-      toast.error("Barang ini tidak punya satuan dus.");
+      toast.error("Barang ini tidak punya satuan kedua.");
       return;
     }
     const konvBaru = isAlt ? product.isiSatuanAlt : 1;
     const available = Math.floor((product.stok - usedPcs(product.id)) / konvBaru);
     if (available <= 0) {
-      toast.error(isAlt ? "Stok dus tidak cukup (sudah habis di keranjang)." : "Stok pcs habis (sudah habis di keranjang).");
+      toast.error(isAlt ? `Stok ${product.satuanAlt} tidak cukup (sudah habis di keranjang).` : `Stok ${product.satuan} habis (sudah habis di keranjang).`);
       return;
     }
     setCart((prev) => [
@@ -218,7 +218,7 @@ function KasirPage() {
     if (!shiftId) return toast.error("Shift belum aktif.");
     if (cart.length === 0) return toast.error("Keranjang kosong.");
     const over = cart.find((line) => line.productId != null && line.qty * line.konv + usedPcs(line.productId, line.key) > line.stok);
-    if (over) return toast.error(`Stok ${over.nama} tidak cukup. Tersedia ${over.stok} pcs.`);
+    if (over) return toast.error(`Stok ${over.nama} tidak cukup. Tersedia ${over.stok} ${over.satuanBase}.`);
     setBusy(true);
     try {
       const result = (await checkout({
@@ -324,8 +324,8 @@ function KasirPage() {
                   {item.merek ? <p className="text-[10px] text-slate-500"><Mark text={item.merek} q={q} /></p> : null}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="btn-tight bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}>Pcs</button>
-                  {dusOk ? <button type="button" className="btn-tight bg-blue-700 text-white shadow-sm" onClick={() => addProduct(item, true, false)}>{item.satuanAlt || "Dus"}</button> : null}
+                  <button type="button" className="btn-tight inline-flex items-center gap-1 bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}><Plus size={13} aria-hidden />{item.satuan || "Pcs"}</button>
+                  {dusOk ? <button type="button" className="btn-tight inline-flex items-center gap-1 bg-blue-700 text-white shadow-sm" onClick={() => addProduct(item, true, false)}><Plus size={13} aria-hidden />{item.satuanAlt || "Dus"}</button> : null}
                   <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-600 text-white" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-2">
@@ -401,8 +401,8 @@ function KasirPage() {
                       <option value="base">{line.satuanBase}</option>
                       <option value="alt">{line.satuanAlt}</option>
                     </select>
-                  ) : <p className="mt-0.5 text-[10px] font-bold text-indigo-600">{line.satuan}{line.isAlt ? ` · 1 ${line.satuan} = ${line.isi} pcs` : ""}</p>}
-                  <p className="text-[10px] text-slate-500">Stok berkurang {line.qty * line.konv} pcs</p>
+                  ) : <p className="mt-0.5 text-[10px] font-bold text-indigo-600">{line.satuan}{line.isAlt ? ` · 1 ${line.satuan} = ${line.isi} ${line.satuanBase}` : ""}</p>}
+                  <p className="text-[10px] text-slate-500">Stok berkurang {line.qty * line.konv} {line.satuanBase}</p>
                   {line.productId != null ? (
                     maxQty(line) <= line.qty
                       ? <p className="text-[10px] font-bold text-red-600">Stok mentok: maksimal {Math.max(0, maxQty(line))} {line.satuan}</p>
@@ -637,7 +637,7 @@ function QuickProduct({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         }).then(() => onSaved()).catch((error: Error) => toast.error(error.message)).finally(() => setBusyForm(false));
       }}>
         <h3 className="font-semibold">Barang baru</h3>
-        <p className="mt-1 text-xs text-muted">Satuan dus dan harga beli bisa dilengkapi nanti di Daftar Sparepart.</p>
+        <p className="mt-1 text-xs text-muted">Satuan kedua dan harga beli bisa dilengkapi nanti di Daftar Sparepart.</p>
         <div className="mt-3 space-y-3">
           <input className={inputClass} placeholder="Nama barang" value={nama} onChange={(e) => setNama(e.target.value)} />
           <input className={inputClass} placeholder="Part number" value={part} onChange={(e) => setPart(e.target.value)} />
@@ -671,12 +671,12 @@ function ScanConfirm({ product, unit, onCancel, onOk }: { product: Product; unit
         <p className="mt-1 text-sm">Stok: {product.stok} {product.satuan}{dusOk ? ` · ${dusStok} ${product.satuanAlt}` : ""}</p>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button type="button" className={`rounded-xl border-2 p-3 text-left ${mode === "pcs" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200"}`} onClick={() => setMode("pcs")}>
-            <b>Pcs</b>
+            <b>{product.satuan || "Pcs"}</b>
             <span className="mt-1 block text-sm">{rupiah(product.hargaJual)} / {product.satuan}</span>
           </button>
           <button type="button" className={`rounded-xl border-2 p-3 text-left disabled:opacity-40 ${mode === "dus" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-200"}`} disabled={!dusOk} onClick={() => setMode("dus")}>
             <b>{product.satuanAlt || "Dus"}</b>
-            <span className="mt-1 block text-sm">{dusOk ? `${rupiah(product.hargaJualAlt)} · isi ${product.isiSatuanAlt} pcs` : "Tidak ada dus"}</span>
+            <span className="mt-1 block text-sm">{dusOk ? `${rupiah(product.hargaJualAlt)} · isi ${product.isiSatuanAlt} ${product.satuan}` : "Tidak ada satuan kedua"}</span>
           </button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">

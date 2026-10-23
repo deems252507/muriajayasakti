@@ -87,11 +87,11 @@ export function StockTable({
                     <div className={`num font-bold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</div>
                     {dus ? (
                       <div className="text-[11px] font-medium text-blue-700">{dusQty} {item.satuanAlt}{variant === "barang" && sisa ? ` + ${sisa} ${item.satuan}` : ""}</div>
-                    ) : variant === "barang" ? <div className="text-[11px] text-slate-500">Pcs saja</div> : null}
+                    ) : null}
                   </td>
                   <td className={`${td} num whitespace-nowrap text-right font-semibold`}>
                     {rupiah(item.hargaJual)}
-                    {variant === "barang" && item.hargaJualAlt ? <div className="text-[11px] font-medium text-slate-500">dus {rupiah(item.hargaJualAlt)}</div> : null}
+                    {variant === "barang" && item.hargaJualAlt ? <div className="text-[11px] font-medium text-slate-500">{item.satuanAlt} {rupiah(item.hargaJualAlt)}</div> : null}
                   </td>
                   <td className={`${td} whitespace-nowrap text-center text-xs`}><Mark text={item.kodePajak || "-"} q={q} /></td>
                   <td className={`${td} text-center`}>

@@ -227,9 +227,9 @@ function StockDetail({ item, onClose }: { item: Product; onClose: () => void }) 
           <Info label="Status stok" value={label} />
           <Info label="Stok akhir" value={`${item.stok} ${item.satuan || "Pcs"}`} />
           <Info label="Stok minimum" value={`${item.stokMin} ${item.satuan || "Pcs"}`} />
-          <Info label="Konversi dus" value={item.satuanAlt && item.isiSatuanAlt > 0 ? `${dus} ${item.satuanAlt}${sisa ? ` + ${sisa} ${item.satuan}` : ""} · 1 ${item.satuanAlt} = ${item.isiSatuanAlt} ${item.satuan}` : "Pcs saja"} />
+          <Info label={`Konversi ${item.satuanAlt || "satuan kedua"}`} value={item.satuanAlt && item.isiSatuanAlt > 0 ? `${dus} ${item.satuanAlt}${sisa ? ` + ${sisa} ${item.satuan}` : ""} · 1 ${item.satuanAlt} = ${item.isiSatuanAlt} ${item.satuan}` : "-"} />
           <Info label="Harga jual" value={rupiah(item.hargaJual)} />
-          <Info label="Harga jual dus" value={item.hargaJualAlt ? rupiah(item.hargaJualAlt) : "-"} />
+          <Info label={`Harga jual ${item.satuanAlt || "satuan kedua"}`} value={item.hargaJualAlt ? rupiah(item.hargaJualAlt) : "-"} />
           <Info label="Harga beli" value={rupiah(item.hargaBeli)} />
         </div>
         <div className="mt-4 rounded-xl border border-line bg-slate-50 p-3 text-sm">

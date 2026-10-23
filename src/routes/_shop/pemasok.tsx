@@ -33,14 +33,15 @@ function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers
       {showList ? (
         <div className="absolute left-0 top-12 z-30 max-h-64 w-full overflow-auto rounded-xl border border-line bg-white shadow-xl">
           {matches.length ? matches.map((row) => (
-            <button
+            <div
               key={row.id}
-              type="button"
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
+              role="option"
+              aria-selected={String(row.id) === value}
+              className="cursor-pointer truncate px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-blue-50"
               onMouseDown={(e) => { e.preventDefault(); onChange(String(row.id)); setText(row.nama); setFocus(false); }}
             >
               {row.nama}
-            </button>
+            </div>
           )) : <div className="px-3 py-2 text-sm text-muted">Pemasok tidak ditemukan</div>}
         </div>
       ) : null}

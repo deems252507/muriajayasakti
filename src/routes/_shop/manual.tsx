@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { listPartners, manualNota, searchProducts } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
+import { PartnerPicker } from "@/components/shop/partner-picker";
 import { shopBrand } from "@/lib/shop/print";
 import type { Partner, Product } from "@/lib/shop/types";
 
@@ -22,6 +24,8 @@ function jamSekarang() {
 
 const konvOf = (item: Draft) => (item.isAlt && item.product.isiSatuanAlt > 0 ? item.product.isiSatuanAlt : 1);
 const hargaDefault = (product: Product, isAlt: boolean) => (isAlt && product.isiSatuanAlt > 0 ? product.hargaJualAlt : product.hargaJual) || 0; // sama persis dengan Daftar Sparepart/Kasir; harga dus tidak dihitung otomatis
+/** Harga baris saat jenisnya berganti: Keluar = harga jual katalog, Masuk = kosong (harga beli opsional, diisi sendiri). */
+const hargaUntuk = (row: Draft, next: Jenis) => (row.custom ? row.harga : next === "MASUK" ? 0 : hargaDefault(row.product, row.isAlt));
 const deltaOf = (item: Draft) => (item.jenis === "MASUK" ? 1 : -1) * item.qty * konvOf(item);
 
 function ManualPage() {
@@ -38,7 +42,6 @@ function ManualPage() {
   const [bon, setBon] = usePersistedState("manual:bon", false);
   const [customNama, setCustomNama] = useState("");
   const [customSatuan, setCustomSatuan] = useState("Item");
-  const [tujuanOpen, setTujuanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState<{ key: string; n: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -54,8 +57,6 @@ function ManualPage() {
     if (me.role === "Owner" || me.role === "Kasir") return;
     void listPartners().then(setPartners).catch(() => setPartners([]));
   }, [me.role]);
-  const tujuanQuery = tujuan.trim().toLowerCase();
-  const tujuanHits = partners.filter((row) => !tujuanQuery || row.nama.toLowerCase().includes(tujuanQuery)).slice(0, 30);
   useEffect(() => {
     if (!justAdded) return;
     const el = qtyRefs.current[justAdded.key];
@@ -72,7 +73,7 @@ function ManualPage() {
   /** Tombol Masuk/Keluar: baris yang belum diatur sendiri ikut berubah. */
   function pilihJenis(next: Jenis) {
     setJenis(next);
-    setItems((prev) => prev.map((row) => (row.own ? row : { ...row, jenis: next })));
+    setItems((prev) => prev.map((row) => (row.own ? row : { ...row, jenis: next, harga: hargaUntuk(row, next) })));
   }
 
   function addItem(product: Product, isAlt: boolean) {
@@ -83,7 +84,7 @@ function ManualPage() {
       setJustAdded({ key: same.key, n: Date.now() });
     } else {
       const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      setItems((prev) => [...prev, { key, product, jenis, qty: 1, isAlt, harga: hargaDefault(product, isAlt) }]);
+      setItems((prev) => [...prev, { key, product, jenis, qty: 1, isAlt, harga: jenis === "MASUK" ? 0 : hargaDefault(product, isAlt) }]);
       setJustAdded({ key, n: Date.now() });
     }
     setQ("");
@@ -143,7 +144,7 @@ function ManualPage() {
             jenis: item.jenis,
             qty: item.qty,
             isAlt: item.isAlt,
-            harga: item.jenis === "KELUAR" ? item.harga : 0,
+            harga: item.harga,
             tujuan,
             keterangan: ket,
           })),
@@ -182,36 +183,11 @@ function ManualPage() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm text-slate-600">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
-          <div className="relative text-sm text-slate-600">
+          <div className="text-sm text-slate-600">
             <label htmlFor="manual-tujuan">Supplier / pelanggan / gudang</label>
-            <input
-              id="manual-tujuan"
-              autoComplete="off"
-              className={`${inputClass} mt-1 h-12`}
-              placeholder="Opsional — pilih dari daftar atau ketik sendiri"
-              value={tujuan}
-              onChange={(e) => { setTujuan(e.target.value); setTujuanOpen(true); }}
-              onFocus={() => setTujuanOpen(true)}
-              onBlur={() => setTimeout(() => setTujuanOpen(false), 150)}
-              onKeyDown={(e) => { if (e.key === "Escape") setTujuanOpen(false); }}
-            />
-            {tujuanOpen && tujuanHits.length > 0 ? (
-              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white shadow-xl">
-                {tujuanHits.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-50"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => { setTujuan(row.nama); setTujuanOpen(false); }}
-                  >
-                    <span className="truncate font-semibold">{row.nama}</span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${row.tipe === "Supplier" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>{row.tipe}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {tujuan ? <button type="button" className="mt-1 text-xs font-semibold text-slate-500 underline" onClick={() => setTujuan("")}>Kosongkan</button> : null}
+            <div className="mt-1">
+              <PartnerPicker id="manual-tujuan" partners={partners} value={tujuan} onChange={setTujuan} first={jenis === "KELUAR" ? "Pelanggan" : "Supplier"} placeholder="Opsional — pilih dari daftar atau ketik sendiri" />
+            </div>
           </div>
           <label className="text-sm text-slate-600">Keterangan<input className={`${inputClass} mt-1 h-12`} placeholder="Opsional" value={ket} onChange={(e) => setKet(e.target.value)} /></label>
         </div>
@@ -237,7 +213,7 @@ function ManualPage() {
               else if (e.key === "Enter" && hits[activeHit]) { e.preventDefault(); addItem(hits[activeHit], e.shiftKey); }
             }}
           />
-          <p className="mt-1 text-xs text-slate-600">Enter = tambah per Pcs · Shift+Enter = tambah per Dus.</p>
+          <p className="mt-1 text-xs text-slate-600">Enter = tambah per {hits[activeHit]?.satuan || "satuan dasar"} · Shift+Enter = tambah per {hits[activeHit]?.satuanAlt || "satuan kedua"}.</p>
           <div className="mt-3 rounded-lg border border-dashed border-slate-400 bg-slate-50 p-3">
             <p className="text-sm font-bold text-slate-900">Barang custom <span className="font-normal text-slate-600">(tidak ada di daftar sparepart)</span></p>
             <div className="mt-2 grid grid-cols-[1fr_6rem] gap-2">
@@ -271,8 +247,8 @@ function ManualPage() {
                     <p className="mt-0.5 text-xs text-slate-600">PN: {item.partNumber || item.kode || "-"} · Stok: {item.stok} {item.satuan}{dusOk ? ` · ${Math.floor(item.stok / item.isiSatuanAlt)} ${item.satuanAlt}` : ""}</p>
                     <p className="num mt-0.5 text-xs font-bold text-emerald-700">{rupiah(hargaDefault(item, false))} / {item.satuan}{dusOk ? ` · ${rupiah(hargaDefault(item, true))} / ${item.satuanAlt}` : ""}</p>
                   </div>
-                  <button type="button" className="h-11 rounded-lg bg-slate-800 px-4 text-sm font-bold text-white" onClick={() => addItem(item, false)}>+ Pcs</button>
-                  {dusOk ? <button type="button" className="h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white" onClick={() => addItem(item, true)}>+ {item.satuanAlt || "Dus"}</button> : null}
+                  <button type="button" className="gap-1.5 bg-slate-800 text-white shadow-sm" onClick={() => addItem(item, false)}><Plus size={14} aria-hidden />{item.satuan || "Pcs"}</button>
+                  {dusOk ? <button type="button" className="gap-1.5 border border-blue-600 bg-white text-blue-700" onClick={() => addItem(item, true)}><Plus size={14} aria-hidden />{item.satuanAlt || "Dus"}</button> : null}
                 </div>
               );
             })}
@@ -303,7 +279,7 @@ function ManualPage() {
                           type="button"
                           title="Klik untuk mengubah Masuk/Keluar"
                           className={`h-10 w-24 rounded-lg text-xs font-extrabold text-white ${item.jenis === "MASUK" ? "bg-emerald-600" : "bg-red-600"}`}
-                          onClick={() => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, own: true, jenis: row.jenis === "MASUK" ? "KELUAR" : "MASUK" } : row)))}
+                          onClick={() => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, own: true, jenis: row.jenis === "MASUK" ? "KELUAR" : "MASUK", harga: hargaUntuk(row, row.jenis === "MASUK" ? "KELUAR" : "MASUK") } : row)))}
                         >{item.jenis}</button>
                       </td>
                       <td className="px-2 py-2"><b className="text-slate-900">{item.product.nama}</b>{item.custom ? <span className="ml-2 inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-800">Custom</span> : null}{item.product.merek ? <span className="ml-2 inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800">{item.product.merek}</span> : null}<span className="block text-xs text-slate-600">{item.product.partNumber || item.product.kode} · Stok saat ini: {item.product.stok} {item.product.satuan}</span></td>
@@ -312,7 +288,7 @@ function ManualPage() {
                           <select
                             className="h-11 rounded-lg border border-blue-300 bg-blue-50 px-2 text-sm font-bold text-blue-700"
                             value={item.isAlt ? "alt" : "base"}
-                            onChange={(e) => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, isAlt: e.target.value === "alt", harga: hargaDefault(item.product, e.target.value === "alt") } : row)))}
+                            onChange={(e) => setItems((prev) => prev.map((row) => (row.key === item.key ? { ...row, isAlt: e.target.value === "alt", harga: row.jenis === "MASUK" ? row.harga : hargaDefault(item.product, e.target.value === "alt") } : row)))}
                           >
                             <option value="base">{item.product.satuan}</option>
                             <option value="alt">{item.product.satuanAlt}</option>
@@ -336,20 +312,16 @@ function ManualPage() {
                         {item.isAlt ? <p className="mt-0.5 text-center text-[11px] text-slate-600">= {item.qty * konvOf(item)} {item.product.satuan}</p> : null}
                       </td>
                       <td className="px-2 text-right">
-                        {item.jenis === "KELUAR" ? (
-                          <>
-                            <input
-                              className="num h-11 w-28 rounded-lg border border-line px-2 text-right text-sm"
-                              inputMode="numeric"
-                              aria-label="Harga satuan"
-                              value={item.harga ? grouped(item.harga) : ""}
-                              placeholder="0"
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setHarga(item.key, digits(e.target.value))}
-                            />
-                            <p className="num mt-0.5 text-[11px] text-slate-600">= {rupiah(item.harga * item.qty)}</p>
-                          </>
-                        ) : <span className="text-xs text-slate-600">-</span>}
+                        <input
+                          className="num h-11 w-28 rounded-lg border border-line px-2 text-right text-sm"
+                          inputMode="numeric"
+                          aria-label={item.jenis === "MASUK" ? "Harga beli satuan" : "Harga satuan"}
+                          value={item.harga ? grouped(item.harga) : ""}
+                          placeholder={item.jenis === "MASUK" ? "Harga beli" : "0"}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setHarga(item.key, digits(e.target.value))}
+                        />
+                        <p className="num mt-0.5 text-[11px] text-slate-600">{item.harga ? `= ${rupiah(item.harga * item.qty)}` : item.jenis === "MASUK" ? "opsional" : ""}</p>
                       </td>
                       <td className={`num px-2 text-right font-semibold ${bad ? "text-red-600" : ""}`}>{item.custom ? <span className="text-xs font-medium text-slate-600">Tanpa stok</span> : <>{after} {item.product.satuan}{bad ? <span className="block text-[11px]">Stok tidak cukup</span> : null}</>}</td>
                       <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((row) => row.key !== item.key))}>Hapus</button></td>
@@ -359,8 +331,9 @@ function ManualPage() {
               </tbody>
             </table>
           </div>
+          {items.some((row) => row.jenis === "MASUK" && row.harga > 0) ? <p className="num mt-3 text-right text-sm font-bold">Total nilai barang masuk: {rupiah(items.filter((row) => row.jenis === "MASUK").reduce((sum, row) => sum + row.harga * row.qty, 0))}</p> : null}
           {items.some((row) => row.jenis === "KELUAR") ? <p className="num mt-3 text-right text-sm font-bold">Total nilai barang keluar: {rupiah(items.filter((row) => row.jenis === "KELUAR").reduce((sum, row) => sum + row.harga * row.qty, 0))}</p> : null}
-          <p className="mt-3 text-xs text-slate-600">1 dus mengurangi atau menambah stok sebanyak isinya dalam Pcs. Harga hanya untuk barang Keluar (otomatis dari harga jual, boleh diubah atau dikosongkan) dan ikut dihitung ke pajak. Nota tidak dicetak otomatis.</p>
+          <p className="mt-3 text-xs text-slate-600">Satuan kedua (Dus/Set/Kg, dst.) mengurangi atau menambah stok sebanyak isinya dalam satuan dasar. Harga boleh dikosongkan. Barang Keluar: otomatis dari harga jual dan ikut dihitung ke pajak. Barang Masuk: harga (harga beli) dicatat di nota ini saja, tidak mengubah harga beli di Daftar Sparepart dan tidak masuk omzet. Nota tidak dicetak otomatis.</p>
           {melebihi.length ? <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Ada barang keluar yang melebihi stok. Kurangi jumlahnya sebelum menyimpan.</p> : null}
           <label className={`mt-3 flex cursor-pointer items-start gap-3 rounded-xl border-2 p-3 ${bon ? "border-amber-500 bg-amber-50" : "border-line bg-white"}`}>
             <input type="checkbox" className="mt-1 h-5 w-5" checked={bon} onChange={(e) => setBon(e.target.checked)} />
@@ -379,7 +352,7 @@ function ManualPage() {
 }
 
 function printManual(nomor: string, tanggal: string, items: Draft[]) {
-  const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td><td style="text-align:right">${item.jenis === "KELUAR" ? rupiah(item.harga * item.qty) : "-"}</td></tr>`).join("");
+  const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td><td style="text-align:right">${item.harga > 0 ? rupiah(item.harga * item.qty) : "-"}</td></tr>`).join("");
   const win = window.open("", "_blank", "width=720,height=640");
   if (!win) return;
   win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat}<br>${shopBrand().telepon}</p><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th><th>Nilai</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);

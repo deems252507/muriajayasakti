@@ -318,7 +318,7 @@ function BarangPage() {
             onSubmit={(event) => {
               event.preventDefault();
               if (useDus && (!form.satuanAlt.trim() || form.isiSatuanAlt <= 0)) {
-                toast.error("Isi nama dus dan jumlah pcs di dalam 1 dus.");
+                toast.error(`Isi nama satuan kedua dan jumlah ${form.satuan || "Pcs"} di dalam 1 ${form.satuanAlt.trim() || "satuan kedua"}.`);
                 return;
               }
               const payload = useDus ? form : { ...form, satuanAlt: "", isiSatuanAlt: 0, hargaJualAlt: 0 };
@@ -344,26 +344,26 @@ function BarangPage() {
               <Field label="Kategori"><input className={inputClass} value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></Field>
               <Field label="Merek"><input className={inputClass} value={form.merek} onChange={(e) => setForm({ ...form, merek: e.target.value })} /></Field>
               <Field label="Satuan"><input className={inputClass} value={form.satuan} onChange={(e) => setForm({ ...form, satuan: e.target.value })} /></Field>
-              <Field label="Stok (Pcs)"><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
-              <Field label="Stok minimum (Pcs)"><input className={`${inputClass} num`} value={form.stokMin} onChange={(e) => setForm({ ...form, stokMin: Number(e.target.value) || 0 })} /></Field>
+              <Field label={`Stok (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
+              <Field label={`Stok minimum (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stokMin} onChange={(e) => setForm({ ...form, stokMin: Number(e.target.value) || 0 })} /></Field>
               <Field label="Harga beli"><input className={`${inputClass} num`} value={grouped(form.hargaBeli)} onChange={(e) => setForm({ ...form, hargaBeli: digits(e.target.value) })} /></Field>
-              <Field label="Harga jual Pcs"><input className={`${inputClass} num`} value={grouped(form.hargaJual)} onChange={(e) => setForm({ ...form, hargaJual: digits(e.target.value) })} /></Field>
+              <Field label={`Harga jual per ${form.satuan || "Pcs"}`}><input className={`${inputClass} num`} value={grouped(form.hargaJual)} onChange={(e) => setForm({ ...form, hargaJual: digits(e.target.value) })} /></Field>
             </div>
             <div className="mt-4 rounded-xl border border-line p-3">
               <p className="text-sm font-bold">Satuan jual</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" className={`h-11 rounded-lg text-sm font-bold ${!useDus ? "bg-slate-900 text-white" : "bg-slate-100"}`} onClick={() => setUseDus(false)}>Pcs saja</button>
-                <button type="button" className={`h-11 rounded-lg text-sm font-bold ${useDus ? "bg-blue-700 text-white" : "bg-slate-100"}`} onClick={() => { setUseDus(true); setForm((prev) => ({ ...prev, satuanAlt: prev.satuanAlt || "Dus" })); }}>Ada Dus</button>
+              <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+                <button type="button" className={`${!useDus ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-300" : "bg-transparent text-slate-500"}`} onClick={() => setUseDus(false)}>Satu satuan</button>
+                <button type="button" className={`${useDus ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-300" : "bg-transparent text-slate-500"}`} onClick={() => { setUseDus(true); setForm((prev) => ({ ...prev, satuanAlt: prev.satuanAlt || "Dus" })); }}>Dua satuan</button>
               </div>
-              {!useDus ? <p className="mt-2 text-xs text-slate-600">Barang ini hanya dijual per pcs. Stok yang diisi adalah jumlah pcs.</p> : (
+              {!useDus ? <p className="mt-2 text-xs text-slate-600">Barang ini hanya dijual per {form.satuan || "Pcs"}. Stok yang diisi adalah jumlah {form.satuan || "Pcs"}.</p> : (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Field label="Nama satuan"><input className={inputClass} value={form.satuanAlt} onChange={(e) => setForm({ ...form, satuanAlt: e.target.value })} placeholder="Dus" /></Field>
-                  <Field label="Isi 1 dus (berapa pcs)"><input className={`${inputClass} num`} value={form.isiSatuanAlt || ""} onChange={(e) => setForm({ ...form, isiSatuanAlt: Number(e.target.value) || 0 })} placeholder="12" /></Field>
-                  <Field label="Harga jual 1 dus"><input className={`${inputClass} num`} value={grouped(form.hargaJualAlt)} onChange={(e) => setForm({ ...form, hargaJualAlt: digits(e.target.value) })} /></Field>
+                  <Field label={`Isi 1 ${form.satuanAlt || "dus"} (berapa ${form.satuan || "pcs"})`}><input className={`${inputClass} num`} value={form.isiSatuanAlt || ""} onChange={(e) => setForm({ ...form, isiSatuanAlt: Number(e.target.value) || 0 })} placeholder="12" /></Field>
+                  <Field label={`Harga jual 1 ${form.satuanAlt || "dus"}`}><input className={`${inputClass} num`} value={grouped(form.hargaJualAlt)} onChange={(e) => setForm({ ...form, hargaJualAlt: digits(e.target.value) })} /></Field>
                   <p className="self-end text-xs text-blue-800">
                     {form.isiSatuanAlt > 0
                       ? `1 ${form.satuanAlt || "Dus"} = ${form.isiSatuanAlt} ${form.satuan || "Pcs"}${packFromName(form.nama) ? ` @ ${packFromName(form.nama)?.ukuran}` : ""}. Stok ${form.stok} ${form.satuan || "Pcs"} = ${Math.floor(form.stok / form.isiSatuanAlt)} ${form.satuanAlt || "Dus"}${form.stok % form.isiSatuanAlt ? ` + ${form.stok % form.isiSatuanAlt} ${form.satuan || "Pcs"}` : ""}.`
-                      : "Isi berapa pcs di dalam 1 dus. Penjualan dus akan mengurangi stok pcs sebanyak angka itu."}
+                      : `Isi berapa ${form.satuan || "Pcs"} di dalam 1 ${form.satuanAlt || "satuan kedua"}. Penjualan ${form.satuanAlt || "satuan kedua"} akan mengurangi stok ${form.satuan || "Pcs"} sebanyak angka itu.`}
                   </p>
                 </div>
               )}

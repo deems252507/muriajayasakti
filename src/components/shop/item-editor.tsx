@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { inputClass, Mark } from "@/components/shop/shell";
@@ -89,7 +90,7 @@ export function rowFromLine(line: Record<string, unknown>, removed = false): Edi
     nama: String(line.custom_item || line.product_nama || "Barang"),
     satuan,
     jumlah,
-    harga: grouped(Number(line.harga_satuan || 0)),
+    harga: Number(line.harga_satuan || 0) > 0 || String(line.jenis) !== "MASUK" ? grouped(Number(line.harga_satuan || 0)) : "",
     jenis: (String(line.jenis) === "MASUK" ? "MASUK" : "KELUAR") as Jenis,
     productId,
     isAlt,
@@ -114,14 +115,14 @@ export function editorPayload(rows: EditorRow[], adds: EditorAdd[]) {
   const add: Array<{ productId?: number | null; custom?: string; nama?: string; satuan?: string; jenis?: string; qty: number; harga?: number; isAlt?: boolean }> = [];
   for (const row of rows) {
     const qty = Math.max(1, row.jumlah || 1);
-    const harga = row.jenis === "KELUAR" ? digits(row.harga) : 0;
+    const harga = digits(row.harga);
     const replace = !row.removed && !row.swapped && row.productId != null && row.isAlt !== Boolean(row.origIsAlt);
     lines.push({ id: row.id, qty: row.removed || replace ? 0 : qty, jenis: row.jenis, harga, productId: row.productId, isAlt: row.isAlt });
     if (replace) add.push({ productId: row.productId, isAlt: row.isAlt, jenis: row.jenis, qty, harga });
   }
   for (const row of adds) {
     const qty = Math.max(1, row.jumlah || 1);
-    const harga = row.jenis === "KELUAR" ? digits(row.harga) : 0;
+    const harga = digits(row.harga);
     add.push(row.productId
       ? { productId: row.productId, isAlt: row.isAlt, jenis: row.jenis, qty, harga }
       : { custom: row.nama, nama: row.nama, satuan: row.satuan, jenis: row.jenis, qty, harga });
@@ -252,8 +253,8 @@ export function ItemEditor(props: {
     const katalog = info ? hargaKatalog(info, isAlt) : 0;
     return (
       <div>
-        <input disabled={disabled || jenis === "MASUK"} className={`${inputClass} num text-right`} inputMode="numeric" aria-label={`Harga ${name}`} value={jenis === "MASUK" ? "" : value} placeholder={jenis === "MASUK" ? "-" : "0"} onFocus={(e) => e.target.select()} onChange={(e) => onChange(grouped(digits(e.target.value)))} />
-        <p className="num mt-0.5 text-right text-[11px] text-muted">{disabled || jenis === "MASUK" ? "" : `= ${rupiah(Math.max(1, jumlah || 1) * digits(value))}`}</p>
+        <input disabled={disabled} className={`${inputClass} num text-right`} inputMode="numeric" aria-label={`Harga ${name}`} value={value} placeholder={jenis === "MASUK" ? "Harga beli" : "0"} onFocus={(e) => e.target.select()} onChange={(e) => onChange(grouped(digits(e.target.value)))} />
+        <p className="num mt-0.5 text-right text-[11px] text-muted">{disabled || !digits(value) ? "" : `= ${rupiah(Math.max(1, jumlah || 1) * digits(value))}`}</p>
         {!disabled && jenis === "KELUAR" && katalog > 0 && digits(value) !== katalog ? (
           <button type="button" className="num mt-0.5 block w-full text-right text-[11px] font-semibold text-blue-700 underline" onClick={() => onChange(grouped(katalog))}>Harga jual {rupiah(katalog)}</button>
         ) : null}
@@ -289,7 +290,7 @@ export function ItemEditor(props: {
             </p>
             <div className="mt-2">{heads}</div>
             <div className={`mt-0.5 grid ${gridCls} items-start gap-2 text-sm`}>
-              {withJenis ? jenisSelect(row.jenis, (jenis) => patchRow(row.id, { jenis }), row.removed) : null}
+              {withJenis ? jenisSelect(row.jenis, (jenis) => patchRow(row.id, { jenis, harga: jenis === "MASUK" ? "" : row.harga }), row.removed) : null}
               <div>
                 {qtyInput(row.jumlah, `Qty ${row.nama}`, (jumlah) => patchRow(row.id, { jumlah }), row.removed)}
                 {row.removed ? null : konvHint(row.info, row.isAlt, row.jumlah)}
@@ -379,15 +380,15 @@ export function ItemEditor(props: {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col gap-1">
-                    <button type="button" className="h-9 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => addProduct(hit, false)}>+ {hit.satuan || "Pcs"}</button>
-                    {dusOk ? <button type="button" className="h-9 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" onClick={() => addProduct(hit, true)}>+ {hit.satuanAlt}</button> : null}
+                    <button type="button" className="gap-1.5 bg-slate-800 text-white shadow-sm" onClick={() => addProduct(hit, false)}><Plus size={14} aria-hidden />{hit.satuan || "Pcs"}</button>
+                    {dusOk ? <button type="button" className="gap-1.5 border border-blue-600 bg-white text-blue-700" onClick={() => addProduct(hit, true)}><Plus size={14} aria-hidden />{hit.satuanAlt}</button> : null}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : null}
-        <p className="mt-1 text-[11px] text-muted">Enter = tambah per Pcs · Shift+Enter = tambah per Dus (hasil teratas). Satuan bisa diganti Pcs/Dus di baris barang.</p>
+        <p className="mt-1 text-[11px] text-muted">Enter = tambah per {addHits[0]?.satuan || "satuan dasar"} · Shift+Enter = tambah per {addHits[0]?.satuanAlt || "satuan kedua"} (hasil teratas). Satuan bisa diganti di baris barang.</p>
         <div className="mt-2 grid grid-cols-[1fr_5rem_auto] gap-2">
           <input className={inputClass} placeholder="Atau barang custom (nama barang / jasa)" value={customNama} onChange={(e) => setCustomNama(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }} />
           <input className={inputClass} aria-label="Satuan barang custom" placeholder="Satuan" value={customSatuan} onChange={(e) => setCustomSatuan(e.target.value)} />

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { inputClass, MarkWords, Panel } from "@/components/shop/shell";
 import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
+import { PartnerPicker } from "@/components/shop/partner-picker";
 import { PeriodPicker } from "@/components/shop/period";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printHistoryReport, printReturSlip, printStoredManual, printStoredSale } from "@/lib/shop/print";
@@ -365,9 +366,10 @@ function RiwayatPage() {
           }}>
             <h3 className="font-semibold">Perbaiki {sale.nomor}</h3>
             <p className="mt-1 text-xs text-muted">Ubah jumlah dan harga per barang, hapus barang, atau tambah barang. Stok, laci, dan pajak ikut menyesuaikan.</p>
-            <label className="mt-3 block text-sm">Pelanggan
-              <input className={`${inputClass} mt-1`} value={sale.tujuan} onChange={(e) => setSale({ ...sale, tujuan: e.target.value })} />
-            </label>
+            <div className="mt-3 text-sm">
+              <label htmlFor="riwayat-sale-tujuan">Pelanggan</label>
+              <div className="mt-1"><PartnerPicker id="riwayat-sale-tujuan" partners={partners} tipe="Pelanggan" value={sale.tujuan} onChange={(tujuan) => setSale({ ...sale, tujuan })} placeholder="Ketik atau pilih pelanggan" /></div>
+            </div>
             <ItemEditor rows={sale.rows} adds={sale.adds} onRows={(rows) => setSale({ ...sale, rows })} onAdds={(adds) => setSale({ ...sale, adds })} lockKeluar />
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <label className="text-sm">Diskon
@@ -424,9 +426,10 @@ function RiwayatPage() {
           }}>
             <h3 className="font-semibold">Ubah {manual.nomor}{manual.bon ? " (Bon)" : ""}</h3>
             <p className="mt-1 text-xs text-muted">Hanya nota manual. Uang kasir tidak berubah. Ubah jumlah, harga, atau jenis per barang, hapus barang, ganti barang, atau tambah barang. Stok dan pajak ikut menyesuaikan.{manual.bon ? " Bon hanya untuk barang Keluar." : ""}</p>
-            <label className="mt-3 block text-sm">{manual.bon ? "Nama pelanggan" : "Tujuan"}
-              <input className={`${inputClass} mt-1`} value={manual.tujuan} onChange={(e) => setManual({ ...manual, tujuan: e.target.value })} />
-            </label>
+            <div className="mt-3 text-sm">
+              <label htmlFor="riwayat-manual-tujuan">{manual.bon ? "Nama pelanggan" : "Supplier / pelanggan / gudang"}</label>
+              <div className="mt-1"><PartnerPicker id="riwayat-manual-tujuan" partners={partners} tipe={manual.bon ? "Pelanggan" : undefined} value={manual.tujuan} onChange={(tujuan) => setManual({ ...manual, tujuan })} placeholder={manual.bon ? "Ketik atau pilih pelanggan" : "Opsional — pilih dari daftar atau ketik sendiri"} /></div>
+            </div>
             <label className="mt-2 block text-sm">Keterangan
               <input className={`${inputClass} mt-1`} value={manual.keterangan} onChange={(e) => setManual({ ...manual, keterangan: e.target.value })} />
             </label>
