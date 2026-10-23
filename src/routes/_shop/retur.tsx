@@ -231,7 +231,7 @@ function ReturPage() {
           ) : null}
           <ul className="mt-3 divide-y divide-line">
             {exchange.map((line, index) => (
-              <li key={`${line.product.id}-${index}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 py-2 text-sm">
+              <li key={`${line.product.id}-${index}`} className="row-hover-flat grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 py-2 text-sm">
                 <span>{line.product.nama}</span>
                 <span className="text-xs">{line.isAlt ? line.product.satuanAlt : line.product.satuan}</span>
                 {line.product.satuanAlt ? <button className="text-xs font-bold text-accent" onClick={() => setExchange((prev) => prev.map((item, i) => i === index ? { ...item, isAlt: !item.isAlt } : item))}>Satuan</button> : <span />}

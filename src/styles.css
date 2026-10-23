@@ -162,6 +162,38 @@ button.btn-inline:not(:disabled):active {
   outline-offset: 2px;
 }
 
+/* ==========================================================================
+   Sorot KARTU / BARIS yang sedang disentuh kursor
+   Agar di daftar yang isinya mirip-mirip (riwayat, bon, catatan, keranjang...)
+   jelas kartu/baris mana yang sedang dipilih. Warna dasar kartu (hijau/kuning/
+   merah di sisi kiri) tetap terlihat karena hanya memakai overlay + cincin.
+   ========================================================================== */
+@media (hover: hover) {
+  /* Kartu: otomatis untuk <li> berborder-bulat yang berisi tombol/link, atau manual via .row-hover */
+  .row-hover:hover,
+  li[class*="rounded"][class*="border"]:has(button, a[href]):hover {
+    box-shadow:
+      inset 0 0 0 999px rgba(29, 78, 216, 0.06),
+      0 0 0 2px rgba(29, 78, 216, 0.55),
+      0 8px 18px rgba(15, 23, 42, 0.12);
+  }
+  /* Baris datar (tanpa kotak): overlay biru + garis aksen di kiri */
+  .row-hover-flat:hover {
+    box-shadow:
+      inset 0 0 0 999px rgba(29, 78, 216, 0.07),
+      inset 4px 0 0 var(--color-accent, #1d4ed8);
+  }
+  /* Baris tabel: sel pertama diberi garis aksen (warna biru baris sudah ada di aturan tbody tr:hover) */
+  tbody tr:hover td:first-child {
+    box-shadow: inset 4px 0 0 var(--color-accent, #1d4ed8);
+  }
+}
+.row-hover,
+.row-hover-flat,
+li[class*="rounded"][class*="border"]:has(button, a[href]) {
+  transition: box-shadow 0.12s ease;
+}
+
 /* Menu samping (latar gelap): item yang disentuh kursor jelas terang + garis biru */
 aside nav a:not([aria-current="page"]):hover {
   background-color: rgba(255, 255, 255, 0.2);

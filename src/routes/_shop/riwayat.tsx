@@ -304,7 +304,7 @@ function RiwayatPage() {
               <div className="text-sm">
                 <p className="text-xs font-extrabold uppercase tracking-wide text-slate-600">Rincian Barang ({detail.lines.length})</p>
                 {detail.lines.map((line) => (
-                  <div key={String(line.id)} className="mt-2 flex flex-col gap-3 rounded-xl border border-line bg-slate-50 p-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div key={String(line.id)} className="row-hover mt-2 flex flex-col gap-3 rounded-xl border border-line bg-slate-50 p-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="font-medium">{String(line.jenis)} · <MarkWords text={String(line.custom_item || line.product_nama || "Barang")} q={q} />{line.kode_pajak ? <> (<MarkWords text={String(line.kode_pajak)} q={q} />)</> : null}</p>
                       {line.merek || line.product_merek ? <div className="mt-0.5"><span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><MarkWords text={String(line.merek || line.product_merek)} q={q} /></span></div> : null}

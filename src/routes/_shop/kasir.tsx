@@ -379,7 +379,7 @@ function KasirPage() {
         <ul className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-slate-100">
           {cart.length === 0 ? <li className="p-4 text-center text-xs text-slate-400">Keranjang kosong</li> : null}
           {cart.map((line) => (
-            <li key={line.key} className="border-b border-slate-100 p-2">
+            <li key={line.key} className="row-hover-flat border-b border-slate-100 p-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-medium">{line.nama}{line.kodePajak ? ` (${line.kodePajak})` : ""}</p>
