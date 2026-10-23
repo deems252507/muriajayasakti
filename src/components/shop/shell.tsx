@@ -1,5 +1,5 @@
 import { clearPersistedState } from "@/lib/persist";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ClipboardList,
@@ -14,7 +14,6 @@ import {
   Receipt,
   RefreshCw,
   ScrollText,
-  Search,
   Settings,
   ShoppingCart,
   Undo2,
@@ -25,10 +24,10 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
-import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
+import { chatUnread, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
-import type { Product, Staff } from "@/lib/shop/types";
+import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
   {
@@ -376,9 +375,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
               <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">{me.role}</p>
               <h1 className="truncate text-base font-bold sm:text-lg">{current}</h1>
             </div>
-            <div className="order-last w-full lg:order-none lg:w-auto lg:max-w-md lg:flex-1">
-              <GlobalSearch />
-            </div>
             <div className="ml-auto flex items-center gap-2">
               {printable ? (
                 <button className="inline-flex h-10 items-center rounded-xl border border-line bg-white px-3 text-xs font-semibold" onClick={() => window.print()}>
@@ -417,65 +413,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         </header>
         <main className="px-3 py-4 md:px-6 md:py-5">{children}</main>
       </div>
-    </div>
-  );
-}
-
-function GlobalSearch() {
-  const navigate = useNavigate();
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<Product[]>([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (q.trim().length < 2) {
-      setItems([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void searchProducts({ data: { q, limit: 8 } }).then((res) => setItems(res.items));
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [q]);
-
-  function pick(item: Product) {
-    sessionStorage.setItem("mjs-find", item.partNumber || item.nama);
-    setOpen(false);
-    setQ("");
-    void navigate({ to: "/barang" });
-  }
-
-  return (
-    <div className="relative min-w-0 w-full">
-      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-      <input
-        className="h-11 w-full rounded-xl border border-line bg-white pr-3 pl-10 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-blue-100"
-        placeholder="Cari barang, part number, atau kategori"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-      />
-      {open && q.trim().length >= 2 ? (
-        <div className="absolute top-12 z-30 max-h-80 w-full overflow-y-auto rounded-2xl border border-line bg-white p-1 shadow-xl">
-          {items.length === 0 ? <p className="px-3 py-3 text-sm text-muted">Barang tidak ditemukan.</p> : null}
-          {items.map((item) => (
-            <button key={item.id} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-blue-50" onClick={() => pick(item)}>
-              <p className="text-sm font-semibold">
-                <Mark text={item.nama} q={q} />
-                {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
-              </p>
-              <p className="text-[11px] text-muted">
-                PN: <Mark text={item.partNumber || "-"} q={q} />
-                {item.partNumbersAlt ? <> · Alt: <Mark text={item.partNumbersAlt} q={q} /></> : null}
-                {" · "}
-                <Mark text={item.kategori || "-"} q={q} />
-                {item.merek ? <> · <Mark text={item.merek} q={q} /></> : null}
-                {" · stok "}{item.stok}
-              </p>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
