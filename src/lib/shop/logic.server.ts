@@ -418,6 +418,27 @@ export async function getDashboard() {
 
 
 
+export async function listPriceHistory(data: any) {
+  const me = await requireStaff();
+  const db = await sql();
+  const productId = Number(data.productId);
+  if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak ditemukan.");
+  const rows = await db.query<Record<string, unknown>>(
+    `select tanggal, harga_beli, harga_jual, harga_jual_alt, awal
+     from product_price_history where product_id = $1
+     order by tanggal desc, id desc limit 200`,
+    [productId],
+  );
+  const showBeli = me.role !== "Kasir";
+  return rows.map((row) => ({
+    tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
+    hargaBeli: showBeli ? Number(row.harga_beli ?? 0) : 0,
+    hargaJual: Number(row.harga_jual ?? 0),
+    hargaJualAlt: Number(row.harga_jual_alt ?? 0),
+    awal: Boolean(row.awal),
+  }));
+}
+
 export async function searchProducts(data: any) {
     await requireStaff();
     const db = await sql();
@@ -1293,6 +1314,7 @@ export async function createSupplierReceipt(data: any) {
           qty: Number(item.qty),
           satuan: String(item.satuan ?? 'Pcs'),
           hargaBeli: Number(item.hargaBeli ?? 0),
+          hargaJual: Number(item.hargaJual ?? 0),
         })),
       })],
     );
@@ -1331,6 +1353,7 @@ export async function updateSupplierReceipt(data: any) {
           qty: Number(item.qty),
           satuan: String(item.satuan ?? 'Pcs'),
           hargaBeli: Number(item.hargaBeli ?? 0),
+          hargaJual: Number(item.hargaJual ?? 0),
         })),
       })],
     );

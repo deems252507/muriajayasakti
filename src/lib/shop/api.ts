@@ -61,6 +61,13 @@ export const searchProducts = createServerFn({ method: "GET" })
     return run(data);
   });
 
+export const listPriceHistory = createServerFn({ method: "GET" })
+  .validator((input: { productId: number }) => ({ productId: Number(input?.productId) }))
+  .handler(async ({ data }) => {
+    const { listPriceHistory: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const listProducts = createServerFn({ method: "GET" })
   .validator((input: { q?: string; dupOnly?: boolean; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
@@ -315,12 +322,12 @@ export const getInvoice = createServerFn({ method: "GET" })
   });
 
 export const createSupplierReceipt = createServerFn({ method: "POST" })
-  .validator((input: { invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number }> }) => ({
+  .validator((input: { invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
     invoiceNo: String(input?.invoiceNo ?? "").trim(),
     supplierId: Number(input?.supplierId),
     receivedAt: String(input?.receivedAt ?? "").trim(),
     notes: String(input?.notes ?? "").trim(),
-    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0) })) : [],
+    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0), hargaJual: Number(item.hargaJual ?? 0) })) : [],
   }))
   .handler(async ({ data }) => {
     const { createSupplierReceipt: run } = await import("./logic.server");
@@ -328,13 +335,13 @@ export const createSupplierReceipt = createServerFn({ method: "POST" })
   });
 
 export const updateSupplierReceipt = createServerFn({ method: "POST" })
-  .validator((input: { id: number; invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number }> }) => ({
+  .validator((input: { id: number; invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
     id: Number(input?.id),
     invoiceNo: String(input?.invoiceNo ?? "").trim(),
     supplierId: Number(input?.supplierId),
     receivedAt: String(input?.receivedAt ?? "").trim(),
     notes: String(input?.notes ?? "").trim(),
-    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0) })) : [],
+    items: Array.isArray(input?.items) ? input.items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty), satuan: String(item.satuan ?? "Pcs"), hargaBeli: Number(item.hargaBeli ?? 0), hargaJual: Number(item.hargaJual ?? 0) })) : [],
   }))
   .handler(async ({ data }) => {
     const { updateSupplierReceipt: run } = await import("./logic.server");

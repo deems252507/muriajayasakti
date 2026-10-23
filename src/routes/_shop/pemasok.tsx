@@ -9,17 +9,35 @@ import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/pemasok")({ component: PemasokPage });
 
-type Draft = { product: Product; qty: number; satuan: string; hargaBeli: number };
+type Draft = { product: Product; qty: number; satuan: string; hargaBeli: number; hargaJual: number; markup: string };
 
-/** Kolom pemasok yang bisa diketik; daftar baru muncul setelah ada huruf yang diketik. */
+/** Pembulatan harga jual ke ribuan terdekat: 250.399 -> 250.000, 250.550 -> 251.000. */
+function roundThousand(n: number) { return Math.round(n / 1000) * 1000; }
+function parsePct(text: string) { const n = Number(String(text).replace(",", ".")); return Number.isFinite(n) && n > 0 ? n : 0; }
+/** Harga jual dari harga beli + persen markup. Hasil 0 kalau persen/harga beli belum diisi. */
+function jualFromMarkup(beli: number, pct: string) { const p = parsePct(pct); return p > 0 && beli > 0 ? roundThousand(beli * (1 + p / 100)) : 0; }
+function hasAlt(product: Product) { return Boolean(product.satuanAlt) && product.isiSatuanAlt > 0; }
+/** Pilihan satuan: satuan dasar (mis. Pcs) dan satuan kedua (mis. Dus) kalau barangnya punya. */
+function unitOptions(product: Product, current: string) {
+  const list = [product.satuan || "Pcs"];
+  if (hasAlt(product) && product.satuanAlt !== list[0]) list.push(product.satuanAlt);
+  if (current && !list.includes(current)) list.push(current);
+  return list;
+}
+function isAltUnit(product: Product, satuan: string) { return hasAlt(product) && satuan === product.satuanAlt && satuan !== product.satuan; }
+function masterJual(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaJualAlt : product.hargaJual; }
+function masterBeli(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaBeli * product.isiSatuanAlt : product.hargaBeli; }
+
+/** Kolom pemasok: daftar muncul saat diklik, dan bisa disaring dengan mengetik. */
 function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers: Partner[]; value: string; onChange: (id: string) => void; placeholder: string }) {
   const selected = suppliers.find((row) => String(row.id) === value);
   const [text, setText] = useState("");
   const [focus, setFocus] = useState(false);
   useEffect(() => { setText(selected?.nama ?? ""); }, [value, suppliers]);
   const needle = text.trim().toLowerCase();
-  const showList = focus && needle !== "" && text !== (selected?.nama ?? "");
-  const matches = showList ? suppliers.filter((row) => row.nama.toLowerCase().includes(needle)).slice(0, 8) : [];
+  const typing = needle !== "" && text !== (selected?.nama ?? "");
+  const showList = focus;
+  const matches = showList ? suppliers.filter((row) => !typing || row.nama.toLowerCase().includes(needle)).slice(0, 50) : [];
   return (
     <div className="relative">
       <input
@@ -42,7 +60,7 @@ function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers
             >
               {row.nama}
             </div>
-          )) : <div className="px-3 py-2 text-sm text-muted">Pemasok tidak ditemukan</div>}
+          )) : <div className="px-3 py-2 text-sm text-muted">{suppliers.length ? "Pemasok tidak ditemukan" : "Belum ada pemasok. Tambahkan dulu di menu Mitra (tipe Supplier)."}</div>}
         </div>
       ) : null}
     </div>
@@ -71,6 +89,7 @@ function PemasokPage() {
   const [notes, setNotes] = useState("");
   const [activeHit, setActiveHit] = useState(0);
   const [justAdded, setJustAdded] = useState<{ id: number; n: number } | null>(null);
+  const [defaultMarkup, setDefaultMarkup] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const canEdit = me.role === "Admin";
@@ -114,6 +133,7 @@ function PemasokPage() {
     setHits([]);
     setItems([]);
     setJustAdded(null);
+    setDefaultMarkup("");
   }
 
   function dateInput(iso: string) {
@@ -153,10 +173,24 @@ function PemasokPage() {
       qty: item.qty,
       satuan: item.satuan,
       hargaBeli: item.hargaBeli,
+      hargaJual: 0,
+      markup: "",
     })));
+    setDefaultMarkup("");
     setProductQ("");
     setHits([]);
     setOpen(true);
+    // Lengkapi data barang (satuan kedua & harga jual saat ini) supaya pilihan Pcs/Dus dan harga jual tampil.
+    void Promise.allSettled(row.items.map((item) => searchProducts({ data: { q: item.partNumber || item.nama, limit: 50 } }).then((res) => res.items.find((hit) => hit.id === item.productId))))
+      .then((results) => {
+        const found = new Map<number, Product>();
+        results.forEach((res) => { if (res.status === "fulfilled" && res.value) found.set(res.value.id, res.value); });
+        if (!found.size) return;
+        setItems((prev) => prev.map((draft) => {
+          const full = found.get(draft.product.id);
+          return full ? { ...draft, product: full, hargaJual: draft.hargaJual || masterJual(full, draft.satuan) } : draft;
+        }));
+      });
   }
 
   function removeReceipt(row: SupplierReceipt) {
@@ -166,11 +200,32 @@ function PemasokPage() {
       .catch((error: Error) => toast.error(error.message));
   }
 
+  function patchItem(index: number, fn: (row: Draft) => Draft) {
+    setItems((prev) => prev.map((row, i) => i === index ? fn(row) : row));
+  }
+
+  function changeUnit(index: number, satuan: string) {
+    patchItem(index, (row) => {
+      // Harga beli yang belum diubah ikut menyesuaikan satuan; yang sudah diketik tetap.
+      const untouched = row.hargaBeli === masterBeli(row.product, row.satuan);
+      const hargaBeli = untouched ? masterBeli(row.product, satuan) : row.hargaBeli;
+      const hargaJual = jualFromMarkup(hargaBeli, row.markup) || masterJual(row.product, satuan);
+      return { ...row, satuan, hargaBeli, hargaJual };
+    });
+  }
+
+  function changeMarkupAll(text: string) {
+    const clean = text.replace(/[^\d.,]/g, "");
+    setDefaultMarkup(clean);
+    setItems((prev) => prev.map((row) => ({ ...row, markup: clean, hargaJual: jualFromMarkup(row.hargaBeli, clean) || row.hargaJual })));
+  }
+
   function addProduct(product: Product) {
     setItems((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) return prev.map((item) => item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item);
-      return [...prev, { product, qty: 1, satuan: product.satuan, hargaBeli: product.hargaBeli }];
+      const hargaJual = jualFromMarkup(product.hargaBeli, defaultMarkup) || product.hargaJual;
+      return [...prev, { product, qty: 1, satuan: product.satuan, hargaBeli: product.hargaBeli, hargaJual, markup: defaultMarkup }];
     });
     setProductQ("");
     setHits([]);
@@ -292,17 +347,42 @@ function PemasokPage() {
                     <h4 className="text-base font-extrabold">2. Isi Penerimaan <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{items.length} barang</span></h4>
                     <span className="text-base font-extrabold">{rupiah(grandTotal)}</span>
                   </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-slate-50 px-3 py-2 text-sm">
+                    <span className="font-semibold">Persen harga jual untuk semua barang</span>
+                    <input
+                      className="num h-10 w-20 rounded-lg border border-line bg-white text-center"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={defaultMarkup}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => changeMarkupAll(e.target.value)}
+                    />
+                    <span className="font-semibold">%</span>
+                    <span className="text-xs text-muted">Harga jual = harga beli + persen, dibulatkan ke ribuan terdekat. Tiap barang tetap bisa diubah sendiri.</span>
+                  </div>
                   <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
-                    <table className="w-full min-w-[640px] text-sm">
+                    <table className="w-full min-w-[980px] text-sm">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
-                        <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
+                        <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-center">Persen</th><th className="px-2 py-2 text-right">Harga Jual</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
                       </thead>
                       <tbody>
-                        {items.length === 0 ? <tr><td colSpan={7} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => (
+                        {items.length === 0 ? <tr><td colSpan={9} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => (
                           <tr key={item.product.id} className={`border-t border-line ${justAdded?.id === item.product.id ? "bg-yellow-50" : ""}`}>
                             <td className="px-2 py-2 text-muted">{index + 1}</td>
                             <td className="px-2 py-2"><b className="text-sm">{item.product.nama}</b><span className="block text-xs text-muted">{item.product.partNumber || item.product.kode}</span></td>
-                            <td className="px-2 text-center">{item.satuan}</td>
+                            <td className="px-2 text-center">
+                              {unitOptions(item.product, item.satuan).length > 1 ? (
+                                <select
+                                  className="h-12 rounded-lg border border-line bg-white px-2 text-sm font-semibold"
+                                  value={item.satuan}
+                                  onChange={(e) => changeUnit(index, e.target.value)}
+                                >
+                                  {unitOptions(item.product, item.satuan).map((unit) => (
+                                    <option key={unit} value={unit}>{isAltUnit(item.product, unit) ? `${unit} (isi ${item.product.isiSatuanAlt} ${item.product.satuan})` : unit}</option>
+                                  ))}
+                                </select>
+                              ) : item.satuan}
+                            </td>
                             <td className="px-2">
                               <input
                                 ref={(el) => { cellRefs.current[`q-${item.product.id}`] = el; }}
@@ -321,8 +401,36 @@ function PemasokPage() {
                                 inputMode="numeric"
                                 value={grouped(item.hargaBeli)}
                                 onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const el = cellRefs.current[`m-${item.product.id}`]; el?.focus(); el?.select(); } }}
+                                onChange={(e) => { const hargaBeli = digits(e.target.value); patchItem(index, (row) => ({ ...row, hargaBeli, hargaJual: jualFromMarkup(hargaBeli, row.markup) || row.hargaJual })); }}
+                              />
+                            </td>
+                            <td className="px-2">
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  ref={(el) => { cellRefs.current[`m-${item.product.id}`] = el; }}
+                                  className="num h-12 w-20 rounded-lg border border-line text-center text-base"
+                                  inputMode="decimal"
+                                  placeholder="0"
+                                  value={item.markup}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const el = cellRefs.current[`j-${item.product.id}`]; el?.focus(); el?.select(); } }}
+                                  onChange={(e) => { const markup = e.target.value.replace(/[^\d.,]/g, ""); patchItem(index, (row) => ({ ...row, markup, hargaJual: jualFromMarkup(row.hargaBeli, markup) || row.hargaJual })); }}
+                                />
+                                <span className="text-sm font-semibold">%</span>
+                              </div>
+                            </td>
+                            <td className="px-2">
+                              <input
+                                ref={(el) => { cellRefs.current[`j-${item.product.id}`] = el; }}
+                                className="num h-12 w-36 rounded-lg border border-line text-right text-base"
+                                inputMode="numeric"
+                                placeholder="Tetap"
+                                title="Kosong = harga jual barang tidak diubah"
+                                value={item.hargaJual ? grouped(item.hargaJual) : ""}
+                                onFocus={(e) => e.target.select()}
                                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchRef.current?.focus(); } }}
-                                onChange={(e) => setItems((prev) => prev.map((row, i) => i === index ? { ...row, hargaBeli: digits(e.target.value) } : row))}
+                                onChange={(e) => { const hargaJual = digits(e.target.value); patchItem(index, (row) => ({ ...row, hargaJual, markup: "" })); }}
                               />
                             </td>
                             <td className="num px-2 text-right font-semibold">{rupiah(item.qty * item.hargaBeli)}</td>
@@ -344,7 +452,7 @@ function PemasokPage() {
               <div className="flex justify-end gap-2">
                 <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>Batal</button>
                 <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
-                  const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli })) };
+                  const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli, hargaJual: item.hargaJual })) };
                   const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
                   void run
                     .then(() => { toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: editingId ? "Stok disesuaikan." : "Stok barang bertambah." }); setOpen(false); resetForm(); setPage(1); load(1); })

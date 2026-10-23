@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
-import { Barcode, Pencil, Trash2 } from "lucide-react";
+import { Barcode, History, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { deleteProduct, exportProducts, importProducts, listProducts, saveProduct } from "@/lib/shop/api";
+import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProducts, saveProduct } from "@/lib/shop/api";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -54,7 +54,15 @@ function BarangPage() {
   const [open, setOpen] = useState(false);
   const [replaceStock, setReplaceStock] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [history, setHistory] = useState<{ item: Product; rows: PriceRow[] | null } | null>(null);
   const importingRef = useRef(false);
+
+  function openHistory(item: Product) {
+    setHistory({ item, rows: null });
+    void listPriceHistory({ data: { productId: item.id } })
+      .then((rows) => setHistory((cur) => cur && cur.item.id === item.id ? { item, rows: rows as PriceRow[] } : cur))
+      .catch((e: Error) => { toast.error(e.message); setHistory(null); });
+  }
 
   function load(next = page) {
     void listProducts({ data: { q, dupOnly, page: next, sort, kategori } })
@@ -286,6 +294,9 @@ function BarangPage() {
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
             <>
+              <button type="button" title="Riwayat harga" aria-label="Riwayat harga" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => openHistory(item)}>
+                <History className="h-4 w-4" />
+              </button>
               <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
                 <Barcode className="h-4 w-4" />
               </button>
@@ -384,6 +395,69 @@ function BarangPage() {
           </form>
         </div>
       ) : null}
+      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir"} onClose={() => setHistory(null)} /> : null}
+    </div>
+  );
+}
+
+type PriceRow = { tanggal: string; hargaBeli: number; hargaJual: number; hargaJualAlt: number; awal: boolean };
+
+function dateOnly(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+}
+
+/** Riwayat harga satu barang: tanggal dan harga setelah perubahan, terbaru di atas. */
+function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; onClose: () => void }) {
+  const hasDus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
+  type Key = "hargaJual" | "hargaJualAlt" | "hargaBeli";
+  const cols: Array<{ key: Key; label: string }> = [
+    { key: "hargaJual", label: `Harga Jual / ${item.satuan}` },
+    ...(hasDus ? [{ key: "hargaJualAlt" as Key, label: `Harga Jual / ${item.satuanAlt}` }] : []),
+    ...(showBeli ? [{ key: "hargaBeli" as Key, label: "Harga Beli" }] : []),
+  ];
+  function cell(row: PriceRow, older: PriceRow | undefined, key: Key) {
+    const value = row[key];
+    const diff = older ? value - older[key] : 0;
+    return (
+      <td key={key} className="num px-3 py-2 text-right">
+        <span className={diff ? "font-bold" : ""}>{rupiah(value)}</span>
+        {diff ? <span className={`ml-1 block text-[11px] font-semibold ${diff > 0 ? "text-emerald-700" : "text-danger"}`}>{diff > 0 ? "▲ naik " : "▼ turun "}{grouped(Math.abs(diff))}</span> : null}
+      </td>
+    );
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <div>
+            <h3 className="text-lg font-extrabold">Riwayat Harga</h3>
+            <p className="text-sm text-muted">{item.nama}{item.partNumber ? ` · ${item.partNumber}` : ""}</p>
+          </div>
+          <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onClose}>Tutup</button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          {rows === null ? <p className="py-8 text-center text-sm text-muted">Memuat riwayat harga...</p> : null}
+          {rows && rows.length === 0 ? <p className="py-8 text-center text-sm text-muted">Belum ada riwayat harga untuk barang ini.</p> : null}
+          {rows && rows.length ? (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
+                <tr><th className="px-3 py-2 text-left">Tanggal</th>{cols.map((col) => <th key={col.key} className="px-3 py-2 text-right">{col.label}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={`${row.tanggal}-${index}`} className="border-t border-line align-top">
+                    <td className="whitespace-nowrap px-3 py-2 font-semibold">{dateOnly(row.tanggal)}{row.awal ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">Harga awal</span> : null}</td>
+                    {cols.map((col) => cell(row, rows[index + 1], col.key))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          <p className="mt-3 text-xs text-muted">Riwayat tercatat otomatis sejak fitur ini dipasang. Angka tebal berarti harga itu berubah dibanding sebelumnya.</p>
+        </div>
+      </div>
     </div>
   );
 }
