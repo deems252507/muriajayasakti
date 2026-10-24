@@ -261,7 +261,12 @@ export function Thread(props: { scope: Scope; target: string; name: string; meUs
       prevLastRef.current = lastId;
       if (page.firstUnreadId && page.rows.some((r) => r.id === page.firstUnreadId)) {
         setDividerId(page.firstUnreadId);
-        window.requestAnimationFrame(() => document.getElementById("unread-divider")?.scrollIntoView({ block: "start" }));
+        // Hitung pesan belum dibaca supaya kotak "N pesan baru" muncul kalau sebagian masih di bawah layar.
+        setNewCount(page.rows.filter((r) => !r.mine && r.id >= page.firstUnreadId).length);
+        window.requestAnimationFrame(() => {
+          document.getElementById("unread-divider")?.scrollIntoView({ block: "start" });
+          window.requestAnimationFrame(onScroll); // sudah di bawah semua? kalau ya, kotak disembunyikan
+        });
       } else {
         box.scrollTop = box.scrollHeight;
       }
@@ -553,10 +558,15 @@ export function Thread(props: { scope: Scope; target: string; name: string; meUs
             );
           })}
         </div>
-        {showDown ? (
+        {showDown && newCount > 0 ? (
+          <button type="button" aria-label="Ke pesan terbaru" className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-bold text-white shadow-xl ring-2 ring-white" onClick={goBottom}>
+            <span className="grid min-w-5 place-items-center rounded-full bg-white px-1.5 text-xs font-extrabold text-accent">{newCount}</span>
+            pesan baru
+            <ArrowDown className="size-4" />
+          </button>
+        ) : showDown ? (
           <button type="button" aria-label="Ke pesan terbaru" className="absolute bottom-3 right-4 grid size-10 place-items-center rounded-full border border-line bg-white shadow-lg" onClick={goBottom}>
             <ArrowDown className="size-5" />
-            {newCount > 0 ? <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{newCount}</span> : null}
           </button>
         ) : null}
       </div>
