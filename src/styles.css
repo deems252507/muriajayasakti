@@ -355,3 +355,7 @@ tbody tr:hover td {
 @keyframes mjs-attn { 0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); } 70%, 100% { box-shadow: 0 0 0 9px rgba(124, 58, 237, 0); } }
 .mjs-attn { animation: mjs-attn 2.4s ease-out 3; }
 @media (prefers-reduced-motion: reduce) { .mjs-attn { animation: none; } }
+
+.mjs-attn-green { animation: mjs-attn-green 2.4s ease-out 3; }
+@keyframes mjs-attn-green { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); } 70%, 100% { box-shadow: 0 0 0 9px rgba(16, 185, 129, 0); } }
+@media (prefers-reduced-motion: reduce) { .mjs-attn-green { animation: none; } }
