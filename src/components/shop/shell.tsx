@@ -26,8 +26,8 @@ import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
 import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
-import { setShopProfile } from "@/lib/shop/print";
 import { CommentHost, openComment } from "@/components/shop/comment-ui";
+import { setShopProfile } from "@/lib/shop/print";
 import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
