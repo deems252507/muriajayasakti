@@ -824,6 +824,13 @@ export const itemCommentInbox = createServerFn({ method: "GET" })
     return run();
   });
 
+export const itemCommentHistory = createServerFn({ method: "GET" })
+  .validator((input: { scope: string; q?: string; kind?: string }) => ({ scope: String(input?.scope ?? "mine"), q: String(input?.q ?? ""), kind: String(input?.kind ?? "") }))
+  .handler(async ({ data }) => {
+    const { itemCommentHistory: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const itemCommentTagged = createServerFn({ method: "GET" })
   .handler(async () => {
     const { itemCommentTagged: run } = await import("./logic.server");

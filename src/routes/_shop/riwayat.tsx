@@ -243,7 +243,7 @@ function RiwayatPage() {
       ) : null}
       {view === "transaksi" ? <ul className="mt-4 space-y-3">
         {items.map((inv) => (
-          <li key={String(inv.nomor)} className={`rounded-xl border border-line border-l-4 p-3 ${String(inv.source) === "Manual" ? "border-l-amber-400" : String(inv.source) === "Retur" ? "border-l-red-400" : "border-l-emerald-500"}`}>
+          <li key={String(inv.nomor)} {...comments.row(String(inv.nomor), `Nota ${String(inv.nomor)}`)} className={`rounded-xl border border-line border-l-4 p-3 ${String(inv.source) === "Manual" ? "border-l-amber-400" : String(inv.source) === "Retur" ? "border-l-red-400" : "border-l-emerald-500"}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-bold"><span className={`mr-2 rounded-md px-2 py-0.5 align-middle text-[10px] font-extrabold tracking-wide uppercase ${String(inv.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(inv.source) === "Retur" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{String(inv.source) === "Manual" ? "Manual" : String(inv.source) === "Retur" ? "Retur" : "Kasir"}</span><MarkWords text={String(inv.nomor)} q={q} /></p>
@@ -252,6 +252,7 @@ function RiwayatPage() {
               </div>
               <div className="text-right">
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
+                {me.role === "Admin" ? <span className="mr-2 inline-block align-middle"><CommentButton kind="nota" refId={String(inv.nomor)} label={`Nota ${String(inv.nomor)}`} mark={comments.marks[String(inv.nomor)]} size="h-8 w-8" /></span> : null}
                 <button className="text-xs font-bold text-accent" onClick={() => {
                   const nomor = String(inv.nomor);
                   setDetail(null);

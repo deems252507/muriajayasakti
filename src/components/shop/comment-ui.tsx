@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { ItemComments } from "@/components/shop/item-comments";
 import { dateTime } from "@/components/shop/chat-time";
-import { itemCommentSummary, itemCommentTagged } from "@/lib/shop/api";
+import { itemCommentHistory, itemCommentSummary, itemCommentTagged } from "@/lib/shop/api";
 
 export type CommentTarget = { kind: string; ref: string; label: string };
 export type CommentMark = { count: number; tagged: number };
@@ -327,7 +327,7 @@ export function CommentHost({ unread }: { unread: number }) {
     <>
       <button
         type="button"
-        title="Kotak komentar (komentar yang men-tag Anda)"
+        title="Kotak komentar: tag untuk Anda dan riwayat komentar"
         aria-label="Kotak komentar"
         className={`relative grid size-10 place-items-center rounded-xl border ${unread > 0 ? "mjs-attn border-violet-500 bg-violet-600 text-white" : "border-line bg-white text-muted"}`}
         onClick={() => setInbox(true)}
@@ -353,41 +353,106 @@ export function CommentHost({ unread }: { unread: number }) {
   );
 }
 
+type HistoryRow = Awaited<ReturnType<typeof itemCommentHistory>>[number];
+const KIND_FILTERS: Array<[string, string]> = [["", "Semua jenis"], ["barang", "Barang"], ["nota", "Nota"], ["mitra", "Pelanggan/Supplier"], ["masuk", "Barang Masuk"], ["retur", "Retur"], ["shift", "Shift Kas"]];
+
+/** Kotak komentar: tab "Men-tag saya", "Komentar saya" (riwayat yang pernah saya tulis) dan "Semua" (semua Admin), bisa dicari. */
 function InboxModal({ onClose }: { onClose: () => void }) {
-  const [rows, setRows] = useState<Awaited<ReturnType<typeof itemCommentTagged>> | null>(null);
+  const [tab, setTab] = useState<"tag" | "mine" | "all">("tag");
+  const [q, setQ] = useState("");
+  const [kind, setKind] = useState("");
+  const [tagRows, setTagRows] = useState<Awaited<ReturnType<typeof itemCommentTagged>> | null>(null);
+  const [history, setHistory] = useState<HistoryRow[] | null>(null);
   const [error, setError] = useState("");
+
   useEffect(() => {
-    void itemCommentTagged().then(setRows).catch((e: Error) => setError(e.message));
+    void itemCommentTagged().then(setTagRows).catch((e: Error) => setError(e.message));
   }, []);
+  useEffect(() => {
+    if (tab === "tag") return;
+    let alive = true;
+    setHistory(null);
+    const timer = window.setTimeout(() => {
+      void itemCommentHistory({ data: { scope: tab, q, kind } })
+        .then((rows) => { if (alive) { setError(""); setHistory(rows); } })
+        .catch((e: Error) => { if (alive) setError(e.message); });
+    }, q ? 250 : 0);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [tab, q, kind]);
+
+  const tabs: Array<["tag" | "mine" | "all", string]> = [["tag", "Men-tag saya"], ["mine", "Komentar saya"], ["all", "Semua komentar"]];
+  const needle = q.trim().toLowerCase();
+  const shownTags = (tagRows ?? []).filter((r) => (!kind || r.kind === kind) && (!needle || `${r.label} ${r.body} ${r.fromName}`.toLowerCase().includes(needle)));
+
   return (
     <Portal><div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
-      <div className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-line bg-white px-4 py-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-violet-700">Kotak komentar</p>
-            <p className="text-sm font-extrabold text-slate-900">Komentar yang men-tag Anda</p>
+            <p className="text-[11px] font-bold text-violet-700">Kotak komentar</p>
+            <p className="text-sm font-extrabold text-slate-900">Tag untuk Anda dan riwayat komentar</p>
           </div>
           <button type="button" aria-label="Tutup" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
+        <div className="space-y-2 border-b border-line bg-white px-3 py-2">
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+            {tabs.map(([key, name]) => (
+              <button key={key} type="button" className={`h-9 flex-1 rounded-lg text-xs font-bold ${tab === key ? "bg-white text-violet-800 shadow-sm" : "text-slate-600"}`} onClick={() => setTab(key)}>
+                {name}{key === "tag" && tagRows ? ` (${tagRows.length})` : ""}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari nama barang, nota, isi komentar, nama Admin..." className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-blue-100" />
+            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Jenis" className="h-10 w-32 shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+              {KIND_FILTERS.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+            </select>
+          </div>
+        </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          {rows && rows.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">Belum ada komentar yang men-tag Anda.</p> : null}
-          {rows?.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              className={`block w-full rounded-xl border p-3 text-left hover:bg-violet-50 ${r.unseen ? "border-violet-400 bg-violet-50 ring-2 ring-violet-300" : "border-slate-200 bg-white"}`}
-              onClick={() => goToComment({ kind: r.kind, ref: r.ref, label: r.label })}
-            >
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{r.kindName}</span>
-                <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-slate-900">{r.label}</span>
-                {r.unseen ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Baru</span> : null}
-              </div>
-              <p className="mt-1 line-clamp-2 break-words text-xs text-slate-700"><b>{r.fromName}</b>: {r.body}</p>
-              <p className="mt-0.5 text-[11px] text-slate-500">{dateTime(r.createdAt)}</p>
-            </button>
-          ))}
+          {tab === "tag" ? (
+            <>
+              {tagRows && shownTags.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">{tagRows.length ? "Tidak ada yang cocok." : "Belum ada komentar yang men-tag Anda."}</p> : null}
+              {shownTags.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={`block w-full rounded-xl border p-3 text-left hover:bg-violet-50 ${r.unseen ? "border-violet-400 bg-violet-50 ring-2 ring-violet-300" : "border-slate-200 bg-white"}`}
+                  onClick={() => goToComment({ kind: r.kind, ref: r.ref, label: r.label })}
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{r.kindName}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-slate-900">{r.label}</span>
+                    {r.unseen ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">Baru</span> : null}
+                  </div>
+                  <p className="mt-1 line-clamp-2 break-words text-xs text-slate-700"><b>{r.fromName}</b>: {r.body}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{dateTime(r.createdAt)}</p>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              {history && history.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">{q || kind ? "Tidak ada yang cocok." : tab === "mine" ? "Anda belum pernah menulis komentar." : "Belum ada komentar."}</p> : null}
+              {!history && !error ? <p className="py-8 text-center text-sm text-slate-500">Memuat...</p> : null}
+              {history?.map((r) => (
+                <button
+                  key={`${r.kind}:${r.ref}`}
+                  type="button"
+                  className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-left hover:bg-violet-50"
+                  onClick={() => goToComment({ kind: r.kind, ref: r.ref, label: r.label })}
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{r.kindName}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-slate-900">{r.label}</span>
+                    <span className="shrink-0 text-[11px] font-semibold text-slate-500">{r.count} komentar{tab === "all" && r.mineCount ? ` · ${r.mineCount} milik Anda` : ""}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 break-words text-xs text-slate-700"><b>{r.fromName}</b>: {r.body}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{dateTime(r.createdAt)}</p>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
     </div></Portal>

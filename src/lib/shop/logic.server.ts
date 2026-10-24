@@ -3378,6 +3378,55 @@ export async function itemCommentInbox() {
   };
 }
 
+/** Riwayat komentar per barang/nota/dst: scope "mine" = yang pernah saya tulis, "all" = semua. Terbaru dulu, bisa dicari. */
+export async function itemCommentHistory(data: { scope: string; q?: string; kind?: string }) {
+  const me = await requireStaff();
+  assertCommentAdmin(me);
+  const db = await sql();
+  const mineOnly = data.scope !== "all";
+  const kind = COMMENT_KINDS[String(data.kind ?? "")] ? String(data.kind) : "";
+  const q = String(data.q ?? "").trim().slice(0, 80);
+  const params: unknown[] = [me.username];
+  const where: string[] = [];
+  if (kind) { params.push(kind); where.push(`c.kind = $${params.length}`); }
+  if (q) {
+    params.push(`%${q}%`);
+    where.push(`(c.body ilike $${params.length} or c.label ilike $${params.length} or p.nama ilike $${params.length} or c.ref ilike $${params.length} or s.name ilike $${params.length})`);
+  }
+  const groups = await db.query<Record<string, unknown>>(
+    `select c.kind, c.ref, max(c.id) as last_id, count(*)::int as n, (count(*) filter (where c.author = $1))::int as mine_n
+     from item_comments c left join products p on p.id = c.product_id join staff s on s.username = c.author
+     ${where.length ? `where ${where.join(" and ")}` : ""}
+     group by c.kind, c.ref
+     ${mineOnly ? "having count(*) filter (where c.author = $1) > 0" : ""}
+     order by max(c.id) desc limit 100`,
+    params,
+  );
+  if (!groups.length) return [] as Array<{ kind: string; ref: string; kindName: string; label: string; count: number; mineCount: number; fromName: string; body: string; createdAt: string }>;
+  const ids = groups.map((g) => Number(g.last_id));
+  const lasts = await db.query<Record<string, unknown>>(
+    `select c.id, ${COMMENT_LABEL_SQL} as label, s.name as from_name, c.body, c.created_at
+     from item_comments c left join products p on p.id = c.product_id join staff s on s.username = c.author
+     where c.id = any($1::bigint[])`,
+    [ids],
+  );
+  const byId = new Map(lasts.map((l) => [Number(l.id), l]));
+  return groups.map((g) => {
+    const l = byId.get(Number(g.last_id)) ?? {};
+    return {
+      kind: String(g.kind),
+      ref: String(g.ref),
+      kindName: COMMENT_KINDS[String(g.kind)] ?? "",
+      label: String(l.label ?? `${COMMENT_KINDS[String(g.kind)] ?? ""} ${g.ref}`),
+      count: Number(g.n),
+      mineCount: Number(g.mine_n),
+      fromName: String(l.from_name ?? ""),
+      body: String(l.body ?? ""),
+      createdAt: isoDate(l.created_at),
+    };
+  });
+}
+
 /** Kotak komentar: komentar yang men-tag saya (terbaru dulu), yang belum dibuka diberi tanda. */
 export async function itemCommentTagged() {
   const me = await requireStaff();
