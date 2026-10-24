@@ -6,7 +6,7 @@ import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProducts, saveProduct } from "@/lib/shop/api";
-import { CommentButton, useComments } from "@/components/shop/comment-ui";
+import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -58,6 +58,8 @@ function BarangPage() {
   const [history, setHistory] = useState<{ item: Product; rows: PriceRow[] | null } | null>(null);
   const importingRef = useRef(false);
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
+  // Dari tag komentar: barang yang tidak tampil di halaman awal dicari lewat namanya, filter dikosongkan.
+  useCommentFinder("barang", (t) => { setKategori([]); setDupOnly(false); setPage(1); setQ(t.label); });
 
   function openHistory(item: Product) {
     setHistory({ item, rows: null });

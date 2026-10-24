@@ -5,7 +5,7 @@ import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { StockTable } from "@/components/shop/stock-table";
-import { CommentButton, useComments } from "@/components/shop/comment-ui";
+import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
@@ -25,6 +25,7 @@ function StokPage() {
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<Product | null>(null);
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
+  useCommentFinder("barang", (t) => { setKategori([]); setDupOnly(false); setStatus(""); setPage(1); setQ(t.label); });
   useEffect(() => {
     void listProducts({ data: { q, dupOnly, sort, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })

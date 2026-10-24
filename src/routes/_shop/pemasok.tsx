@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
-import { CommentButton, useComments } from "@/components/shop/comment-ui";
+import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
@@ -237,6 +237,11 @@ function PemasokPage() {
   if (me.role === "Kasir") return <Panel><p>Halaman Barang Masuk Pemasok hanya untuk Admin.</p></Panel>;
 
   const comments = useComments("masuk", rows.map((r) => r.id));
+  // Label komentar: "Barang masuk <no. invoice> · <supplier>". Cari lewat no. invoice, filter dikosongkan.
+  useCommentFinder("masuk", (t) => {
+    const m = /^Barang masuk (.+?) · /.exec(t.label);
+    setSupplierId(""); setStart(""); setEnd(""); setPage(1); setQ(m ? m[1] : "");
+  });
 
   return (
     <div className="space-y-4">

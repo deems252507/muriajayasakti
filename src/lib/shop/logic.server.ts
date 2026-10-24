@@ -3337,13 +3337,13 @@ export async function itemCommentAdd(data: { kind: string; ref: string; label?: 
   return { id: commentId, tagged: tagged.size };
 }
 
-/** Hanya penulis komentar yang boleh menghapus. Menghapus komentar induk ikut menghapus balasannya. */
+/** Semua Admin boleh menghapus komentar siapa pun. Menghapus komentar induk ikut menghapus balasannya. */
 export async function itemCommentDelete(data: { id: number }) {
   const me = await requireStaff();
   const db = await sql();
+  assertCommentAdmin(me);
   const [c] = await db.query<{ author: string }>(`select author from item_comments where id = $1`, [Number(data.id)]);
   if (!c) return { ok: true };
-  if (String(c.author) !== me.username) throw new Error("Anda hanya bisa menghapus komentar milik sendiri.");
   await db.query(`delete from item_comments where id = $1`, [Number(data.id)]);
   return { ok: true };
 }

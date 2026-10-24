@@ -31,7 +31,7 @@ function Body({ text, names }: { text: string; names: string[] }) {
 }
 
 /**
- * Jendela komentar satu barang: tulis komentar, tag Admin lain dengan @, balas, dan hapus komentar sendiri.
+ * Jendela komentar satu barang: tulis komentar, tag Admin lain dengan @, balas, dan hapus komentar (semua Admin boleh menghapus komentar siapa pun).
  * Komentar yang men-tag saya dan belum pernah dibuka diberi warna ungu + label "Untuk Anda".
  */
 export function ItemComments({ kind, refId, label, locate, onClose, onChanged }: { kind: string; refId: string; label?: string; locate?: { name: string; go: () => void }; onClose: () => void; onChanged: () => void }) {
@@ -108,7 +108,7 @@ export function ItemComments({ kind, refId, label, locate, onClose, onChanged }:
 
   function remove(c: Comment) {
     const hasReplies = c.parentId == null && repliesOf(c.id).length > 0;
-    if (!confirm(hasReplies ? "Hapus komentar ini beserta semua balasannya?" : "Hapus komentar ini?")) return;
+    if (!confirm(hasReplies ? "Hapus komentar ini beserta semua balasannya?" : (c.mine ? "Hapus komentar ini?" : `Hapus komentar milik ${c.authorName}?`))) return;
     void itemCommentDelete({ data: { id: c.id } })
       .then(() => { if (replyTo?.id === c.id) setReplyTo(null); load(); onChanged(); })
       .catch((e: Error) => toast.error(e.message));
@@ -131,7 +131,7 @@ export function ItemComments({ kind, refId, label, locate, onClose, onChanged }:
               {data?.canComment ? <button type="button" className="inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100" onClick={() => { setReplyTo(c); setText((t) => (t.startsWith(`@${c.authorName} `) || c.mine ? t : `@${c.authorName} ${t}`)); window.setTimeout(() => boxRef.current?.focus(), 0); }}>
                 <Reply className="h-3.5 w-3.5" /> Balas
               </button> : null}
-              {c.mine ? (
+              {data?.canComment ? (
                 <button type="button" className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 text-xs font-semibold text-danger hover:bg-red-50" onClick={() => remove(c)}>
                   <Trash2 className="h-3.5 w-3.5" /> Hapus
                 </button>
@@ -149,7 +149,9 @@ export function ItemComments({ kind, refId, label, locate, onClose, onChanged }:
         <div className="flex items-start justify-between gap-3 border-b border-line bg-white px-4 py-3">
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 text-[11px] font-bold text-violet-700"><MessageSquare className="h-3.5 w-3.5" /> Komentar · {data?.target.kindName ?? ""}</p>
-            <p className="truncate text-sm font-extrabold text-slate-900">{data?.target.label ?? label ?? "Memuat..."}</p>
+            {locate
+              ? <button type="button" title={`Lihat di ${locate.name}`} className="block max-w-full truncate text-left text-sm font-extrabold text-violet-800 underline decoration-violet-300 underline-offset-2 hover:decoration-violet-700" onClick={locate.go}>{data?.target.label ?? label ?? "Memuat..."}</button>
+              : <p className="truncate text-sm font-extrabold text-slate-900">{data?.target.label ?? label ?? "Memuat..."}</p>}
             {data?.target.sub ? <p className="truncate font-mono text-[11px] text-slate-500">{data.target.sub}</p> : null}
             {locate ? <button type="button" className="mt-1.5 inline-flex h-8 items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2.5 text-xs font-bold text-violet-800 hover:bg-violet-100" onClick={locate.go}><MapPin className="h-3.5 w-3.5" /> Lihat di {locate.name}</button> : null}
           </div>

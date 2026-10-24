@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { CommentButton, useComments } from "@/components/shop/comment-ui";
+import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { deletePartner, listPartners, savePartner } from "@/lib/shop/api";
 import type { Partner } from "@/lib/shop/types";
 
@@ -47,6 +47,11 @@ function MitraPage() {
   const tabs: Tipe[] = ["Pelanggan", "Supplier"];
 
   const comments = useComments("mitra", shown.map((r) => r.id));
+  useCommentFinder("mitra", (t) => {
+    const row = rows.find((r) => String(r.id) === t.ref);
+    if (row) setTab(row.tipe);
+    setQ("");
+  });
 
   return (
     <div className="space-y-4">

@@ -15,6 +15,23 @@ export function openComment(target: CommentTarget) {
   window.dispatchEvent(new CustomEvent("mjs-open-comment", { detail: target }));
 }
 
+/**
+ * Dipasang di halaman daftar yang punya pencarian/filter/halaman. Saat Admin diarahkan ke sebuah baris yang tidak tampil
+ * (tersaring atau di halaman lain), halaman diminta mengosongkan filter dan mencari baris itu lewat apply(target).
+ */
+export function useCommentFinder(kind: string, apply: (target: CommentTarget) => void) {
+  const ref = useRef(apply);
+  ref.current = apply;
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail as CommentTarget | undefined;
+      if (d?.kind === kind) ref.current(d);
+    };
+    window.addEventListener("mjs-find-comment", h);
+    return () => window.removeEventListener("mjs-find-comment", h);
+  }, [kind]);
+}
+
 /** Halaman tempat tiap jenis komentar berada (untuk mengarahkan Admin yang di-tag ke lokasinya). */
 export const COMMENT_ROUTE: Record<string, { to: string; name: string }> = {
   barang: { to: "/barang", name: "Daftar Sparepart" },
@@ -36,16 +53,29 @@ function Portal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body);
 }
 
-/** Cari baris berdasarkan penanda data-cmt, gulir ke tengah, kedipkan. Mengembalikan true bila ketemu. */
-function flashRow(target: CommentTarget) {
+/** Baris yang benar-benar terlihat dengan penanda data-cmt (elemen display:none tidak bisa digulir). */
+function findRow(target: CommentTarget) {
   const key = `${target.kind}:${target.ref}`;
-  const el = Array.from(document.querySelectorAll<HTMLElement>("[data-cmt]")).find((n) => n.dataset.cmt === key);
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-cmt]")).find((n) => n.dataset.cmt === key && n.getClientRects().length > 0) ?? null;
+}
+
+/**
+ * Gulir ke baris (tanpa animasi halus yang gampang terbatal) dan kedipkan. Digulir ulang beberapa kali karena tabel sering
+ * bergeser tingginya saat data/tanda komentar selesai dimuat. Mengembalikan true bila barisnya ketemu.
+ */
+function flashRow(target: CommentTarget) {
+  const el = findRow(target);
   if (!el) return false;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  const center = () => {
+    const cur = findRow(target);
+    if (cur) cur.scrollIntoView({ behavior: "auto", block: "center" });
+  };
+  center();
   el.classList.remove("mjs-cmt-flash");
   void el.offsetWidth; // mulai ulang animasi
   el.classList.add("mjs-cmt-flash");
-  window.setTimeout(() => el.classList.remove("mjs-cmt-flash"), 4200);
+  for (const ms of [200, 600, 1300]) window.setTimeout(center, ms);
+  window.setTimeout(() => findRow(target)?.classList.remove("mjs-cmt-flash"), 4600);
   return true;
 }
 
@@ -230,16 +260,34 @@ export function CommentHost({ unread }: { unread: number }) {
       setTarget(null);
       if (dest && pathRef.current !== dest.to) void navigate({ to: dest.to });
       const started = Date.now();
+      let findSent = false;
+      toast.loading("Mencari barisnya...", { id: "cmt-find" });
+      // Baris tidak tampil (tersaring / halaman lain): minta halamannya mencari baris itu, dengan filter dikosongkan.
+      const sendFind = async () => {
+        let t = d;
+        if (!t.label) {
+          try {
+            const inbox = await itemCommentTagged();
+            const hit = inbox.find((r) => r.kind === d.kind && r.ref === d.ref);
+            if (hit) t = { ...d, label: hit.label };
+          } catch { /* abaikan */ }
+        }
+        if (id === runId.current) window.dispatchEvent(new CustomEvent("mjs-find-comment", { detail: t }));
+      };
       const tryFind = () => {
-        if (id !== runId.current) return; // ada perintah yang lebih baru
+        if (id !== runId.current) return; // ada perintah yang lebih baru (toast-nya dipakai perintah baru)
         const onPage = !dest || pathRef.current === dest.to;
         if (onPage && flashRow(d)) {
+          toast.dismiss("cmt-find");
           if (openAfter) window.setTimeout(() => { if (id === runId.current) setTarget(d); }, 700);
           return;
         }
-        if (Date.now() - started > 6000) {
+        const elapsed = Date.now() - started;
+        if (onPage && !findSent && elapsed > 1200) { findSent = true; void sendFind(); }
+        if (elapsed > 9000) {
+          toast.dismiss("cmt-find");
           if (openAfter) setTarget(d);
-          if (dest) toast.info(`Baris tidak terlihat di ${dest.name} (mungkin tersaring, beda halaman, atau sudah dihapus). Komentarnya tetap dibuka.`);
+          if (dest) toast.info(`Barisnya tidak ketemu di ${dest.name} (mungkin sudah dihapus). Komentarnya tetap dibuka.`);
           return;
         }
         window.setTimeout(tryFind, 200);
@@ -295,7 +343,7 @@ export function CommentHost({ unread }: { unread: number }) {
             kind={target.kind}
             refId={target.ref}
             label={target.label}
-            locate={dest && pathname !== dest.to ? { name: dest.name, go: () => { const t = target; setTarget(null); window.dispatchEvent(new CustomEvent("mjs-locate-comment", { detail: t })); } } : undefined}
+            locate={dest ? { name: dest.name, go: () => { const t = target; setTarget(null); window.dispatchEvent(new CustomEvent("mjs-locate-comment", { detail: t })); } } : undefined}
             onClose={() => { setTarget(null); window.dispatchEvent(new CustomEvent("mjs-comment-changed")); }}
             onChanged={() => window.dispatchEvent(new CustomEvent("mjs-comment-changed"))}
           />

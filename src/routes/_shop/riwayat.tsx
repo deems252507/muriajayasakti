@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, MarkWords, Panel } from "@/components/shop/shell";
-import { CommentButton, useComments } from "@/components/shop/comment-ui";
+import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PartnerPicker } from "@/components/shop/partner-picker";
@@ -116,6 +116,7 @@ function RiwayatPage() {
   const transfer = items.filter((i) => i.metode_bayar === "Transfer" || i.metode_bayar === "Split").reduce((s, i) => s + Number(i.total), 0);
 
   const comments = useComments("nota", Array.from(new Set(items.map((r) => String(r.nomor)))));
+  useCommentFinder("nota", (t) => { setView("transaksi"); setSource(""); setStatus(""); setJenis(""); setTujuan(""); setStart(""); setEnd(""); setPage(1); setQ(t.ref); });
 
   return (
     <Panel>
