@@ -39,8 +39,9 @@ self.addEventListener("push", (event) => {
         renotify: true,
         icon: "/__grok/icon-180.png",
         badge: "/__grok/icon-180.png",
-        vibrate: data.mention ? [200, 80, 200, 80, 200] : [120, 60, 120],
-        requireInteraction: Boolean(data.mention),
+        // Komentar: satu getar pendek. Pola 3 getar cepat terasa seperti detak jantung di Android.
+        vibrate: data.soft ? [220] : data.mention ? [200, 80, 200, 80, 200] : [120, 60, 120],
+        requireInteraction: Boolean(data.mention) && !data.soft,
         actions: [{ action: "open", title: "Buka" }, { action: "reply", title: "Balas" }],
         data: { target: data.target || "", lines, count, reply: false },
       });

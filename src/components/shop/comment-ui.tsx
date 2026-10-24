@@ -113,7 +113,7 @@ export function CommentButton({ kind, refId, label, mark, size = "h-8 w-8" }: { 
       type="button"
       title={tagged ? "Anda di-tag di komentar ini" : `${count} komentar`}
       aria-label="Komentar"
-      className={`relative inline-grid ${size} shrink-0 place-items-center rounded-lg border ${tagged ? "animate-pulse border-violet-500 bg-violet-600 text-white hover:bg-violet-700" : "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200"}`}
+      className={`relative inline-grid ${size} shrink-0 place-items-center rounded-lg border ${tagged ? "mjs-attn border-violet-500 bg-violet-600 text-white hover:bg-violet-700" : "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200"}`}
       onClick={(e) => { e.stopPropagation(); openComment({ kind, ref: String(refId), label }); }}
     >
       <MessageSquare className="h-4 w-4" />
@@ -329,7 +329,7 @@ export function CommentHost({ unread }: { unread: number }) {
         type="button"
         title="Kotak komentar (komentar yang men-tag Anda)"
         aria-label="Kotak komentar"
-        className={`relative grid size-10 place-items-center rounded-xl border ${unread > 0 ? "animate-pulse border-violet-500 bg-violet-600 text-white" : "border-line bg-white text-muted"}`}
+        className={`relative grid size-10 place-items-center rounded-xl border ${unread > 0 ? "mjs-attn border-violet-500 bg-violet-600 text-white" : "border-line bg-white text-muted"}`}
         onClick={() => setInbox(true)}
       >
         <Inbox className="size-4" />

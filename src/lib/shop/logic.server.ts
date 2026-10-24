@@ -3082,7 +3082,7 @@ export async function pushUnsubscribe(data: { endpoint: string }) {
   return { ok: true };
 }
 
-async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: string; body: string; tag: string; target: string; mention?: boolean }) {
+async function sendChatPush(db: ChatDb, usernames: string[], payload: { title: string; body: string; tag: string; target: string; mention?: boolean; soft?: boolean }) {
   if (!usernames.length) return;
   const subs = await db.query<{ endpoint: string; p256dh: string; auth: string }>(
     `select endpoint, p256dh, auth from mjs_push_subscriptions where username = any($1::text[])`,
@@ -3327,6 +3327,7 @@ export async function itemCommentAdd(data: { kind: string; ref: string; label?: 
           tag: `cmt-${kind}-${ref}`,
           target: `c:${kind}:${ref}`,
           mention: true,
+          soft: true,
         }),
         new Promise((resolve) => setTimeout(resolve, 4000)),
       ]);
