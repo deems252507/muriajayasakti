@@ -6,6 +6,7 @@ import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProducts, saveProduct } from "@/lib/shop/api";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -56,6 +57,7 @@ function BarangPage() {
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<{ item: Product; rows: PriceRow[] | null } | null>(null);
   const importingRef = useRef(false);
+  const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
 
   function openHistory(item: Product) {
     setHistory({ item, rows: null });
@@ -288,12 +290,14 @@ function BarangPage() {
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <StockTable
           variant="barang"
+          rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
           groupByPart={dupOnly || sort === "part"}
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
             <>
+              <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
               <button type="button" title="Riwayat harga" aria-label="Riwayat harga" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => openHistory(item)}>
                 <History className="h-4 w-4" />
               </button>

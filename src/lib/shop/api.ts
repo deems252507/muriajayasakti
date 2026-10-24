@@ -789,3 +789,43 @@ export const chatPhotos = createServerFn({ method: "GET" })
     const { chatPhotos: run } = await import("./logic.server");
     return run(data);
   });
+
+export const itemCommentSummary = createServerFn({ method: "GET" })
+  .validator((input: { kind: string; refs: string[] }) => ({ kind: String(input?.kind ?? ""), refs: (Array.isArray(input?.refs) ? input.refs : []).map(String) }))
+  .handler(async ({ data }) => {
+    const { itemCommentSummary: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const itemCommentList = createServerFn({ method: "GET" })
+  .validator((input: { kind: string; ref: string; label?: string }) => ({ kind: String(input?.kind ?? ""), ref: String(input?.ref ?? ""), label: String(input?.label ?? "") }))
+  .handler(async ({ data }) => {
+    const { itemCommentList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const itemCommentAdd = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; ref: string; label?: string; body: string; parentId?: number | null }) => ({ kind: String(input?.kind ?? ""), ref: String(input?.ref ?? ""), label: String(input?.label ?? ""), body: String(input?.body ?? ""), parentId: input?.parentId ? Number(input.parentId) : null }))
+  .handler(async ({ data }) => {
+    const { itemCommentAdd: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const itemCommentDelete = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { itemCommentDelete: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const itemCommentInbox = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { itemCommentInbox: run } = await import("./logic.server");
+    return run();
+  });
+
+export const itemCommentTagged = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { itemCommentTagged: run } = await import("./logic.server");
+    return run();
+  });

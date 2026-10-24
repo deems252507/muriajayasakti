@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, MarkWords, Panel } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { editManual, editSale, findRetur, getInvoice, listHistoryItems, listHistoryLines, listInvoices, listMasters, listPartners, removeInvoice } from "@/lib/shop/api";
 import { ItemEditor, editorPayload, editorSubtotal, rowFromLine, type EditorAdd, type EditorRow } from "@/components/shop/item-editor";
 import { PartnerPicker } from "@/components/shop/partner-picker";
@@ -114,6 +115,8 @@ function RiwayatPage() {
   const tunai = items.filter((i) => i.metode_bayar === "Tunai").reduce((s, i) => s + Number(i.total), 0);
   const transfer = items.filter((i) => i.metode_bayar === "Transfer" || i.metode_bayar === "Split").reduce((s, i) => s + Number(i.total), 0);
 
+  const comments = useComments("nota", Array.from(new Set(items.map((r) => String(r.nomor)))));
+
   return (
     <Panel>
       <div>
@@ -202,7 +205,7 @@ function RiwayatPage() {
             </thead>
             <tbody>
               {items.map((row, index) => (
-                <tr key={`${String(row.nomor)}-${index}`} className="border-t border-line align-top">
+                <tr key={`${String(row.nomor)}-${index}`} {...comments.row(String(row.nomor), `Nota ${String(row.nomor)}`)} className="border-t border-line align-top">
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-600">{when(String(row.tanggal))}</td>
                   <td className="px-3 py-2">
                     <span className={`mr-1 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase ${String(row.source) === "Manual" ? "bg-amber-100 text-amber-800" : String(row.source) === "Retur" ? "bg-red-100 text-red-700" : String(row.source) === "Pemasok" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>{String(row.source)}</span>
@@ -219,12 +222,15 @@ function RiwayatPage() {
                   <td className="px-3 py-2 text-xs"><MarkWords text={String(row.tujuan || "-")} q={q} /></td>
                   {me.role === "Admin" ? (
                     <td className="whitespace-nowrap px-3 py-2">
+                      <div className="flex items-start gap-2">
+                      <CommentButton kind="nota" refId={String(row.nomor)} label={`Nota ${String(row.nomor)}`} mark={comments.marks[String(row.nomor)]} size="h-9 w-9" />
                       {(String(row.source) === "Kasir" || String(row.source) === "Manual") && Number(row.line_id) > 0 ? (
                         <div className="flex gap-2">
                           <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(row.nomor))}>Edit</button>
                           <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(row.nomor), Number(row.line_id))}>Hapus</button>
                         </div>
-                      ) : <span className="text-xs text-muted">-</span>}
+                      ) : null}
+                      </div>
                     </td>
                   ) : null}
                 </tr>

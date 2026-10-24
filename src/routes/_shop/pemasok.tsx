@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
@@ -235,6 +236,8 @@ function PemasokPage() {
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   if (me.role === "Kasir") return <Panel><p>Halaman Barang Masuk Pemasok hanya untuk Admin.</p></Panel>;
 
+  const comments = useComments("masuk", rows.map((r) => r.id));
+
   return (
     <div className="space-y-4">
       <Panel>
@@ -270,7 +273,7 @@ function PemasokPage() {
           <tbody>
             {rows.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-line align-top">
+              <tr key={row.id} {...comments.row(row.id, `Barang masuk ${row.invoiceNo} · ${row.supplierName}`)} className="border-t border-line align-top">
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
                 <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}</td>
@@ -278,7 +281,7 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                <td className="px-2 py-3 whitespace-nowrap">{canEdit ? <><button className="mr-2 text-xs font-bold text-blue-700" onClick={() => openEdit(row)}>Edit</button><button className="text-xs font-bold text-danger" onClick={() => removeReceipt(row)}>Hapus</button></> : null}</td>
+                <td className="px-2 py-3 whitespace-nowrap"><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <><button className="mr-2 text-xs font-bold text-blue-700" onClick={() => openEdit(row)}>Edit</button><button className="text-xs font-bold text-danger" onClick={() => removeReceipt(row)}>Hapus</button></> : null}</td>
               </tr>
             ))}
           </tbody>

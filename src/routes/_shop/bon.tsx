@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { editManual, editSale, getInvoice, listBon, listPartners, payoffBon, removeInvoice } from "@/lib/shop/api";
 import { PartnerPicker } from "@/components/shop/partner-picker";
 import type { Partner } from "@/lib/shop/types";
@@ -60,6 +61,8 @@ function BonPage() {
   }
 
   const statusTabs: Array<[string, string]> = [["Bon", "Belum Lunas"], ["Lunas", "Sudah Lunas"], ["Semua", "Semua"]];
+
+  const comments = useComments("nota", rows.map((inv) => String(inv.nomor)));
 
   return (
     <div className="space-y-4">
@@ -129,13 +132,14 @@ function BonPage() {
                 const lunas = inv.status_bayar === "Lunas";
                 const items = (Array.isArray(inv.items) ? inv.items : []) as Array<{ nama: string; qty: number; satuan: string; harga: number }>;
                 return (
-                  <li key={nomor} className={`rounded-xl border border-l-4 p-3 ${lunas ? "border-emerald-200 border-l-emerald-500 bg-emerald-50/40" : "border-red-200 border-l-red-500 bg-white"}`}>
+                  <li key={nomor} {...comments.row(nomor, `Nota ${nomor} · ${String(inv.tujuan || "Umum")}`)} className={`rounded-xl border border-l-4 p-3 ${lunas ? "border-emerald-200 border-l-emerald-500 bg-emerald-50/40" : "border-red-200 border-l-red-500 bg-white"}`}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-sm font-extrabold">{nomor}</span>
                           <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase ${lunas ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>{lunas ? "Lunas" : "Belum lunas"}</span>
                           <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase ${manual ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>{manual ? "Dibuat Admin" : "Dibuat Kasir"}</span>
+                          <CommentButton kind="nota" refId={nomor} label={`Nota ${nomor} · ${String(inv.tujuan || "Umum")}`} mark={comments.marks[nomor]} />
                         </div>
                         <p className="mt-1 text-xs text-muted">
                           {manual ? "Admin" : "Kasir"}: <b className="text-slate-700">{String(inv.kasir || "-")}</b> · {when(String(inv.tanggal))}

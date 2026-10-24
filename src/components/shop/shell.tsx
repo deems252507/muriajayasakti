@@ -1,5 +1,5 @@
 import { clearPersistedState } from "@/lib/persist";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ClipboardList,
@@ -14,7 +14,6 @@ import {
   Receipt,
   RefreshCw,
   ScrollText,
-  Search,
   Settings,
   ShoppingCart,
   Undo2,
@@ -25,10 +24,11 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
-import { chatUnread, logout, listMasters, searchProducts } from "@/lib/shop/api";
+import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
-import type { Product, Staff } from "@/lib/shop/types";
+import { CommentHost, openComment } from "@/components/shop/comment-ui";
+import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
   {
@@ -209,6 +209,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [logo, setLogo] = useState("/brand/logo.png");
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
+  const [tagBadge, setTagBadge] = useState(0);
   const pathRef = useRef(path);
   pathRef.current = path;
   useEffect(() => {
@@ -269,14 +270,55 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         }
       }).catch(() => undefined);
     };
+    // Komentar barang: lencana di menu Daftar Sparepart + kartu saat ada Admin lain yang men-tag saya.
+    let tagSeen = -1;
+    const tickTag = () => {
+      void itemCommentInbox().then((res) => {
+        if (!alive) return;
+        setTagBadge(res.unread);
+        const latest = res.latest;
+        if (!latest) { if (tagSeen < 0) tagSeen = 0; return; }
+        if (tagSeen < 0) { tagSeen = latest.ts; return; }
+        if (latest.ts <= tagSeen) return;
+        tagSeen = latest.ts;
+        beep();
+        const preview = latest.body.length > 80 ? `${latest.body.slice(0, 80)}...` : latest.body;
+        const open = () => openComment({ kind: latest.kind, ref: latest.ref, label: latest.label });
+        if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
+          void showLocalNotification(`${latest.fromName} menyebut Anda di komentar ${latest.kindName.toLowerCase()}`, `${latest.label}: ${preview}`, `c:${latest.kind}:${latest.ref}`);
+        } else {
+          toast.custom((id) => (
+            <div role="status" className="flex w-[min(92vw,360px)] items-start gap-3 rounded-2xl border border-violet-300 bg-white p-3 shadow-xl ring-1 ring-violet-100">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-600 text-sm font-extrabold text-white">@</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-extrabold text-slate-900">{latest.fromName} men-tag Anda</p>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-violet-700">Komentar</span>
+                </div>
+                <p className="mt-0.5 truncate text-xs font-semibold text-slate-700"><span className="mr-1 rounded bg-violet-100 px-1 text-[10px] font-bold uppercase text-violet-700">{latest.kindName}</span>{latest.label}</p>
+                <p className="line-clamp-2 break-words text-xs text-slate-600">{preview}</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="h-8 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white" onClick={() => { toast.dismiss(id); open(); }}>Buka Komentar</button>
+                  <button type="button" className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600" onClick={() => toast.dismiss(id)}>Tutup</button>
+                </div>
+              </div>
+            </div>
+          ), { id: "comment-toast", duration: 10000 });
+        }
+      }).catch(() => undefined);
+    };
     tick();
+    tickTag();
     // 6 detik saat tab terlihat (notifikasi tetap cepat), 30 detik saat tab tersembunyi (hemat; Web Push tetap jalan).
     let skip = 0;
     const timer = window.setInterval(() => {
       if (document.hidden) { skip = (skip + 1) % 5; if (skip) return; } else skip = 0;
       tick();
+      tickTag();
     }, 6000);
     const onChat = () => tick();
+    const onTagChange = () => tickTag();
+    window.addEventListener("mjs-comment-changed", onTagChange);
     const askPermission = () => {
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
         void Notification.requestPermission().then(() => syncPush()).catch(() => undefined);
@@ -288,6 +330,12 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     const onWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type !== "open-chat") return;
       const target = String(event.data.target ?? "");
+      if (target.startsWith("c:") || target.startsWith("b:")) {
+        // Komentar: buka jendela komentarnya (c:jenis:nomor; "b:" = format lama khusus barang).
+        const m = target.startsWith("b:") ? ["", "barang", target.slice(2)] : /^c:([a-z]+):(.+)$/.exec(target);
+        if (m) openComment({ kind: m[1], ref: m[2], label: "" });
+        return;
+      }
       if (event.data.reply) { try { sessionStorage.setItem("mjs-chat-focus", "1"); } catch { /* abaikan */ } }
       if (pathRef.current === "/chat") window.dispatchEvent(new CustomEvent("mjs-open-chat", { detail: target }));
       else { try { sessionStorage.setItem("mjs-chat-with", target); } catch { /* abaikan */ } window.location.href = "/chat"; }
@@ -295,12 +343,15 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", onWorkerMessage);
     window.addEventListener("mjs-chat", onChat);
     window.addEventListener("focus", tick);
+    window.addEventListener("focus", tickTag);
     window.addEventListener("click", askPermission, { once: true });
     return () => {
       alive = false;
       window.clearInterval(timer);
       window.removeEventListener("mjs-chat", onChat);
       window.removeEventListener("focus", tick);
+      window.removeEventListener("focus", tickTag);
+      window.removeEventListener("mjs-comment-changed", onTagChange);
       window.removeEventListener("click", askPermission);
       if ("serviceWorker" in navigator) navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
       document.title = baseTitle;
@@ -376,15 +427,13 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
               <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">{me.role}</p>
               <h1 className="truncate text-base font-bold sm:text-lg">{current}</h1>
             </div>
-            <div className="order-last w-full lg:order-none lg:w-auto lg:max-w-md lg:flex-1">
-              <GlobalSearch />
-            </div>
             <div className="ml-auto flex items-center gap-2">
               {printable ? (
                 <button className="inline-flex h-10 items-center rounded-xl border border-line bg-white px-3 text-xs font-semibold" onClick={() => window.print()}>
                   Cetak PDF
                 </button>
               ) : null}
+              {me.role === "Admin" ? <CommentHost unread={tagBadge} /> : null}
               <button className="grid size-10 place-items-center rounded-xl border border-line bg-white text-muted" onClick={() => window.location.reload()} aria-label="Muat ulang">
                 <RefreshCw className="size-4" />
               </button>
@@ -415,67 +464,13 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
             </div>
           </div>
         </header>
-        <main className="px-3 py-4 md:px-6 md:py-5">{children}</main>
+        <main className="px-3 py-4 md:px-6 md:py-5">
+          {me.role === "Admin" && ["/barang", "/stok", "/riwayat", "/bon", "/mitra", "/pemasok", "/retur", "/kas"].includes(path) ? (
+            <p className="no-print mb-3 text-[11px] text-slate-500">💬 Mau memberi catatan atau men-tag Admin lain? Klik kanan baris (di HP: tekan lama baris), lalu pilih Komentar.</p>
+          ) : null}
+          {children}
+        </main>
       </div>
-    </div>
-  );
-}
-
-function GlobalSearch() {
-  const navigate = useNavigate();
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<Product[]>([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (q.trim().length < 2) {
-      setItems([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void searchProducts({ data: { q, limit: 8 } }).then((res) => setItems(res.items));
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [q]);
-
-  function pick(item: Product) {
-    sessionStorage.setItem("mjs-find", item.partNumber || item.nama);
-    setOpen(false);
-    setQ("");
-    void navigate({ to: "/barang" });
-  }
-
-  return (
-    <div className="relative min-w-0 w-full">
-      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-      <input
-        className="h-11 w-full rounded-xl border border-line bg-white pr-3 pl-10 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-blue-100"
-        placeholder="Cari barang, part number, atau kategori"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-      />
-      {open && q.trim().length >= 2 ? (
-        <div className="absolute top-12 z-30 max-h-80 w-full overflow-y-auto rounded-2xl border border-line bg-white p-1 shadow-xl">
-          {items.length === 0 ? <p className="px-3 py-3 text-sm text-muted">Barang tidak ditemukan.</p> : null}
-          {items.map((item) => (
-            <button key={item.id} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-blue-50" onClick={() => pick(item)}>
-              <p className="text-sm font-semibold">
-                <Mark text={item.nama} q={q} />
-                {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
-              </p>
-              <p className="text-[11px] text-muted">
-                PN: <Mark text={item.partNumber || "-"} q={q} />
-                {item.partNumbersAlt ? <> · Alt: <Mark text={item.partNumbersAlt} q={q} /></> : null}
-                {" · "}
-                <Mark text={item.kategori || "-"} q={q} />
-                {item.merek ? <> · <Mark text={item.merek} q={q} /></> : null}
-                {" · stok "}{item.stok}
-              </p>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

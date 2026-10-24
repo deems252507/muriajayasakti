@@ -5,6 +5,7 @@ import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { StockTable } from "@/components/shop/stock-table";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
 import { printStockReport } from "@/lib/shop/print";
@@ -23,6 +24,7 @@ function StokPage() {
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<Product | null>(null);
+  const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
   useEffect(() => {
     void listProducts({ data: { q, dupOnly, sort, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
@@ -171,14 +173,18 @@ function StokPage() {
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
         <StockTable
           variant="stok"
+          rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
           groupByPart={dupOnly || sort === "part"}
           onOpen={setDetail}
           actions={(item) => (
+            <>
+            <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
             <button type="button" title="Detail" aria-label="Detail" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setDetail(item)}>
               <Eye className="h-4 w-4" />
             </button>
+            </>
           )}
         />
       </div>

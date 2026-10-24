@@ -62,6 +62,12 @@ self.addEventListener("notificationclick", (event) => {
           return;
         }
       }
+      if (target.indexOf("c:") === 0 || target.indexOf("b:") === 0) {
+        // Komentar: buka aplikasi; jendela komentar bagian itu terbuka otomatis (c:jenis:nomor).
+        const key = target.indexOf("b:") === 0 ? "barang:" + target.slice(2) : target.slice(2);
+        await self.clients.openWindow("/dashboard#komentar=" + encodeURIComponent(key));
+        return;
+      }
       await self.clients.openWindow("/chat" + (target ? "#open=" + encodeURIComponent(target) + (reply ? "&reply=1" : "") : ""));
     })(),
   );

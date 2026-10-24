@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { Mark } from "@/components/shop/shell";
 import { rupiah } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
@@ -25,6 +25,7 @@ export function StockTable({
   groupByPart,
   onOpen,
   actions,
+  rowProps,
   variant,
   empty = "Tidak ada barang pada filter yang dipilih.",
 }: {
@@ -33,6 +34,8 @@ export function StockTable({
   groupByPart: boolean;
   onOpen: (item: Product) => void;
   actions: (item: Product) => ReactNode;
+  /** Atribut tambahan untuk baris (klik kanan / tekan lama untuk komentar). */
+  rowProps?: (item: Product) => HTMLAttributes<HTMLElement>;
   /** "barang": status KRITIS, rincian dus lengkap, harga dus. "stok": status MENIPIS, dus ringkas. */
   variant: "barang" | "stok";
   empty?: string;
@@ -72,7 +75,7 @@ export function StockTable({
                     <td colSpan={9} className="border-y border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td>
                   </tr>
                 ) : null}
-                <tr className="cursor-pointer border-b border-slate-100 bg-white transition-colors hover:bg-blue-50/70" title="Klik baris untuk melihat detail" onClick={() => onOpen(item)}>
+                <tr {...rowProps?.(item)} className="cursor-pointer border-b border-slate-100 bg-white transition-colors hover:bg-blue-50/70" title="Klik baris untuk melihat detail" onClick={() => onOpen(item)}>
                   <td className={`${td} min-w-[220px] max-w-[320px]`}>
                     <div className="font-semibold leading-snug text-slate-900">
                       <Mark text={item.nama} q={q} />

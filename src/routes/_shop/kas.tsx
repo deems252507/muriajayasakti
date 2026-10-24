@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PeriodPicker } from "@/components/shop/period";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { addCashMove, closeShift, deleteCashMove, deleteClosedShift, listShifts, openShift, shiftLedger } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput, when } from "@/lib/shop/format";
 import { printShiftReport } from "@/lib/shop/print";
@@ -154,6 +155,8 @@ function KasPage() {
   }
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
+  const comments = useComments("shift", archives.map((s) => s.id));
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -287,13 +290,14 @@ function KasPage() {
               <tbody>
                 {archives.length === 0 ? <tr><td colSpan={6} className="py-4 text-center text-muted">Tidak ada arsip shift pada filter tanggal tersebut.</td></tr> : null}
                 {archives.map((shift) => (
-                  <tr key={shift.id} className={selected === shift.id ? "bg-blue-50" : ""}>
+                  <tr key={shift.id} {...comments.row(shift.id, `Shift ${shift.shift} · ${shift.cashierName} · ${when(shift.start)}`)} className={selected === shift.id ? "bg-blue-50" : ""}>
                     <td className="py-2">{shift.shift}</td>
                     <td>{shift.cashierName}</td>
                     <td className="text-xs">{when(shift.start)}</td>
                     <td className="text-xs">{when(shift.end)}</td>
                     <td className="num text-right">{rupiah(drawers[shift.id] ?? shift.kasAkhir ?? 0)}</td>
                     <td className="text-right">
+                      <span className="mr-2 inline-block align-middle"><CommentButton kind="shift" refId={shift.id} label={`Shift ${shift.shift} · ${shift.cashierName} · ${when(shift.start)}`} mark={comments.marks[String(shift.id)]} /></span>
                       <button className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700" onClick={() => lihat(shift.id)}>Lihat</button>
                       <button className="ml-2 rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white" onClick={() => void cetakShift(shift.id).catch((err: Error) => toast.error(err.message))}>Cetak</button>
                       <button className="ml-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-danger" onClick={() => hapusArsip(shift)}>Hapus</button>

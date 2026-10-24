@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { deletePartner, listPartners, savePartner } from "@/lib/shop/api";
 import type { Partner } from "@/lib/shop/types";
 
@@ -44,6 +45,8 @@ function MitraPage() {
   }
 
   const tabs: Tipe[] = ["Pelanggan", "Supplier"];
+
+  const comments = useComments("mitra", shown.map((r) => r.id));
 
   return (
     <div className="space-y-4">
@@ -93,13 +96,14 @@ function MitraPage() {
             </thead>
             <tbody>
               {shown.map((row, index) => (
-                <tr key={row.id} className="border-t border-line hover:bg-slate-50">
+                <tr key={row.id} {...comments.row(row.id, `${row.tipe}: ${row.nama}`)} className="border-t border-line hover:bg-slate-50">
                   <td className="px-3 py-2 text-muted">{index + 1}</td>
                   <td className="px-2 py-2 font-medium">{row.nama}</td>
                   <td className="px-2 py-2">{row.telp || "-"}</td>
                   <td className="px-2 py-2">{row.alamat || "-"}</td>
                   {isAdmin ? (
                     <td className="px-2 py-2 text-right whitespace-nowrap">
+                      <span className="mr-2 inline-block align-middle"><CommentButton kind="mitra" refId={row.id} label={`${row.tipe}: ${row.nama}`} mark={comments.marks[String(row.id)]} size="h-9 w-9" /></span>
                       <button className="h-9 rounded-lg border border-line px-3 text-sm font-medium" onClick={() => { setForm(row); setOpen(true); }}>Edit</button>
                       <button className="ml-2 h-9 rounded-lg border border-red-200 px-3 text-sm font-medium text-danger" onClick={() => remove(row)}>Hapus</button>
                     </td>

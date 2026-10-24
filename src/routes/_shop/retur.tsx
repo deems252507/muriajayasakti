@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Panel } from "@/components/shop/shell";
+import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { deleteRetur, getInvoice, listInvoices, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, when } from "@/lib/shop/format";
@@ -83,6 +84,8 @@ function ReturPage() {
   });
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
+  const comments = useComments("retur", shown.map((r) => String(r.id)));
+
   return (
     <Panel>
       <h2 className="text-lg font-extrabold">Proses Retur / Tukar Barang</h2>
@@ -313,13 +316,14 @@ function ReturPage() {
             <tbody>
               {shown.length === 0 ? <tr><td colSpan={6} className="p-4 text-center text-muted">Tidak ada retur pada periode ini.</td></tr> : null}
               {shown.map((row) => (
-                <tr key={String(row.id)} className="border-t border-line">
+                <tr key={String(row.id)} {...comments.row(String(row.id), `Retur ${String(row.id)} · ${String(row.pelanggan || "-")}`)} className="border-t border-line">
                   <td className="py-2">{String(row.id)}</td>
                   <td>{String(row.parent_invoice)}</td>
                   <td>{when(String(row.tanggal))}</td>
                   <td>{String(row.pelanggan)}</td>
                   <td className="num text-right">{rupiah(Number(row.net_amount))}</td>
                   <td className="text-right">
+                    <span className="mr-3 inline-block align-middle"><CommentButton kind="retur" refId={String(row.id)} label={`Retur ${String(row.id)} · ${String(row.pelanggan || "-")}`} mark={comments.marks[String(row.id)]} /></span>
                     <button className="text-xs font-bold text-accent" onClick={() => {
                       try { printReturSlip(row); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
                     }}>Cetak</button>

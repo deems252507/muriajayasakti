@@ -3169,3 +3169,234 @@ export async function chatPhotos(data: { kind: string; target: string }) {
     createdAt: isoDate(r.created_at),
   }));
 }
+
+
+/* ================= Komentar (tag antar Admin, balas, hapus) di barang, nota, mitra, barang masuk, retur, shift ================= */
+
+const COMMENT_KINDS: Record<string, string> = {
+  barang: "Barang",
+  nota: "Nota",
+  mitra: "Pelanggan/Supplier",
+  masuk: "Barang Masuk",
+  retur: "Retur",
+  shift: "Shift Kas",
+};
+
+function assertCommentAdmin(me: Staff) {
+  if (me.role !== "Admin") throw new Error("Komentar hanya untuk Admin.");
+}
+
+function commentTarget(data: { kind: unknown; ref: unknown }) {
+  const kind = String(data.kind ?? "");
+  const ref = String(data.ref ?? "").trim().slice(0, 80);
+  if (!COMMENT_KINDS[kind] || !ref) throw new Error("Bagian yang dikomentari tidak dikenal.");
+  return { kind, ref };
+}
+
+/** Ringkasan per baris untuk tanda warna di daftar: jumlah komentar dan jumlah tag untuk saya yang belum dibuka. */
+export async function itemCommentSummary(data: { kind: string; refs: string[] }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const kind = String(data.kind ?? "");
+  const refs = (Array.isArray(data.refs) ? data.refs : []).map((r) => String(r).slice(0, 80)).filter(Boolean).slice(0, 400);
+  if (!COMMENT_KINDS[kind] || !refs.length) return [] as { ref: string; count: number; tagged: number }[];
+  const rows = await db.query<Record<string, unknown>>(
+    `select c.ref, count(*)::int as n,
+            (select count(*)::int from item_comment_tags t join item_comments c2 on c2.id = t.comment_id
+              where c2.kind = c.kind and c2.ref = c.ref and t.username = $3 and t.seen_at is null) as tagged
+     from item_comments c where c.kind = $1 and c.ref = any($2::text[]) group by c.kind, c.ref`,
+    [kind, refs, me.username],
+  );
+  return rows.map((r) => ({ ref: String(r.ref), count: Number(r.n), tagged: Number(r.tagged) }));
+}
+
+/** Semua komentar satu bagian. Membuka komentar = tag untuk saya di bagian itu ditandai sudah dibaca. */
+export async function itemCommentList(data: { kind: string; ref: string; label?: string }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const { kind, ref } = commentTarget(data);
+  let label = "";
+  let sub = "";
+  if (kind === "barang") {
+    const [p] = await db.query<{ nama: string; part_number: string }>(`select nama, part_number from products where id = $1`, [Number(ref)]);
+    if (!p) throw new Error("Barang tidak ditemukan.");
+    label = String(p.nama);
+    sub = String(p.part_number ?? "");
+  } else {
+    const [l] = await db.query<{ label: string }>(`select label from item_comments where kind = $1 and ref = $2 and label <> '' order by id desc limit 1`, [kind, ref]);
+    label = String(l?.label || data.label || `${COMMENT_KINDS[kind]} ${ref}`).slice(0, 160);
+  }
+  const rows = await db.query<Record<string, unknown>>(
+    `select c.id, c.parent_id, c.author, s.name as author_name, s.photo as author_photo, c.body, c.created_at,
+            coalesce((select array_agg(t.username) from item_comment_tags t where t.comment_id = c.id), '{}') as tagged,
+            exists (select 1 from item_comment_tags t where t.comment_id = c.id and t.username = $3 and t.seen_at is null) as tagged_me_new
+     from item_comments c join staff s on s.username = c.author
+     where c.kind = $1 and c.ref = $2 order by c.id asc`,
+    [kind, ref, me.username],
+  );
+  const members = await db.query<Record<string, unknown>>(
+    `select username, name, photo from staff where status = 'Aktif' and role = 'Admin' order by name`,
+  );
+  await db.query(
+    `update item_comment_tags set seen_at = now()
+     where username = $3 and seen_at is null and comment_id in (select id from item_comments where kind = $1 and ref = $2)`,
+    [kind, ref, me.username],
+  );
+  return {
+    target: { kind, ref, kindName: COMMENT_KINDS[kind], label, sub },
+    me: me.username,
+    canComment: me.role === "Admin",
+    members: members.map((m) => ({ username: String(m.username), name: String(m.name), photo: String(m.photo ?? "") })),
+    comments: rows.map((r) => ({
+      id: Number(r.id),
+      parentId: r.parent_id == null ? null : Number(r.parent_id),
+      author: String(r.author),
+      authorName: String(r.author_name ?? ""),
+      authorPhoto: String(r.author_photo ?? ""),
+      body: String(r.body),
+      createdAt: isoDate(r.created_at),
+      mine: String(r.author) === me.username,
+      tagged: ((r.tagged as string[] | null) ?? []).map(String),
+      taggedMeNew: Boolean(r.tagged_me_new),
+    })),
+  };
+}
+
+export async function itemCommentAdd(data: { kind: string; ref: string; label?: string; body: string; parentId?: number | null }) {
+  const me = await requireStaff();
+  assertCommentAdmin(me);
+  const db = await sql();
+  const { kind, ref } = commentTarget(data);
+  const body = String(data.body ?? "").trim();
+  if (!body) throw new Error("Komentar tidak boleh kosong.");
+  if (body.length > 1000) throw new Error("Komentar terlalu panjang (maksimal 1000 huruf).");
+  let productId: number | null = null;
+  let label = String(data.label ?? "").trim().slice(0, 160);
+  if (kind === "barang") {
+    const [p] = await db.query<{ id: number; nama: string }>(`select id, nama from products where id = $1`, [Number(ref)]);
+    if (!p) throw new Error("Barang tidak ditemukan.");
+    productId = Number(p.id);
+    label = String(p.nama);
+  } else if (!label) {
+    label = `${COMMENT_KINDS[kind]} ${ref}`;
+  }
+
+  // Balasan selalu menempel ke komentar induk (satu tingkat), seperti Google Sheets.
+  let rootId: number | null = null;
+  let rootAuthor = "";
+  if (data.parentId) {
+    const [par] = await db.query<Record<string, unknown>>(
+      `select id, parent_id, author, kind, ref from item_comments where id = $1`,
+      [Number(data.parentId)],
+    );
+    if (!par || String(par.kind) !== kind || String(par.ref) !== ref) throw new Error("Komentar yang dibalas tidak ditemukan.");
+    if (par.parent_id != null) {
+      const [root] = await db.query<Record<string, unknown>>(`select id, author from item_comments where id = $1`, [Number(par.parent_id)]);
+      rootId = Number(root?.id ?? par.parent_id);
+      rootAuthor = String(root?.author ?? par.author);
+    } else {
+      rootId = Number(par.id);
+      rootAuthor = String(par.author);
+    }
+  }
+
+  // Siapa yang di-tag: nama Admin aktif yang ditulis sebagai @Nama di isi komentar (dibaca di server, bukan dari klien).
+  const admins = await db.query<{ username: string; name: string }>(`select username, name from staff where status = 'Aktif' and role = 'Admin'`);
+  const lower = body.toLowerCase();
+  const tagged = new Set(
+    admins.filter((a) => a.username !== me.username && a.name && lower.includes(`@${String(a.name).toLowerCase()}`)).map((a) => String(a.username)),
+  );
+  // Membalas komentar orang lain: pemilik komentar induk ikut diberi tahu.
+  if (rootAuthor && rootAuthor !== me.username && admins.some((a) => a.username === rootAuthor)) tagged.add(rootAuthor);
+
+  const [row] = await db.query<{ id: number }>(
+    `insert into item_comments (product_id, kind, ref, label, parent_id, author, body) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+    [productId, kind, ref, label, rootId, me.username, body],
+  );
+  const commentId = Number(row.id);
+  for (const u of tagged) {
+    await db.query(`insert into item_comment_tags (comment_id, username) values ($1, $2) on conflict do nothing`, [commentId, u]);
+  }
+  if (tagged.size) {
+    try {
+      const preview = body.length > 100 ? `${body.slice(0, 100)}…` : body;
+      await Promise.race([
+        sendChatPush(db, [...tagged], {
+          title: `${me.name} menyebut Anda di komentar ${COMMENT_KINDS[kind].toLowerCase()}`,
+          body: `${label}: ${preview}`,
+          tag: `cmt-${kind}-${ref}`,
+          target: `c:${kind}:${ref}`,
+          mention: true,
+        }),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
+    } catch {
+      /* notifikasi gagal tidak masalah; komentar tetap tersimpan */
+    }
+  }
+  return { id: commentId, tagged: tagged.size };
+}
+
+/** Hanya penulis komentar yang boleh menghapus. Menghapus komentar induk ikut menghapus balasannya. */
+export async function itemCommentDelete(data: { id: number }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const [c] = await db.query<{ author: string }>(`select author from item_comments where id = $1`, [Number(data.id)]);
+  if (!c) return { ok: true };
+  if (String(c.author) !== me.username) throw new Error("Anda hanya bisa menghapus komentar milik sendiri.");
+  await db.query(`delete from item_comments where id = $1`, [Number(data.id)]);
+  return { ok: true };
+}
+
+const COMMENT_LABEL_SQL = `coalesce(nullif(c.label, ''), p.nama, c.kind || ' ' || c.ref)`;
+
+/** Jumlah tag untuk saya yang belum dibuka (untuk lencana) dan yang terbaru (untuk bunyi + kartu pemberitahuan). */
+export async function itemCommentInbox() {
+  type Latest = { ts: number; kind: string; ref: string; kindName: string; label: string; fromName: string; body: string };
+  const me = await readStaff();
+  if (!me) return { unread: 0, latest: null as Latest | null };
+  const db = await sql();
+  const [n] = await db.query<{ n: number }>(
+    `select count(*)::int as n from item_comment_tags where username = $1 and seen_at is null`,
+    [me.username],
+  );
+  const unread = Number(n?.n ?? 0);
+  if (!unread) return { unread, latest: null as Latest | null };
+  const [l] = await db.query<Record<string, unknown>>(
+    `select c.kind, c.ref, ${COMMENT_LABEL_SQL} as label, s.name as from_name, c.body, c.created_at
+     from item_comment_tags t join item_comments c on c.id = t.comment_id
+     left join products p on p.id = c.product_id join staff s on s.username = c.author
+     where t.username = $1 and t.seen_at is null order by c.id desc limit 1`,
+    [me.username],
+  );
+  return {
+    unread,
+    latest: l
+      ? ({ ts: new Date(String(l.created_at)).getTime(), kind: String(l.kind), ref: String(l.ref), kindName: COMMENT_KINDS[String(l.kind)] ?? "", label: String(l.label), fromName: String(l.from_name), body: String(l.body) } as Latest)
+      : (null as Latest | null),
+  };
+}
+
+/** Kotak komentar: komentar yang men-tag saya (terbaru dulu), yang belum dibuka diberi tanda. */
+export async function itemCommentTagged() {
+  const me = await requireStaff();
+  const db = await sql();
+  const rows = await db.query<Record<string, unknown>>(
+    `select c.id, c.kind, c.ref, ${COMMENT_LABEL_SQL} as label, s.name as from_name, c.body, c.created_at, (t.seen_at is null) as unseen
+     from item_comment_tags t join item_comments c on c.id = t.comment_id
+     left join products p on p.id = c.product_id join staff s on s.username = c.author
+     where t.username = $1 order by c.id desc limit 60`,
+    [me.username],
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    kind: String(r.kind),
+    ref: String(r.ref),
+    kindName: COMMENT_KINDS[String(r.kind)] ?? "",
+    label: String(r.label),
+    fromName: String(r.from_name),
+    body: String(r.body),
+    createdAt: isoDate(r.created_at),
+    unseen: Boolean(r.unseen),
+  }));
+}
