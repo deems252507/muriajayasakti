@@ -26,8 +26,8 @@ import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
 import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
-import { CommentHost, openComment } from "@/components/shop/comment-ui";
 import { setShopProfile } from "@/lib/shop/print";
+import { CommentHost, goToComment } from "@/components/shop/comment-ui";
 import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
@@ -283,7 +283,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         tagSeen = latest.ts;
         beep();
         const preview = latest.body.length > 80 ? `${latest.body.slice(0, 80)}...` : latest.body;
-        const open = () => openComment({ kind: latest.kind, ref: latest.ref, label: latest.label });
+        const open = () => goToComment({ kind: latest.kind, ref: latest.ref, label: latest.label });
         if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
           void showLocalNotification(`${latest.fromName} menyebut Anda di komentar ${latest.kindName.toLowerCase()}`, `${latest.label}: ${preview}`, `c:${latest.kind}:${latest.ref}`);
         } else {
@@ -298,7 +298,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 <p className="mt-0.5 truncate text-xs font-semibold text-slate-700"><span className="mr-1 rounded bg-violet-100 px-1 text-[10px] font-bold uppercase text-violet-700">{latest.kindName}</span>{latest.label}</p>
                 <p className="line-clamp-2 break-words text-xs text-slate-600">{preview}</p>
                 <div className="mt-2 flex gap-2">
-                  <button type="button" className="h-8 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white" onClick={() => { toast.dismiss(id); open(); }}>Buka Komentar</button>
+                  <button type="button" className="h-8 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white" onClick={() => { toast.dismiss(id); open(); }}>Lihat di lokasi</button>
                   <button type="button" className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600" onClick={() => toast.dismiss(id)}>Tutup</button>
                 </div>
               </div>
@@ -333,7 +333,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       if (target.startsWith("c:") || target.startsWith("b:")) {
         // Komentar: buka jendela komentarnya (c:jenis:nomor; "b:" = format lama khusus barang).
         const m = target.startsWith("b:") ? ["", "barang", target.slice(2)] : /^c:([a-z]+):(.+)$/.exec(target);
-        if (m) openComment({ kind: m[1], ref: m[2], label: "" });
+        if (m) goToComment({ kind: m[1], ref: m[2], label: "" });
         return;
       }
       if (event.data.reply) { try { sessionStorage.setItem("mjs-chat-focus", "1"); } catch { /* abaikan */ } }

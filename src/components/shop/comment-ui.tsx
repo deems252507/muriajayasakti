@@ -1,6 +1,8 @@
-import { useRouteContext } from "@tanstack/react-router";
+import { useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import { Inbox, MessageSquare, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { ItemComments } from "@/components/shop/item-comments";
 import { dateTime } from "@/components/shop/chat-time";
 import { itemCommentSummary, itemCommentTagged } from "@/lib/shop/api";
@@ -11,6 +13,40 @@ export type CommentMark = { count: number; tagged: number };
 /** Buka jendela komentar dari mana saja (halaman, kartu pemberitahuan, notifikasi HP). */
 export function openComment(target: CommentTarget) {
   window.dispatchEvent(new CustomEvent("mjs-open-comment", { detail: target }));
+}
+
+/** Halaman tempat tiap jenis komentar berada (untuk mengarahkan Admin yang di-tag ke lokasinya). */
+export const COMMENT_ROUTE: Record<string, { to: string; name: string }> = {
+  barang: { to: "/barang", name: "Daftar Sparepart" },
+  nota: { to: "/riwayat", name: "Riwayat Transaksi" },
+  mitra: { to: "/mitra", name: "Pelanggan / Supplier" },
+  masuk: { to: "/pemasok", name: "Barang Masuk Pemasok" },
+  retur: { to: "/retur", name: "Retur & Tukar" },
+  shift: { to: "/kas", name: "Kas Kasir" },
+};
+
+/** Pergi ke halaman barisnya, gulir + sorot barisnya, lalu buka komentarnya (dipakai notifikasi, kotak komentar, klik notifikasi HP). */
+export function goToComment(target: CommentTarget) {
+  window.dispatchEvent(new CustomEvent("mjs-goto-comment", { detail: target }));
+}
+
+/** Jendela yang dipasang di <body>: header Shell memakai backdrop-blur sehingga elemen "fixed" di dalamnya ikut terkurung di header. */
+function Portal({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
+}
+
+/** Cari baris berdasarkan penanda data-cmt, gulir ke tengah, kedipkan. Mengembalikan true bila ketemu. */
+function flashRow(target: CommentTarget) {
+  const key = `${target.kind}:${target.ref}`;
+  const el = Array.from(document.querySelectorAll<HTMLElement>("[data-cmt]")).find((n) => n.dataset.cmt === key);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("mjs-cmt-flash");
+  void el.offsetWidth; // mulai ulang animasi
+  el.classList.add("mjs-cmt-flash");
+  window.setTimeout(() => el.classList.remove("mjs-cmt-flash"), 4200);
+  return true;
 }
 
 /** Tanda komentar untuk daftar baris: { ref: { count, tagged } }. Segar otomatis. */
@@ -89,11 +125,13 @@ export function useComments(kind: string, refs: Array<string | number>) {
     const style: CSSProperties = {};
     if (m?.tagged) style.boxShadow = "inset 4px 0 0 #7c3aed";
     else if (m?.count) style.boxShadow = "inset 4px 0 0 #f59e0b";
-    if (!isAdmin) return { style };
+    const attrs = { "data-cmt": `${kind}:${key}` } as HTMLAttributes<HTMLElement>;
+    if (!isAdmin) return { ...attrs, style };
     const target: CommentTarget = { kind, ref: key, label };
     const count = m?.count ?? 0;
     style.WebkitTouchCallout = "none";
     return {
+      ...attrs,
       style,
       onContextMenu: (e) => {
         if (e.shiftKey || (e.target as HTMLElement).closest(INTERACTIVE)) return;
@@ -157,7 +195,7 @@ function CommentMenu() {
   const left = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
   const top = Math.max(8, Math.min(menu.y + 14, window.innerHeight - 110));
   return (
-    <div className="fixed inset-0 z-[60]" onClick={() => { if (!tooSoon()) setMenu(null); }} onContextMenu={(e) => { e.preventDefault(); if (!tooSoon()) setMenu(null); }}>
+    <Portal><div className="fixed inset-0 z-[60]" onClick={() => { if (!tooSoon()) setMenu(null); }} onContextMenu={(e) => { e.preventDefault(); if (!tooSoon()) setMenu(null); }}>
       <div className="absolute overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" style={{ left, top, width }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
         <p className="truncate border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500">{menu.target.label || "Komentar"}</p>
         <button
@@ -169,7 +207,7 @@ function CommentMenu() {
           {menu.count > 0 ? `Lihat / tulis komentar (${menu.count})` : "Tulis komentar"}
         </button>
       </div>
-    </div>
+    </div></Portal>
   );
 }
 
@@ -177,22 +215,66 @@ function CommentMenu() {
 export function CommentHost({ unread }: { unread: number }) {
   const [target, setTarget] = useState<CommentTarget | null>(null);
   const [inbox, setInbox] = useState(false);
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
+  const pathRef = useRef(pathname);
+  pathRef.current = pathname;
+  const runId = useRef(0);
 
   useEffect(() => {
+    // Pindah ke halaman yang benar, sorot barisnya, baru buka komentarnya.
+    const go = (d: CommentTarget, openAfter: boolean) => {
+      const dest = COMMENT_ROUTE[d.kind];
+      const id = ++runId.current;
+      setInbox(false);
+      setTarget(null);
+      if (dest && pathRef.current !== dest.to) void navigate({ to: dest.to });
+      const started = Date.now();
+      const tryFind = () => {
+        if (id !== runId.current) return; // ada perintah yang lebih baru
+        const onPage = !dest || pathRef.current === dest.to;
+        if (onPage && flashRow(d)) {
+          if (openAfter) window.setTimeout(() => { if (id === runId.current) setTarget(d); }, 700);
+          return;
+        }
+        if (Date.now() - started > 6000) {
+          if (openAfter) setTarget(d);
+          if (dest) toast.info(`Baris tidak terlihat di ${dest.name} (mungkin tersaring, beda halaman, atau sudah dihapus). Komentarnya tetap dibuka.`);
+          return;
+        }
+        window.setTimeout(tryFind, 200);
+      };
+      window.setTimeout(tryFind, 120);
+    };
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent).detail as CommentTarget | undefined;
-      if (d?.kind && d.ref) { setInbox(false); setTarget(d); }
+      if (d?.kind && d.ref) { runId.current++; setInbox(false); setTarget(d); }
+    };
+    const onGoto = (e: Event) => {
+      const d = (e as CustomEvent).detail as CommentTarget | undefined;
+      if (d?.kind && d.ref) go(d, true);
+    };
+    const onLocate = (e: Event) => {
+      const d = (e as CustomEvent).detail as CommentTarget | undefined;
+      if (d?.kind && d.ref) go(d, false);
     };
     window.addEventListener("mjs-open-comment", onOpen);
+    window.addEventListener("mjs-goto-comment", onGoto);
+    window.addEventListener("mjs-locate-comment", onLocate);
     // Dibuka dari klik notifikasi HP saat aplikasi belum terbuka: #komentar=jenis:nomor
     const m = /^#komentar=([a-z]+):(.+)$/.exec(decodeURIComponent(window.location.hash));
     if (m) {
       history.replaceState(null, "", window.location.pathname + window.location.search);
-      setTarget({ kind: m[1], ref: m[2], label: "" });
+      go({ kind: m[1], ref: m[2], label: "" }, true);
     }
-    return () => window.removeEventListener("mjs-open-comment", onOpen);
+    return () => {
+      window.removeEventListener("mjs-open-comment", onOpen);
+      window.removeEventListener("mjs-goto-comment", onGoto);
+      window.removeEventListener("mjs-locate-comment", onLocate);
+    };
   }, []);
 
+  const dest = target ? COMMENT_ROUTE[target.kind] : undefined;
   return (
     <>
       <button
@@ -208,13 +290,16 @@ export function CommentHost({ unread }: { unread: number }) {
       <CommentMenu />
       {inbox ? <InboxModal onClose={() => setInbox(false)} /> : null}
       {target ? (
-        <ItemComments
-          kind={target.kind}
-          refId={target.ref}
-          label={target.label}
-          onClose={() => { setTarget(null); window.dispatchEvent(new CustomEvent("mjs-comment-changed")); }}
-          onChanged={() => window.dispatchEvent(new CustomEvent("mjs-comment-changed"))}
-        />
+        <Portal>
+          <ItemComments
+            kind={target.kind}
+            refId={target.ref}
+            label={target.label}
+            locate={dest && pathname !== dest.to ? { name: dest.name, go: () => { const t = target; setTarget(null); window.dispatchEvent(new CustomEvent("mjs-locate-comment", { detail: t })); } } : undefined}
+            onClose={() => { setTarget(null); window.dispatchEvent(new CustomEvent("mjs-comment-changed")); }}
+            onChanged={() => window.dispatchEvent(new CustomEvent("mjs-comment-changed"))}
+          />
+        </Portal>
       ) : null}
     </>
   );
@@ -227,8 +312,8 @@ function InboxModal({ onClose }: { onClose: () => void }) {
     void itemCommentTagged().then(setRows).catch((e: Error) => setError(e.message));
   }, []);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+    <Portal><div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
+      <div className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-line bg-white px-4 py-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-violet-700">Kotak komentar</p>
@@ -244,10 +329,10 @@ function InboxModal({ onClose }: { onClose: () => void }) {
               key={r.id}
               type="button"
               className={`block w-full rounded-xl border p-3 text-left hover:bg-violet-50 ${r.unseen ? "border-violet-400 bg-violet-50 ring-2 ring-violet-300" : "border-slate-200 bg-white"}`}
-              onClick={() => openComment({ kind: r.kind, ref: r.ref, label: r.label })}
+              onClick={() => goToComment({ kind: r.kind, ref: r.ref, label: r.label })}
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">{r.kindName}</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{r.kindName}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-slate-900">{r.label}</span>
                 {r.unseen ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Baru</span> : null}
               </div>
@@ -257,6 +342,6 @@ function InboxModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       </div>
-    </div>
+    </div></Portal>
   );
 }

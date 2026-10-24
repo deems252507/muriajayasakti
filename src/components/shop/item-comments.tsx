@@ -1,4 +1,4 @@
-import { MessageSquare, Reply, Send, Trash2, X } from "lucide-react";
+import { MapPin, MessageSquare, Reply, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { itemCommentAdd, itemCommentDelete, itemCommentList } from "@/lib/shop/api";
@@ -34,7 +34,7 @@ function Body({ text, names }: { text: string; names: string[] }) {
  * Jendela komentar satu barang: tulis komentar, tag Admin lain dengan @, balas, dan hapus komentar sendiri.
  * Komentar yang men-tag saya dan belum pernah dibuka diberi warna ungu + label "Untuk Anda".
  */
-export function ItemComments({ kind, refId, label, onClose, onChanged }: { kind: string; refId: string; label?: string; onClose: () => void; onChanged: () => void }) {
+export function ItemComments({ kind, refId, label, locate, onClose, onChanged }: { kind: string; refId: string; label?: string; locate?: { name: string; go: () => void }; onClose: () => void; onChanged: () => void }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [text, setText] = useState("");
@@ -124,7 +124,7 @@ export function ItemComments({ kind, refId, label, onClose, onChanged }: { kind:
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="text-sm font-extrabold text-slate-900">{c.authorName}</span>
               <span className="text-[11px] text-slate-500">{dateTime(c.createdAt)}</span>
-              {fresh ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Untuk Anda</span> : null}
+              {fresh ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">Untuk Anda</span> : null}
             </div>
             <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-snug text-slate-800"><Body text={c.body} names={names} /></p>
             <div className="mt-2 flex gap-2">
@@ -145,12 +145,13 @@ export function ItemComments({ kind, refId, label, onClose, onChanged }: { kind:
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
-      <div className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-panel sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-line bg-white px-4 py-3">
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-violet-700"><MessageSquare className="h-3.5 w-3.5" /> Komentar · {data?.target.kindName ?? ""}</p>
+            <p className="flex items-center gap-1.5 text-[11px] font-bold text-violet-700"><MessageSquare className="h-3.5 w-3.5" /> Komentar · {data?.target.kindName ?? ""}</p>
             <p className="truncate text-sm font-extrabold text-slate-900">{data?.target.label ?? label ?? "Memuat..."}</p>
             {data?.target.sub ? <p className="truncate font-mono text-[11px] text-slate-500">{data.target.sub}</p> : null}
+            {locate ? <button type="button" className="mt-1.5 inline-flex h-8 items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2.5 text-xs font-bold text-violet-800 hover:bg-violet-100" onClick={locate.go}><MapPin className="h-3.5 w-3.5" /> Lihat di {locate.name}</button> : null}
           </div>
           <button type="button" aria-label="Tutup" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>

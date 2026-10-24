@@ -339,3 +339,14 @@ tbody tr:hover td {
 .mjs-flash {
   animation: mjs-flash 1.6s ease-out;
 }
+
+/* Baris yang dituju dari tag komentar: berkedip ungu beberapa kali agar jelas letaknya. */
+@keyframes mjs-cmt-flash {
+  0%, 100% { background-color: transparent; box-shadow: inset 4px 0 0 #7c3aed; }
+  25%, 75% { background-color: rgba(167, 139, 250, 0.38); box-shadow: inset 6px 0 0 #7c3aed, inset 0 0 0 2px #7c3aed; }
+  50% { background-color: rgba(167, 139, 250, 0.12); box-shadow: inset 6px 0 0 #7c3aed, inset 0 0 0 2px #7c3aed; }
+}
+.mjs-cmt-flash { animation: mjs-cmt-flash 1.1s ease-in-out 4; scroll-margin-top: 96px; }
+@media (prefers-reduced-motion: reduce) {
+  .mjs-cmt-flash { animation: none; background-color: rgba(167, 139, 250, 0.3); box-shadow: inset 6px 0 0 #7c3aed, inset 0 0 0 2px #7c3aed; }
+}
