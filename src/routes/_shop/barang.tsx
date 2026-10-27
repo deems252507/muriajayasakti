@@ -4,7 +4,7 @@ import { Barcode, History, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { SortPicker, DEFAULT_SORTS } from "@/components/shop/sort-picker";
+import { SortPicker, hideCategoryHeaders, DEFAULT_SORTS } from "@/components/shop/sort-picker";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
@@ -290,7 +290,7 @@ function BarangPage() {
           rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
-          groupByPart={dupOnly || sorts.some((k) => k === "part" || k.startsWith("harga") || k === "pajak")}
+          groupByPart={hideCategoryHeaders(sorts, dupOnly)}
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
             <>

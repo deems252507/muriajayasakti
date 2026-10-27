@@ -512,6 +512,7 @@ export async function listProducts(data: any) {
     }
     const clause = where.length ? `where ${where.join(" and ")}` : "";
     const terms: Record<string, string> = {
+      kategori: "lower(kategori) asc",
       nama: "lower(kategori) asc, lower(nama) asc",
       nama_desc: "lower(kategori) asc, lower(nama) desc",
       part: "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc",

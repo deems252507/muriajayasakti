@@ -559,7 +559,7 @@ export function printCashDaily(input: {
   );
 }
 
-export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string }) {
+export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string; filter?: string }) {
   if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
   const kategori = info?.kategori?.trim() || "Semua Kategori";
   const tanggal = info?.tanggal || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -578,6 +578,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
     judul,
     `<h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
     <p style="text-align:center;margin:0 0 10px">Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p>
+    ${info?.filter ? `<p style="text-align:center;margin:0 0 10px;font-size:11px">${esc(info.filter)}</p>` : ""}
     <table><thead><tr><th>No</th><th>Nama</th><th>Kategori</th><th>Part Number</th><th>Alt PN</th><th class="center">Kode Pajak</th><th class="center">Min Stok</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr><td colspan="7" class="right bold">Total Stok & Nilai Modal:</td><td class="center bold">${totalStok}</td><td class="right bold">${money(modal)}</td><td></td></tr></tfoot></table>`,
     true,

@@ -3,7 +3,7 @@ import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
-import { SortPicker, DEFAULT_SORTS } from "@/components/shop/sort-picker";
+import { SortPicker, hideCategoryHeaders, DEFAULT_SORTS, sortLabel } from "@/components/shop/sort-picker";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { StockTable } from "@/components/shop/stock-table";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
@@ -160,7 +160,13 @@ function StokPage() {
           void listProducts({ data: { q, dupOnly, sorts, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal });
+              const filter = [
+                `Status: ${status || "Semua"}`,
+                q.trim() ? `Pencarian: ${q.trim()}` : "",
+                dupOnly ? "Hanya barang kembar" : "",
+                `Urutan: ${sortLabel(sorts)}`,
+              ].filter(Boolean).join(" · ");
+              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter });
             } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
         }}>Cetak PDF</button>
@@ -172,7 +178,7 @@ function StokPage() {
           rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
-          groupByPart={dupOnly || sorts.some((k) => k === "part" || k.startsWith("harga") || k === "pajak")}
+          groupByPart={hideCategoryHeaders(sorts, dupOnly)}
           onOpen={setDetail}
           actions={(item) => (
             <>

@@ -1,11 +1,12 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 // Dropdown sortir berbentuk daftar centang (seperti dropdown Kategori).
 // Urutan centang = urutan prioritas sortir. Pilihan yang saling berlawanan otomatis saling melepas.
 export const SORT_OPTIONS = [
+  { key: "kategori", label: "Kategori saja (A - Z)", group: "nama" },
   { key: "nama", label: "Kategori, Nama (A - Z)", group: "nama" },
-  { key: "part", label: "Part Number (A - Z)", group: "nama" },
-  { key: "nama_desc", label: "Nama (Z - A)", group: "nama" },
+  { key: "nama_desc", label: "Kategori, Nama (Z - A)", group: "nama" },
+  { key: "part", label: "Part Number (A - Z)", group: "part" },
   { key: "stok_desc", label: "Stok Terbesar", group: "stok" },
   { key: "stok_asc", label: "Stok Terkecil", group: "stok" },
   { key: "harga_desc", label: "Harga Jual ↑ Tertinggi", group: "harga" },
@@ -16,15 +17,27 @@ export const SORT_OPTIONS = [
 export const DEFAULT_SORTS: string[] = ["nama"];
 
 const SHORT: Record<string, string> = {
+  kategori: "Kategori",
   nama: "Kategori, Nama (A - Z)",
   part: "Part Number (A - Z)",
-  nama_desc: "Nama (Z - A)",
+  nama_desc: "Kategori, Nama (Z - A)",
   stok_desc: "Stok Terbesar",
   stok_asc: "Stok Terkecil",
   harga_desc: "Harga ↑ Tertinggi",
   harga_asc: "Harga ↓ Terendah",
   pajak: "Pajak",
 };
+
+export function sortLabel(sorts: string[]) {
+  return (sorts.length ? sorts : DEFAULT_SORTS).map((k) => SHORT[k] ?? k).join(" + ");
+}
+
+// Judul kelompok kategori di tabel hanya masuk akal kalau urutan utamanya per kategori.
+export function hideCategoryHeaders(sorts: string[], dupOnly = false) {
+  if (dupOnly) return true;
+  const lead = sorts.find((k) => k !== "pajak") ?? (sorts.includes("pajak") ? "pajak" : "nama");
+  return !["kategori", "nama", "nama_desc", "stok_desc", "stok_asc"].includes(lead);
+}
 
 export function toggleSort(current: string[], key: string, on: boolean): string[] {
   if (!on) {
@@ -34,20 +47,29 @@ export function toggleSort(current: string[], key: string, on: boolean): string[
   const group = SORT_OPTIONS.find((o) => o.key === key)?.group;
   const kept = current.filter((k) => k !== key && SORT_OPTIONS.find((o) => o.key === k)?.group !== group);
   // Kalau masih urutan bawaan saja, pilihan baru menggantikannya (supaya tidak "kalah" oleh urutan nama).
-  const isDefaultOnly = current.length === 1 && current[0] === "nama" && key !== "nama" && key !== "part" && key !== "nama_desc";
+  const isDefaultOnly = current.length === 1 && current[0] === "nama" && !["kategori", "nama", "nama_desc", "part"].includes(key);
   return isDefaultOnly ? [key] : [...kept, key];
 }
 
 export function SortPicker({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
   const id = useId();
+  const [alignLeft, setAlignLeft] = useState(false);
   const label = value.length ? value.map((k) => SHORT[k] ?? k).join(" + ") : SHORT.nama;
   return (
-    <details className="relative min-w-[200px]" id={id}>
+    <details
+      className="relative min-w-[200px]"
+      id={id}
+      onToggle={(e) => {
+        // Buka ke kanan kalau di sisi kiri layar (supaya tidak terpotong), ke kiri kalau di sisi kanan.
+        const r = (e.currentTarget as HTMLDetailsElement).getBoundingClientRect();
+        setAlignLeft(r.left + 320 <= window.innerWidth);
+      }}
+    >
       <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
         <span className="truncate">{label}</span>
         <span className="shrink-0 text-slate-600">▾</span>
       </summary>
-      <div className="absolute right-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
+      <div className={`absolute ${alignLeft ? "left-0" : "right-0"} top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl`}>
         <p className="border-b border-line bg-blue-50/60 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-blue-700">
           Centang untuk menggabungkan sortir (urut sesuai centang)
         </p>
