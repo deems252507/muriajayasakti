@@ -505,6 +505,10 @@ export async function listProducts(data: any) {
     if (data.status === "Habis") where.push(`stok <= 0`);
     if (data.status === "Menipis") where.push(`stok > 0 and stok_min > 0 and stok <= stok_min`);
     if (data.status === "Aman") where.push(`not (stok <= 0 or (stok_min > 0 and stok <= stok_min))`);
+    // Urutan "Kode Pajak (A - Z)": hanya barang pajak.
+    if (data.sort === "pajak") {
+      where.push(`(pajak_status = 'Pajak' or btrim(coalesce(kode_pajak, '')) <> '')`);
+    }
     const clause = where.length ? `where ${where.join(" and ")}` : "";
     // Urutan "Part Number (A - Z)" (juga dipakai saat "Hanya yang kembar"): urut per part number
     // (abaikan strip/spasi), lalu merek, lalu nama, supaya part number yang sama berdekatan.
@@ -512,6 +516,12 @@ export async function listProducts(data: any) {
     const order =
       partGrouped
         ? "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc"
+        : data.sort === "harga_desc"
+        ? "harga_jual desc, lower(nama) asc"
+        : data.sort === "harga_asc"
+        ? "harga_jual asc, lower(nama) asc"
+        : data.sort === "pajak"
+        ? "lower(btrim(kode_pajak)) asc, lower(nama) asc"
         : data.sort === "stok_asc"
         ? "stok asc, lower(kategori) asc, lower(nama) asc"
         : data.sort === "stok_desc"

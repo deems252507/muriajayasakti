@@ -159,6 +159,9 @@ function StokPage() {
           <option value="nama_desc">Nama (Z - A)</option>
           <option value="stok_desc">Stok Terbesar</option>
           <option value="stok_asc">Stok Terkecil</option>
+          <option value="harga_desc">Harga ↑ (tertinggi)</option>
+          <option value="harga_asc">Harga ↓ (terendah)</option>
+          <option value="pajak">Kode Pajak (A - Z) — hanya barang pajak</option>
         </select>
         <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
@@ -177,7 +180,7 @@ function StokPage() {
           rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
-          groupByPart={dupOnly || sort === "part"}
+          groupByPart={dupOnly || sort === "part" || sort === "harga_desc" || sort === "harga_asc" || sort === "pajak"}
           onOpen={setDetail}
           actions={(item) => (
             <>
