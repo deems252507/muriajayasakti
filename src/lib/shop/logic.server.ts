@@ -505,32 +505,25 @@ export async function listProducts(data: any) {
     if (data.status === "Habis") where.push(`stok <= 0`);
     if (data.status === "Menipis") where.push(`stok > 0 and stok_min > 0 and stok <= stok_min`);
     if (data.status === "Aman") where.push(`not (stok <= 0 or (stok_min > 0 and stok <= stok_min))`);
-    // Urutan "Kode Pajak (A - Z)": hanya barang pajak.
-    if (data.pajakOnly) {
+    // Sortir bisa digabung (centang): urutan centang = prioritas. "pajak" = hanya barang pajak, lalu urut kode pajak.
+    const sorts: string[] = data.sorts?.length ? data.sorts : [data.sort || "nama"];
+    if (sorts.includes("pajak")) {
       where.push(`(pajak_status = 'Pajak' or btrim(coalesce(kode_pajak, '')) <> '')`);
     }
     const clause = where.length ? `where ${where.join(" and ")}` : "";
-    // Urutan "Part Number (A - Z)" (juga dipakai saat "Hanya yang kembar"): urut per part number
-    // (abaikan strip/spasi), lalu merek, lalu nama, supaya part number yang sama berdekatan.
-    const partGrouped = Boolean(data.dupOnly) || data.sort === "part";
-    // Centang di bagian sortir: "Pajak" (hanya barang pajak) dan "Harga" (tertinggi/terendah) bisa digabung.
-    const pajakFirst = data.pajakOnly ? "lower(btrim(kode_pajak)) asc, " : "";
-    const order =
-      partGrouped
-        ? "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc"
-        : data.hargaSort === "desc"
-        ? `harga_jual desc, ${pajakFirst}lower(nama) asc`
-        : data.hargaSort === "asc"
-        ? `harga_jual asc, ${pajakFirst}lower(nama) asc`
-        : data.pajakOnly
-        ? "lower(btrim(kode_pajak)) asc, lower(nama) asc"
-        : data.sort === "stok_asc"
-        ? "stok asc, lower(kategori) asc, lower(nama) asc"
-        : data.sort === "stok_desc"
-          ? "stok desc, lower(kategori) asc, lower(nama) asc"
-          : data.sort === "nama_desc"
-            ? "lower(kategori) asc, lower(nama) desc"
-            : "lower(kategori) asc, lower(nama) asc";
+    const terms: Record<string, string> = {
+      nama: "lower(kategori) asc, lower(nama) asc",
+      nama_desc: "lower(kategori) asc, lower(nama) desc",
+      part: "regexp_replace(lower(part_number), '[^a-z0-9]', '', 'g') asc, lower(merek) asc, lower(nama) asc",
+      stok_desc: "stok desc",
+      stok_asc: "stok asc",
+      harga_desc: "harga_jual desc",
+      harga_asc: "harga_jual asc",
+      pajak: "lower(btrim(kode_pajak)) asc",
+    };
+    // "Hanya yang kembar": part number sama harus berdekatan, jadi didahulukan.
+    const keys = Boolean(data.dupOnly) ? ["part", ...sorts.filter((k) => k !== "part")] : sorts;
+    const order = [...keys.filter((k) => k !== "pajak").map((k) => terms[k]).filter(Boolean), ...(keys.includes("pajak") ? [terms.pajak] : []), terms.nama].join(", ");
     const [countRow] = await db.query<{ n: number }>(
       `select count(*)::int as n from products ${clause}`,
       params,

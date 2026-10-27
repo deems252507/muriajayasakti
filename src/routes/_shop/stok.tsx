@@ -3,6 +3,7 @@ import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
+import { SortPicker, DEFAULT_SORTS } from "@/components/shop/sort-picker";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { StockTable } from "@/components/shop/stock-table";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
@@ -15,10 +16,8 @@ export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
 
 function StokPage() {
   const [q, setQ] = usePersistedState("stok:q", "");
-  const [sort, setSort] = usePersistedState("stok:sort", "nama");
+  const [sorts, setSorts] = usePersistedState<string[]>("stok:sorts", DEFAULT_SORTS);
   const [dupOnly, setDupOnly] = usePersistedState("stok:dupOnly", false);
-  const [pajakOnly, setPajakOnly] = usePersistedState("stok:pajakOnly", false);
-  const [hargaSort, setHargaSort] = usePersistedState("stok:hargaSort", "");
   const [kategori, setKategori] = usePersistedState<string[]>("stok:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [status, setStatus] = usePersistedState("stok:status", "");
@@ -29,10 +28,10 @@ function StokPage() {
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
   useCommentFinder("barang", (t) => { setKategori([]); setDupOnly(false); setStatus(""); setPage(1); setQ(t.label); });
   useEffect(() => {
-    void listProducts({ data: { q, dupOnly, pajakOnly, hargaSort, sort, page, kategori, status } })
+    void listProducts({ data: { q, dupOnly, sorts, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat laporan stok."));
-  }, [q, dupOnly, pajakOnly, hargaSort, sort, page, kategori, status]);
+  }, [q, dupOnly, sorts, page, kategori, status]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
   return (
     <Panel>
@@ -155,21 +154,10 @@ function StokPage() {
           <option value="Menipis">Menipis</option>
           <option value="Habis">Habis</option>
         </select>
-        <select className={inputClass} value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="nama">Kategori, Nama (A - Z)</option>
-<option value="part">Part Number (A - Z)</option>
-          <option value="nama_desc">Nama (Z - A)</option>
-          <option value="stok_desc">Stok Terbesar</option>
-          <option value="stok_asc">Stok Terkecil</option>
-        </select>
-            <div className="flex h-11 items-center gap-3 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold" title="Centang untuk menggabungkan sortir">
-              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={pajakOnly} onChange={(e) => { setPage(1); setPajakOnly(e.target.checked); }} />Pajak</label>
-              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={hargaSort === "desc"} onChange={(e) => { setPage(1); setHargaSort(e.target.checked ? "desc" : ""); }} />Harga ↑ tertinggi</label>
-              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={hargaSort === "asc"} onChange={(e) => { setPage(1); setHargaSort(e.target.checked ? "asc" : ""); }} />Harga ↓ terendah</label>
-            </div>
-        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setPajakOnly(false); setHargaSort(""); setKategori([]); setKategoriQ(""); setStatus(""); setSort("nama"); setPage(1); }}>Reset</button>
+        <SortPicker value={sorts} onChange={(next) => { setPage(1); setSorts(next); }} />
+        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSorts(DEFAULT_SORTS); setPage(1); }}>Reset</button>
         <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
-          void listProducts({ data: { q, dupOnly, pajakOnly, hargaSort, sort, page: 1, kategori, status, all: true } }).then((res) => {
+          void listProducts({ data: { q, dupOnly, sorts, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
               printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal });
@@ -184,7 +172,7 @@ function StokPage() {
           rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
-          groupByPart={dupOnly || sort === "part" || Boolean(hargaSort) || pajakOnly}
+          groupByPart={dupOnly || sorts.some((k) => k === "part" || k.startsWith("harga") || k === "pajak")}
           onOpen={setDetail}
           actions={(item) => (
             <>
