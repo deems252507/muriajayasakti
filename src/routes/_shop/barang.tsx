@@ -44,6 +44,8 @@ function BarangPage() {
     setQ(saved);
   }, []);
   const [dupOnly, setDupOnly] = usePersistedState("barang:dupOnly", false);
+  const [pajakOnly, setPajakOnly] = usePersistedState("barang:pajakOnly", false);
+  const [hargaSort, setHargaSort] = usePersistedState("barang:hargaSort", "");
   const [kategori, setKategori] = usePersistedState<string[]>("barang:kategori", []);
   const [kategoriQ, setKategoriQ] = useState("");
   const [page, setPage] = useState(1);
@@ -69,7 +71,7 @@ function BarangPage() {
   }
 
   function load(next = page) {
-    void listProducts({ data: { q, dupOnly, page: next, sort, kategori } })
+    void listProducts({ data: { q, dupOnly, pajakOnly, hargaSort, page: next, sort, kategori } })
       .then((res) => { setLoadError(""); setData(res); })
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat daftar barang."));
   }
@@ -83,7 +85,7 @@ function BarangPage() {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [q, dupOnly, page, sort, kategori]);
+  }, [q, dupOnly, pajakOnly, hargaSort, page, sort, kategori]);
 
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
 
@@ -273,11 +275,13 @@ function BarangPage() {
               <option value="nama_desc">Nama (Z - A)</option>
               <option value="stok_desc">Stok Terbesar</option>
               <option value="stok_asc">Stok Terkecil</option>
-              <option value="harga_desc">Harga ↑ (tertinggi)</option>
-              <option value="harga_asc">Harga ↓ (terendah)</option>
-              <option value="pajak">Kode Pajak (A - Z) — hanya barang pajak</option>
             </select>
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
+            <div className="flex h-11 items-center gap-3 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold" title="Centang untuk menggabungkan sortir">
+              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={pajakOnly} onChange={(e) => { setPage(1); setPajakOnly(e.target.checked); }} />Pajak</label>
+              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={hargaSort === "desc"} onChange={(e) => { setPage(1); setHargaSort(e.target.checked ? "desc" : ""); }} />Harga ↑ tertinggi</label>
+              <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={hargaSort === "asc"} onChange={(e) => { setPage(1); setHargaSort(e.target.checked ? "asc" : ""); }} />Harga ↓ terendah</label>
+            </div>
+            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setPajakOnly(false); setHargaSort(""); setKategori([]); setKategoriQ(""); setSort("nama"); setPage(1); }}>Reset</button>
           </div>
         </div>
         {canEdit ? (
@@ -298,7 +302,7 @@ function BarangPage() {
           rowProps={(item) => comments.row(item.id, item.nama)}
           items={data?.items ?? []}
           q={q}
-          groupByPart={dupOnly || sort === "part" || sort === "harga_desc" || sort === "harga_asc" || sort === "pajak"}
+          groupByPart={dupOnly || sort === "part" || Boolean(hargaSort) || pajakOnly}
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
             <>

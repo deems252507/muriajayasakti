@@ -69,9 +69,11 @@ export const listPriceHistory = createServerFn({ method: "GET" })
   });
 
 export const listProducts = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; dupOnly?: boolean; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
+  .validator((input: { q?: string; dupOnly?: boolean; pajakOnly?: boolean; hargaSort?: string; kategori?: string | string[]; page?: number; sort?: string; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
     dupOnly: Boolean(input?.dupOnly),
+    pajakOnly: Boolean(input?.pajakOnly),
+    hargaSort: input?.hargaSort === "desc" || input?.hargaSort === "asc" ? input.hargaSort : "",
     kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : String(input?.kategori ?? "").trim(),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
     sort: String(input?.sort ?? "nama"),
