@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ClipboardList,
+  FileText,
   History,
   LayoutDashboard,
   LogOut,
@@ -58,6 +59,7 @@ const ADMIN = [
     items: [
       { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
+      { to: "/laporan-harian", label: "Laporan Harian (Excel)", icon: FileText },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
@@ -86,6 +88,7 @@ const OWNER = [
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
       { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
+      { to: "/laporan-harian", label: "Laporan Harian (Excel)", icon: FileText },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
