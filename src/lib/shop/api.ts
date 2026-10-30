@@ -540,6 +540,12 @@ export const chatContacts = createServerFn({ method: "GET" })
     return run();
   });
 
+export const presenceBeat = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { presenceBeat: run } = await import("./logic.server");
+    return run();
+  });
+
 export const chatUnread = createServerFn({ method: "GET" })
   .handler(async () => {
     const { chatUnread: run } = await import("./logic.server");

@@ -3,6 +3,7 @@ import { ArrowLeft, MessageSquarePlus, MoreVertical, Plus, Search, Trash2, Users
 import { useCallback, useEffect, useState } from "react";
 import { Conversation } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
+import { PresenceAvatar, SeenLabel } from "@/components/shop/presence";
 import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
 import { toast } from "sonner";
 import { chatClear, chatContacts, chatHideAll, groupDelete, groupList } from "@/lib/shop/api";
@@ -148,7 +149,7 @@ function ChatPage() {
             {shown.map((c) => (
               <li key={c.username} className="relative">
                 <button type="button" onClick={() => setActive(c.username)} onContextMenu={(e) => { e.preventDefault(); setRowMenu(c.username); }} className={`flex w-full items-center gap-3 border-b border-line py-3 pl-3 pr-9 text-left hover:bg-blue-50 ${dm === c.username ? "bg-blue-50" : ""}`}>
-                  <Avatar c={c} />
+                  <PresenceAvatar c={c} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-bold">{c.name}</p>
@@ -183,10 +184,10 @@ function ChatPage() {
             <>
               <div className="flex items-center gap-3 border-b border-line p-3">
                 <button type="button" className="grid size-10 place-items-center rounded-lg border border-line md:hidden" onClick={() => setActive("")} aria-label="Kembali"><ArrowLeft className="size-4" /></button>
-                <Avatar c={current} size="size-9" />
+                <PresenceAvatar c={current} size="size-9" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold">{current.name}</p>
-                  <p className="text-[11px] text-muted">{current.role}</p>
+                  <p className="text-[11px] text-muted">{current.role} · <SeenLabel seenAgo={current.seenAgo} /></p>
                 </div>
               </div>
               <Conversation key={`dm:${dm}`} kind="dm" target={dm} title={current.name} members={[]} meUsername={me.username} role={me.role} moderator={false} onRead={loadContacts} />

@@ -28,6 +28,7 @@ import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/ap
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
+import { PresenceButton } from "@/components/shop/presence";
 import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
@@ -433,6 +434,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                   Cetak PDF
                 </button>
               ) : null}
+              <PresenceButton meUsername={me.username} />
               <Link
                 to="/chat"
                 key={`chat-${chatBadge > 0 ? "n" : "0"}`}

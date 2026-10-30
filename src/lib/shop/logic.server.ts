@@ -230,6 +230,11 @@ export async function logout() {
   const token = getCookie(COOKIE);
   if (token) {
     const db = await sql();
+    await db.query(
+      `update staff set last_seen_at = least(coalesce(last_seen_at, now()), now() - interval '61 seconds')
+       where username = (select username from sessions where token = $1)`,
+      [token],
+    );
     await db.query(`delete from sessions where token = $1`, [token]);
   }
   setCookie(COOKIE, "", { path: "/", httpOnly: true, sameSite: "lax", secure: false, maxAge: 0 });
@@ -2056,6 +2061,7 @@ export async function chatContacts() {
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo,
+            extract(epoch from (now() - s.last_seen_at))::int as seen_ago,
             (select case when m.deleted_at is null then m.body else 'Pesan dihapus' end from chat_messages m
               where ((m.sender = s.username and m.recipient = $1) or (m.sender = $1 and m.recipient = s.username))
               and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)
@@ -2085,7 +2091,44 @@ export async function chatContacts() {
     lastAt: row.last_at ? new Date(String(row.last_at)).toISOString() : "",
     lastMine: row.last_sender != null && String(row.last_sender) === me.username,
     unread: Number(row.unread ?? 0),
+    seenAgo: row.seen_ago == null ? null : Math.max(0, Number(row.seen_ago)),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Status online staff
+// ---------------------------------------------------------------------------
+
+/** Catat bahwa saya sedang aktif, lalu kembalikan daftar semua staff aktif beserta "terakhir aktif" (detik lalu, dihitung jam server). */
+export async function presenceBeat() {
+  const me = await requireStaff();
+  const db = await sql();
+  await db.query(
+    `update staff set last_seen_at = now() where username = $1 and (last_seen_at is null or last_seen_at < now() - interval '10 seconds')`,
+    [me.username],
+  );
+  const rows = await db.query<Record<string, unknown>>(
+    `select username, name, role, photo, extract(epoch from (now() - last_seen_at))::int as seen_ago
+     from staff where status = 'Aktif'`,
+  );
+  const rank: Record<string, number> = { Owner: 0, Admin: 1, Kasir: 2 };
+  return rows
+    .map((row) => ({
+      username: String(row.username),
+      name: String(row.name ?? ""),
+      role: String(row.role ?? ""),
+      photo: String(row.photo ?? ""),
+      seenAgo: row.seen_ago == null ? null : Math.max(0, Number(row.seen_ago)),
+    }))
+    .sort((a, b) => {
+      const ao = a.seenAgo != null && a.seenAgo < 60 ? 0 : 1;
+      const bo = b.seenAgo != null && b.seenAgo < 60 ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      const as = a.seenAgo ?? Number.MAX_SAFE_INTEGER;
+      const bs = b.seenAgo ?? Number.MAX_SAFE_INTEGER;
+      if (ao === 1 && as !== bs) return as - bs;
+      return (rank[a.role] ?? 3) - (rank[b.role] ?? 3) || a.name.localeCompare(b.name);
+    });
 }
 
 /** Total pesan belum dibaca (pribadi + grup) dan pesan terbaru, untuk badge dan notifikasi. */
