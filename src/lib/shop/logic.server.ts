@@ -529,7 +529,10 @@ export async function listProducts(data: any) {
     };
     // "Hanya yang kembar": part number sama harus berdekatan, jadi didahulukan.
     const keys = Boolean(data.dupOnly) ? ["part", ...sorts.filter((k) => k !== "part")] : sorts;
-    const order = [...keys.filter((k) => k !== "pajak").map((k) => terms[k]).filter(Boolean), ...(keys.includes("pajak") ? [terms.pajak] : []), terms.nama].join(", ");
+    // Kalau hanya "pajak" yang dipilih, tetap dikelompokkan per kategori dulu, baru urut kode pajak di dalam kategori.
+    const baseKeys = keys.filter((k) => k !== "pajak");
+    const leadKeys = keys.includes("pajak") && baseKeys.length === 0 ? ["kategori"] : baseKeys;
+    const order = [...leadKeys.map((k) => terms[k]).filter(Boolean), ...(keys.includes("pajak") ? [terms.pajak] : []), terms.nama].join(", ");
     const [countRow] = await db.query<{ n: number }>(
       `select count(*)::int as n from products ${clause}`,
       params,
@@ -2768,12 +2771,48 @@ export async function chatThread(data: { kind: string; target: string; limit?: n
     };
   });
 
+  // Siapa yang sedang mengetik di percakapan ini (selain saya). Kedaluwarsa 6 detik setelah ketukan terakhir.
+  const typingRows = scope.kind === "group"
+    ? await db.query<{ name: string }>(
+        `select s.name from mjs_chat_typing t join staff s on s.username = t.username
+         where t.kind = 'group' and t.target = $1 and t.username <> $2 and t.at > now() - interval '6 seconds' order by s.name`,
+        [chatTypingKey(scope), me.username],
+      )
+    : await db.query<{ name: string }>(
+        `select s.name from mjs_chat_typing t join staff s on s.username = t.username
+         where t.kind = 'dm' and t.target = $1 and t.username = $2 and t.at > now() - interval '6 seconds'`,
+        [me.username, scope.other],
+      );
+
   return {
     messages,
     hasMore: older.length > 0,
     pins: pinRows.map((p) => ({ id: Number(p.id), name: String(p.name ?? ""), body: String(p.body ?? "") })),
     readers,
+    typing: typingRows.map((t) => String(t.name ?? "")),
   };
+}
+
+/** Kunci percakapan untuk status mengetik: username penerima (pribadi) atau "g:<id>" (grup). */
+function chatTypingKey(scope: ChatScope) {
+  return scope.kind === "group" ? `g:${scope.groupId}` : scope.other;
+}
+
+/** Tandai saya sedang mengetik (on) atau berhenti (off) di percakapan ini. */
+export async function chatTyping(data: { kind: string; target: string; on: boolean }) {
+  const me = await requireStaff();
+  const db = await sql();
+  const scope = await chatScope(db, me, data.kind, data.target);
+  if (data.on) {
+    await db.query(
+      `insert into mjs_chat_typing (kind, target, username, at) values ($1, $2, $3, now())
+       on conflict (kind, target, username) do update set at = now()`,
+      [scope.kind, chatTypingKey(scope), me.username],
+    );
+  } else {
+    await db.query(`delete from mjs_chat_typing where kind = $1 and target = $2 and username = $3`, [scope.kind, chatTypingKey(scope), me.username]);
+  }
+  return { ok: true };
 }
 
 function parseChatFile(file: unknown) {
@@ -2889,6 +2928,8 @@ export async function chatPost(data: {
     );
     newId = Number(row?.id ?? 0);
   }
+  // Pesan sudah terkirim: hapus status "sedang mengetik" saya.
+  await db.query(`delete from mjs_chat_typing where kind = $1 and target = $2 and username = $3`, [scope.kind, chatTypingKey(scope), me.username]);
   await notifyChatPush(db, me, scope, body, { caption, hasImage: Boolean(file?.mime.startsWith("image/")), hasFile: Boolean(file) });
   return { id: newId };
 }

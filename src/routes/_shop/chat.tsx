@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft, MessageSquarePlus, MoreVertical, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Conversation } from "@/components/shop/chat-core";
+import { Conversation, typingLabel } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
 import { PresenceAvatar, SeenLabel } from "@/components/shop/presence";
 import { Avatar, GroupFormModal, GroupPanel, listTime, roleStyle } from "@/components/shop/chat-group";
@@ -22,6 +22,7 @@ function ChatPage() {
   const [newChat, setNewChat] = useState(false);
   const [active, setActive] = useState<string>(() => { try { return sessionStorage.getItem("mjs-chat-with") || ""; } catch { return ""; } });
   const [filter, setFilter] = useState("");
+  const [typing, setTyping] = useState<string[]>([]);
   const groupId = active.startsWith("g:") ? Number(active.slice(2)) || 0 : 0;
   const dm = groupId ? "" : active;
 
@@ -187,10 +188,14 @@ function ChatPage() {
                 <PresenceAvatar c={current} size="size-9" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold">{current.name}</p>
-                  <p className="text-[11px] text-muted">{current.role} · <SeenLabel seenAgo={current.seenAgo} /></p>
+                  {typing.length > 0 ? (
+                    <p className="text-[11px] font-semibold text-[#00a884]">{typingLabel(typing, "dm")}</p>
+                  ) : (
+                    <p className="text-[11px] text-muted">{current.role} · <SeenLabel seenAgo={current.seenAgo} /></p>
+                  )}
                 </div>
               </div>
-              <Conversation key={`dm:${dm}`} kind="dm" target={dm} title={current.name} members={[]} meUsername={me.username} role={me.role} moderator={false} onRead={loadContacts} />
+              <Conversation key={`dm:${dm}`} kind="dm" target={dm} title={current.name} members={[]} meUsername={me.username} role={me.role} moderator={false} onRead={loadContacts} onTyping={setTyping} />
             </>
           ) : (
             <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted">Pilih staff atau grup di daftar untuk mulai.</div>

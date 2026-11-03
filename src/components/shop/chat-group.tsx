@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   chatPhotos, chatPost, groupCreate, groupDelete, groupInfo, groupUpdate, noteDelete, noteList, noteSave,
 } from "@/lib/shop/api";
-import { Conversation, getFile, Lightbox, prepareAttachment } from "./chat-core";
+import { Conversation, getFile, Lightbox, prepareAttachment, typingLabel } from "./chat-core";
 import { dateTime } from "./chat-time";
 
 export { dayKey, dayLabel, hhmm, listTime } from "./chat-time";
@@ -100,12 +100,13 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
   const [info, setInfo] = useState<Info | null>(null);
   const [editing, setEditing] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [typing, setTyping] = useState<string[]>([]);
 
   const loadInfo = useCallback(() => {
     void groupInfo({ data: { id: groupId } }).then(setInfo).catch((error: Error) => { toast.error(error.message); onDeleted(); });
   }, [groupId, onDeleted]);
 
-  useEffect(() => { setInfo(null); setTab("chat"); loadInfo(); }, [groupId]);
+  useEffect(() => { setInfo(null); setTab("chat"); setTyping([]); loadInfo(); }, [groupId]);
 
   const tabs: Array<["chat" | "catatan" | "foto" | "anggota", string]> = [["chat", "Chat"], ["catatan", "Catatan"], ["foto", "Foto"], ["anggota", "Anggota"]];
 
@@ -117,7 +118,11 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-800"><Users className="size-4" /></span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold">{info?.nama ?? "Memuat..."}</p>
-            <p className="truncate text-[11px] text-muted">{info ? `${info.members.length} anggota${info.deskripsi ? ` · ${info.deskripsi}` : ""}` : ""}</p>
+            {typing.length > 0 ? (
+              <p className="truncate text-[11px] font-semibold text-[#00a884]">{typingLabel(typing, "group")}</p>
+            ) : (
+              <p className="truncate text-[11px] text-muted">{info ? `${info.members.length} anggota${info.deskripsi ? ` · ${info.deskripsi}` : ""}` : ""}</p>
+            )}
           </div>
           {info?.canManage ? <button type="button" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-bold hover:bg-slate-100" onClick={() => setRenaming(true)}><Pencil className="size-3.5" />Ubah nama</button> : null}
         </div>
@@ -128,7 +133,7 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
         </div>
       </div>
 
-      {tab === "chat" ? <Conversation key={`g:${groupId}`} kind="group" target={String(groupId)} title={info?.nama ?? ""} members={info?.members ?? []} meUsername={meUsername} role={role} moderator={Boolean(info?.canManage)} onRead={onChanged} /> : null}
+      {tab === "chat" ? <Conversation key={`g:${groupId}`} kind="group" target={String(groupId)} title={info?.nama ?? ""} members={info?.members ?? []} meUsername={meUsername} role={role} moderator={Boolean(info?.canManage)} onRead={onChanged} onTyping={setTyping} /> : null}
       {tab === "catatan" ? <GroupNotes groupId={groupId} /> : null}
       {tab === "foto" ? <GroupPhotos groupId={groupId} /> : null}
       {tab === "anggota" ? (

@@ -705,6 +705,17 @@ export const chatThread = createServerFn({ method: "GET" })
     return run(data);
   });
 
+export const chatTyping = createServerFn({ method: "POST" })
+  .validator((input: { kind: string; target: string; on: boolean }) => ({
+    kind: String(input?.kind ?? "dm"),
+    target: String(input?.target ?? ""),
+    on: Boolean(input?.on),
+  }))
+  .handler(async ({ data }) => {
+    const { chatTyping: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export type ChatUpload = { name: string; data: string };
 export type ChatShareInput = { type: "barang" | "transaksi"; ref: string };
 

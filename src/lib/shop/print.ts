@@ -559,8 +559,9 @@ export function printCashDaily(input: {
   );
 }
 
-export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string; filter?: string }) {
+export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string; filter?: string; groupByKategori?: boolean }) {
   if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
+  let lastKategori: string | null = null;
   const kategori = info?.kategori?.trim() || "Semua Kategori";
   const tanggal = info?.tanggal || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   const judul = `STOK ${kategori.toUpperCase()} PER TANGGAL ${tanggal.toUpperCase()}`;
@@ -571,7 +572,13 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
       totalStok += Number(item.stok);
       modal += Number(item.hargaBeli) * Number(item.stok);
       const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
-      return `<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
+      const cat = (item.kategori || "TANPA KATEGORI").trim();
+      let header = "";
+      if (info?.groupByKategori && cat.toLowerCase() !== (lastKategori ?? "").toLowerCase()) {
+        header = `<tr><td colspan="10" style="background:#e5e7eb;font-weight:bold;text-transform:uppercase">${esc(cat)}</td></tr>`;
+      }
+      lastKategori = cat;
+      return `${header}<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
     })
     .join("");
   openPrint(

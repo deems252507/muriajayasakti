@@ -11,7 +11,7 @@ export const SORT_OPTIONS = [
   { key: "stok_asc", label: "Stok Terkecil", group: "stok" },
   { key: "harga_desc", label: "Harga Jual ↑ Tertinggi", group: "harga" },
   { key: "harga_asc", label: "Harga Jual ↓ Terendah", group: "harga" },
-  { key: "pajak", label: "Pajak (hanya barang pajak, Kode A - Z)", group: "pajak" },
+  { key: "pajak", label: "Pajak (hanya barang pajak, per Kategori lalu Kode A - Z)", group: "pajak" },
 ] as const;
 
 export const DEFAULT_SORTS: string[] = ["nama"];
@@ -29,13 +29,17 @@ const SHORT: Record<string, string> = {
 };
 
 export function sortLabel(sorts: string[]) {
-  return (sorts.length ? sorts : DEFAULT_SORTS).map((k) => SHORT[k] ?? k).join(" + ");
+  const list = sorts.length ? sorts : DEFAULT_SORTS;
+  // "Pajak" saja = otomatis per kategori dulu (lihat listProducts).
+  const shown = list.length === 1 && list[0] === "pajak" ? ["kategori", "pajak"] : list;
+  return shown.map((k) => SHORT[k] ?? k).join(" + ");
 }
 
 // Judul kelompok kategori di tabel hanya masuk akal kalau urutan utamanya per kategori.
 export function hideCategoryHeaders(sorts: string[], dupOnly = false) {
   if (dupOnly) return true;
-  const lead = sorts.find((k) => k !== "pajak") ?? (sorts.includes("pajak") ? "pajak" : "nama");
+  // "Pajak" saja tetap dikelompokkan per kategori, jadi judul kategori ditampilkan.
+  const lead = sorts.find((k) => k !== "pajak") ?? "kategori";
   return !["kategori", "nama", "nama_desc", "stok_desc", "stok_asc"].includes(lead);
 }
 

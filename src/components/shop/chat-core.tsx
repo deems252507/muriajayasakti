@@ -1,11 +1,11 @@
 import {
-  Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
+  Camera, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Mic, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, groupClearMessages, groupDeleteMessages,
+  chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, chatTyping, groupClearMessages, groupDeleteMessages,
 } from "@/lib/shop/api";
 import { EmojiPicker } from "./emoji-picker";
 import { MarkWords } from "./shell";
@@ -204,7 +204,16 @@ function flashEl(el: HTMLElement) {
 
 function threadSig(t: Thread) {
   const msgs = t.messages.map((m) => `${m.id}${m.deleted ? "d" : ""}${m.read ? "r" : ""}${m.pinned ? "p" : ""}${m.editedAt}${m.reactions.map((r) => `${r.emoji}${r.count}${r.mine ? "m" : ""}`).join("")}`).join(",");
-  return `${msgs}|${t.readers.map((r) => r.lastReadId).join(",")}|${t.hasMore}|${t.pins.map((p) => p.id).join(",")}`;
+  return `${msgs}|${t.readers.map((r) => r.lastReadId).join(",")}|${t.hasMore}|${t.pins.map((p) => p.id).join(",")}|${(t.typing ?? []).join(",")}`;
+}
+
+/** Teks "sedang mengetik..." seperti WhatsApp (pribadi: tanpa nama, grup: dengan nama). */
+export function typingLabel(names: string[], kind: ChatKind) {
+  if (!names.length) return "";
+  if (kind === "dm") return "sedang mengetik...";
+  if (names.length === 1) return `${names[0]} sedang mengetik...`;
+  if (names.length === 2) return `${names[0]} dan ${names[1]} sedang mengetik...`;
+  return `${names.length} orang sedang mengetik...`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -441,10 +450,14 @@ export function Conversation(props: {
   role: string;
   moderator: boolean;
   onRead: () => void;
+  /** Dipanggil saat daftar orang yang sedang mengetik berubah (untuk ditampilkan di judul chat). */
+  onTyping?: (names: string[]) => void;
 }) {
   const { kind, target, title, members, meUsername, role, moderator } = props;
   const onReadRef = useRef(props.onRead);
   onReadRef.current = props.onRead;
+  const onTypingRef = useRef(props.onTyping);
+  onTypingRef.current = props.onTyping;
 
   const [thread, setThread] = useState<Thread | null>(null);
   const winRef = useRef<Win>({ limit: PAGE, since: 0 });
@@ -490,6 +503,35 @@ export function Conversation(props: {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const docInput = useRef<HTMLInputElement>(null);
+  const camInput = useRef<HTMLInputElement>(null);
+  // Ada isi yang bisa dikirim? (menentukan tombol mikrofon ↔ kirim, seperti WhatsApp)
+  const hasDraft = text.trim().length > 0;
+  const canSend = hasDraft || attachments.length > 0 || Boolean(share) || Boolean(editing && (editing.file || editing.share));
+  const showMic = !canSend && !editing;
+  // Kirim sinyal "sedang mengetik" ke server (paling sering tiap 3 detik), dan "berhenti" saat kolom dikosongkan.
+  const typingSent = useRef(0);
+  const pingTyping = useCallback((value: string) => {
+    const on = value.trim().length > 0;
+    if (on) {
+      if (Date.now() - typingSent.current < 3000) return;
+      typingSent.current = Date.now();
+      void chatTyping({ data: { kind, target, on: true } }).catch(() => undefined);
+    } else if (typingSent.current) {
+      typingSent.current = 0;
+      void chatTyping({ data: { kind, target, on: false } }).catch(() => undefined);
+    }
+  }, [kind, target]);
+  // Keluar dari percakapan saat masih mengetik: hapus status mengetik.
+  useEffect(() => () => {
+    if (typingSent.current) void chatTyping({ data: { kind, target, on: false } }).catch(() => undefined);
+  }, [kind, target]);
+  // Tinggi kolom ketik ikut isi (maks ±6 baris) dan kembali 1 baris setelah terkirim, seperti WhatsApp.
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = text ? `${Math.min(el.scrollHeight, 128)}px` : "";
+  }, [text]);
   const nearBottom = useRef(true);
   const initDone = useRef(false);
   const edge = useRef({ first: 0, last: 0 });
@@ -499,6 +541,15 @@ export function Conversation(props: {
   const messages = thread?.messages ?? [];
   const pins = thread?.pins ?? [];
   const readers = thread?.readers ?? [];
+  const typing = thread?.typing ?? [];
+  const typingKey = typing.join(",");
+  useEffect(() => {
+    onTypingRef.current?.(typingKey ? typingKey.split(",") : []);
+    // Gelembung "mengetik" muncul di bawah: ikut gulir kalau sedang di bawah.
+    const el = listRef.current;
+    if (typingKey && el && nearBottom.current) el.scrollTop = el.scrollHeight;
+  }, [typingKey]);
+  useEffect(() => () => onTypingRef.current?.([]), []);
   const names = kind === "group" ? members.map((x) => x.name) : [];
 
   const load = useCallback((force = false, w?: Win) => {
@@ -810,6 +861,7 @@ export function Conversation(props: {
         if (list.length > 1) setProgress(`${sent}/${list.length}`);
       }
       setText("");
+      typingSent.current = 0; // server sudah menghapus status mengetik saat pesan masuk
       setReplyTo(null);
       setAttachments([]);
       setShare(null);
@@ -947,6 +999,16 @@ export function Conversation(props: {
               </div>
             );
           })}
+          {typing.length > 0 ? (
+            <div className="flex justify-start pt-1" aria-live="polite">
+              <div className="flex items-center gap-2 rounded-2xl rounded-tl-none bg-white px-3 py-2 shadow-sm">
+                {kind === "group" ? <span className="max-w-40 truncate text-[11px] font-semibold text-[#00a884]">{typing.length === 1 ? typing[0] : `${typing.length} orang`}</span> : null}
+                <span className="flex items-center gap-1" aria-label={typingLabel(typing, kind)}>
+                  {[0, 1, 2].map((d) => <span key={d} className="size-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${d * 150}ms`, animationDuration: "900ms" }} />)}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
         {!searchOpen && !sel.active ? (
           <div className="absolute right-3 top-2 z-10 flex gap-2">
@@ -1021,44 +1083,78 @@ export function Conversation(props: {
             {mentionList.map((x) => <li key={x.username}><button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => pickMention(x)}>@{x.name}</button></li>)}
           </ul>
         ) : null}
-        <form className="flex items-end gap-2 p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-          {!editing ? (
-            <div className="relative">
-              <button type="button" className="grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-white" aria-label="Lampirkan" onClick={() => { setMenu((v) => !v); setEmojiOpen(false); }}><Paperclip className="size-4" /></button>
-              {menu ? (
-                <div className="absolute bottom-12 left-0 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); imgInput.current?.click(); }}><ImageIcon className="size-4" />Foto / kamera (bisa banyak)</button>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); docInput.current?.click(); }}><FileText className="size-4" />Dokumen (PDF, Word, Excel)</button>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("barang"); }}><Package className="size-4" />Bagikan barang</button>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("transaksi"); }}><Receipt className="size-4" />Bagikan transaksi</button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <button type="button" className={`grid size-11 shrink-0 place-items-center rounded-xl border border-line ${emojiOpen ? "bg-blue-100" : "bg-white"}`} aria-label="Emoji" title="Emoji" onClick={() => { setEmojiOpen((v) => !v); setMenu(false); }}><Smile className="size-5" /></button>
-          <textarea
-            ref={taRef}
-            className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-accent"
-            rows={1}
-            maxLength={2000}
-            placeholder={`Tulis pesan ${kind === "group" ? "ke" : "untuk"} ${title || "grup"}...`}
-            value={text}
-            onChange={(e) => { setText(e.target.value); updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
-            onPaste={(e) => {
-              if (editing) return;
-              const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
-              if (imgs.length) { e.preventDefault(); void attachFiles(imgs); }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (mentionList.length > 0) pickMention(mentionList[0]);
-                else void send();
-              }
-            }}
-          />
-          <button type="submit" disabled={sending || attaching || (!text.trim() && attachments.length === 0 && !share && !(editing && (editing.file || editing.share)))} className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-white disabled:opacity-50" aria-label="Kirim"><Send className="size-4" /></button>
+        <form className="flex items-end gap-1.5 bg-[#f0f2f5] px-2 py-2" onSubmit={(e) => { e.preventDefault(); if (canSend) void send(); }}>
+          {/* Kolom ketik bergaya WhatsApp: emoji di kiri, lampiran & kamera di kanan (di dalam "pil"). */}
+          <div className="relative flex min-h-11 flex-1 items-end rounded-3xl bg-white shadow-sm">
+            <button type="button" className={`grid size-11 shrink-0 place-items-center rounded-full transition-colors ${emojiOpen ? "text-[#00a884]" : "text-slate-500 hover:text-slate-700"}`} aria-label="Emoji" title="Emoji" onClick={() => { setEmojiOpen((v) => !v); setMenu(false); }}><Smile className="size-6" /></button>
+            <textarea
+              ref={taRef}
+              className="max-h-32 min-h-11 flex-1 resize-none bg-transparent py-3 pr-1 text-[15px] leading-5 outline-none placeholder:text-slate-400"
+              rows={1}
+              maxLength={2000}
+              placeholder="Ketik pesan"
+              title={`Tulis pesan ${kind === "group" ? "ke" : "untuk"} ${title || "grup"}`}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                if (!editing) pingTyping(e.target.value);
+              }}
+              onPaste={(e) => {
+                if (editing) return;
+                const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+                if (imgs.length) { e.preventDefault(); void attachFiles(imgs); }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (mentionList.length > 0) pickMention(mentionList[0]);
+                  else if (canSend) void send();
+                }
+              }}
+            />
+            {!editing ? (
+              <div className="relative flex shrink-0 items-center pr-1">
+                <button type="button" className="grid size-10 place-items-center rounded-full text-slate-500 hover:text-slate-700" aria-label="Lampirkan" title="Lampirkan" onClick={() => { setMenu((v) => !v); setEmojiOpen(false); }}><Paperclip className="size-5" /></button>
+                {/* Kamera hilang saat mulai mengetik, persis seperti WhatsApp. */}
+                <button
+                  type="button"
+                  className={`grid place-items-center overflow-hidden rounded-full text-slate-500 transition-all duration-200 hover:text-slate-700 ${hasDraft ? "size-0 opacity-0" : "size-10 opacity-100"}`}
+                  aria-label="Kamera"
+                  title="Kamera"
+                  tabIndex={hasDraft ? -1 : 0}
+                  onClick={() => { setMenu(false); setEmojiOpen(false); camInput.current?.click(); }}
+                ><Camera className="size-5" /></button>
+                {menu ? (
+                  <div className="absolute bottom-12 right-0 z-30 w-60 rounded-xl border border-line bg-white p-1 shadow-lg">
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); imgInput.current?.click(); }}><ImageIcon className="size-4" />Foto dari galeri (bisa banyak)</button>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); camInput.current?.click(); }}><Camera className="size-4" />Kamera</button>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); docInput.current?.click(); }}><FileText className="size-4" />Dokumen (PDF, Word, Excel)</button>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("barang"); }}><Package className="size-4" />Bagikan barang</button>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => { setMenu(false); setShareModal("transaksi"); }}><Receipt className="size-4" />Bagikan transaksi</button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          {/* Tombol bulat hijau: mikrofon saat kosong, berubah jadi Kirim (dengan animasi) saat ada isi. */}
+          <button
+            type={showMic ? "button" : "submit"}
+            disabled={sending || attaching || (Boolean(editing) && !canSend)}
+            onClick={!showMic ? undefined : () => { toast("Pesan suara belum tersedia. Ketik pesan untuk mengirim."); taRef.current?.focus(); }}
+            className="relative grid size-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm transition-transform duration-150 hover:bg-[#008f72] active:scale-90 disabled:opacity-60"
+            aria-label={showMic ? "Pesan suara" : editing ? "Simpan" : "Kirim"}
+            title={showMic ? "Pesan suara" : editing ? "Simpan" : "Kirim"}
+          >
+            <Mic className={`absolute size-5 transition-all duration-200 ${showMic ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-0 opacity-0"}`} />
+            {editing ? (
+              <Check className="absolute size-5" />
+            ) : (
+              <Send className={`absolute ml-0.5 size-5 transition-all duration-200 ${showMic ? "-rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
+            )}
+          </button>
         </form>
+        <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void attachFiles(fs); }} />
         <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void attachFiles(fs); }} />
         <input ref={docInput} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.pptx,.csv,.txt" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; void attachFiles(fs); }} />
       </div>

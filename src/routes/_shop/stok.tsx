@@ -166,7 +166,7 @@ function StokPage() {
                 dupOnly ? "Hanya barang kembar" : "",
                 `Urutan: ${sortLabel(sorts)}`,
               ].filter(Boolean).join(" · ");
-              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter });
+              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter, groupByKategori: !hideCategoryHeaders(sorts, dupOnly) });
             } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
         }}>Cetak PDF</button>
