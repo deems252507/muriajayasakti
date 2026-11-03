@@ -2,7 +2,7 @@ import {
   Camera, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Mic, MoreVertical, Pause, Play, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import {
   chatClear, chatDeleteMessages, chatEdit, chatFileGet, chatHideAll, chatHideMessages, chatPin, chatPost, chatReact, chatSearch, chatShareFind, chatThread, chatTyping, groupClearMessages, groupDeleteMessages,
@@ -223,13 +223,26 @@ export function typingLabel(names: string[], kind: ChatKind) {
 function ChatImage({ file, disabled, onOpen }: { file: { id: number; name: string }; disabled: boolean; onOpen: (src: string, name: string, id: number) => void }) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
+  const [near, setNear] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  // Foto hanya diunduh saat mendekati layar. Sebelumnya SEMUA foto (bisa 2,5 MB per foto) diunduh sekaligus
+  // saat chat dibuka, sehingga HP macet: chat tidak mau terbuka dan scroll tersendat.
   useEffect(() => {
+    const el = box.current;
+    if (near || !el) return;
+    if (typeof IntersectionObserver === "undefined") { setNear(true); return; }
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { setNear(true); io.disconnect(); } }, { rootMargin: "300px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+  useEffect(() => {
+    if (!near) return;
     let alive = true;
     getFile(file.id).then((f) => { if (alive) setSrc(f.dataUrl); }).catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [file.id]);
+  }, [file.id, near]);
   if (failed) return <p className="mb-1 text-xs italic opacity-70">Foto tidak bisa dimuat</p>;
-  if (!src) return <div className="mb-1 grid h-44 w-56 max-w-full place-items-center rounded-lg bg-black/10 text-xs opacity-70">Memuat foto...</div>;
+  if (!src) return <div ref={box} className="mb-1 grid h-44 w-56 max-w-full place-items-center rounded-lg bg-black/10 text-xs opacity-70">Memuat foto...</div>;
   return <img data-act="1" src={src} alt={file.name} className="mb-1 h-44 w-56 max-w-full rounded-lg object-cover" onClick={() => { if (!disabled) onOpen(src, file.name, file.id); }} />;
 }
 
@@ -442,11 +455,18 @@ function Bubble(p: BubbleProps) {
   const { m, kind, selecting, selected } = p;
   const timer = useRef<number | null>(null);
   const longFired = useRef(false);
+  const startAt = useRef<{ x: number; y: number } | null>(null);
   const cancel = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
-  const down = () => {
+  const down = (e: ReactPointerEvent) => {
     longFired.current = false;
     cancel();
+    startAt.current = { x: e.clientX, y: e.clientY };
     timer.current = window.setTimeout(() => { longFired.current = true; p.onToggle(); }, 450);
+  };
+  // Jari bergeser = sedang menggulir, bukan tekan-lama: batalkan agar bubble tidak ikut terpilih.
+  const move = (e: ReactPointerEvent) => {
+    const s0 = startAt.current;
+    if (s0 && timer.current !== null && Math.hypot(e.clientX - s0.x, e.clientY - s0.y) > 8) cancel();
   };
   const click = (e: ReactMouseEvent) => {
     if (longFired.current) { longFired.current = false; e.preventDefault(); return; }
@@ -466,6 +486,7 @@ function Bubble(p: BubbleProps) {
           role="button"
           onClick={click}
           onPointerDown={down}
+          onPointerMove={move}
           onPointerUp={cancel}
           onPointerLeave={cancel}
           onPointerCancel={cancel}
@@ -698,6 +719,10 @@ export function Conversation(props: {
   const edge = useRef({ first: 0, last: 0 });
   const anchor = useRef({ h: 0, t: 0 });
   const pendingJump = useRef(0);
+  // Pengguna sedang menyentuh/menggulir daftar: jangan tarik paksa ke bawah (itu yang bikin "tidak bisa scroll ke atas").
+  const touching = useRef(false);
+  const lastUserScroll = useRef(0);
+  const userBusy = () => touching.current || Date.now() - lastUserScroll.current < 700;
 
   const messages = thread?.messages ?? [];
   const pins = thread?.pins ?? [];
@@ -708,15 +733,24 @@ export function Conversation(props: {
     onTypingRef.current?.(typingKey ? typingKey.split(",") : []);
     // Gelembung "mengetik" muncul di bawah: ikut gulir kalau sedang di bawah.
     const el = listRef.current;
-    if (typingKey && el && nearBottom.current) el.scrollTop = el.scrollHeight;
+    if (typingKey && el && nearBottom.current && !userBusy()) el.scrollTop = el.scrollHeight;
   }, [typingKey]);
   useEffect(() => () => onTypingRef.current?.([]), []);
   const names = kind === "group" ? members.map((x) => x.name) : [];
 
+  const reqSeq = useRef(0);
+  const inflight = useRef(0);
+  const inflightAt = useRef(0);
   const load = useCallback((force = false, w?: Win) => {
     const cur = w ?? winRef.current;
+    const mySeq = ++reqSeq.current;
+    inflight.current += 1;
+    inflightAt.current = Date.now();
     void chatThread({ data: { kind, target, limit: cur.limit, since: cur.since } }).then((res) => {
       if (!alive.current) return;
+      // Respons dari permintaan lama (mis. polling yang berangkat sebelum "muat pesan lama") dibuang,
+      // kalau tidak daftar pesan menciut lagi dan posisi scroll melompat.
+      if (mySeq !== reqSeq.current) return;
       window.dispatchEvent(new Event("mjs-chat"));
       const sig = threadSig(res);
       if (!force && sig === sigRef.current) return;
@@ -727,13 +761,14 @@ export function Conversation(props: {
       }
       setThread(res);
       onReadRef.current();
-    }).catch(() => undefined);
+    }).catch(() => undefined).finally(() => { inflight.current = Math.max(0, inflight.current - 1); });
   }, [kind, target]);
 
   useEffect(() => {
     alive.current = true;
     load(true);
-    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 3000);
+    // Polling hanya jalan kalau tidak ada permintaan yang masih berjalan (jaringan lambat tidak menumpuk/saling membatalkan).
+    const timer = window.setInterval(() => { if (!document.hidden && (inflight.current === 0 || Date.now() - inflightAt.current > 12000)) load(); }, 3000);
     return () => { alive.current = false; window.clearInterval(timer); };
   }, [load]);
 
@@ -770,7 +805,7 @@ export function Conversation(props: {
       el.scrollTop = el.scrollHeight - anchor.current.h + anchor.current.t;
     } else if (last > prev.last) {
       const lastMsg = msgs[msgs.length - 1];
-      if (nearBottom.current || lastMsg?.mine) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      if (lastMsg?.mine || (nearBottom.current && !userBusy())) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       else setNewCount((c) => c + msgs.filter((x) => x.id > prev.last && !x.mine).length);
     }
     edge.current = { first, last };
@@ -784,10 +819,12 @@ export function Conversation(props: {
   function onScroll() {
     const el = listRef.current;
     if (!el) return;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     nearBottom.current = near;
     setAtBottom((prev) => (prev === near ? prev : near));
     if (near) setNewCount(0);
+    // Gulir sampai atas: muat pesan lama otomatis (tidak perlu menekan tombol kecil).
+    if (el.scrollTop < 60 && thread?.hasMore && !loadingOlder && userBusy()) loadOlder();
   }
 
   function scrollBottom() {
@@ -1130,7 +1167,16 @@ export function Conversation(props: {
       ) : null}
 
       <div className="relative min-h-0 flex-1 bg-slate-50">
-        <div ref={listRef} onScroll={onScroll} style={bgStyle(bg, bgOpt)} className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3">
+        <div
+          ref={listRef}
+          onScroll={onScroll}
+          onTouchStart={() => { touching.current = true; lastUserScroll.current = Date.now(); }}
+          onTouchEnd={() => { touching.current = false; lastUserScroll.current = Date.now(); }}
+          onTouchCancel={() => { touching.current = false; lastUserScroll.current = Date.now(); }}
+          onWheel={() => { lastUserScroll.current = Date.now(); }}
+          style={{ ...bgStyle(bg, bgOpt), touchAction: "pan-y", overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}
+          className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3"
+        >
           {thread?.hasMore ? <div className="py-1 text-center"><button type="button" disabled={loadingOlder} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-accent shadow-sm disabled:opacity-50" onClick={loadOlder}>{loadingOlder ? "Memuat..." : "Muat pesan lebih lama"}</button></div> : null}
           {thread && messages.length === 0 ? <p className="py-10 text-center text-sm text-muted">{kind === "group" ? "Belum ada pesan di grup ini." : `Belum ada pesan. Tulis pesan pertama untuk ${title}.`}</p> : null}
           {thread === null ? <p className="py-10 text-center text-sm text-muted">Memuat...</p> : null}

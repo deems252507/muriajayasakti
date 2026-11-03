@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft, MessageSquarePlus, MoreVertical, Plus, Search, Trash2, Users, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Conversation, typingLabel } from "@/components/shop/chat-core";
 import { PushToggle } from "@/components/shop/push-toggle";
 import { PresenceAvatar, SeenLabel } from "@/components/shop/presence";
@@ -26,9 +26,15 @@ function ChatPage() {
   const groupId = active.startsWith("g:") ? Number(active.slice(2)) || 0 : 0;
   const dm = groupId ? "" : active;
 
+  // Waktu data terakhir dimuat vs waktu chat dipilih: chat yang baru saja dibuka tidak boleh langsung
+  // ditutup oleh data lama (belum lengkap) yang kebetulan baru selesai dimuat.
+  const contactsAt = useRef(0);
+  const groupsAt = useRef(0);
+  const activeAt = useRef(0);
+
   const loadContacts = useCallback(() => {
-    void chatContacts().then(setContacts).catch(() => undefined);
-    void groupList().then(setGroups).catch(() => undefined);
+    void chatContacts().then((rows) => { contactsAt.current = Date.now(); setContacts(rows); }).catch(() => undefined);
+    void groupList().then((rows) => { groupsAt.current = Date.now(); setGroups(rows); }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -38,6 +44,7 @@ function ChatPage() {
   }, [loadContacts]);
 
   useEffect(() => {
+    activeAt.current = Date.now();
     try { sessionStorage.setItem("mjs-chat-with", active); } catch { /* abaikan */ }
   }, [active]);
 
@@ -59,8 +66,8 @@ function ChatPage() {
 
   const current = contacts?.find((c) => c.username === dm) ?? null;
   // Staff yang dipilih tapi sudah tidak aktif / tidak ada: kembali ke daftar.
-  useEffect(() => { if (contacts && dm && !current) setActive(""); }, [contacts, dm, current]);
-  useEffect(() => { if (groups && groupId && !groups.some((g) => g.id === groupId)) setActive(""); }, [groups, groupId]);
+  useEffect(() => { if (contacts && dm && !current && contactsAt.current > activeAt.current) setActive(""); }, [contacts, dm, current]);
+  useEffect(() => { if (groups && groupId && !groups.some((g) => g.id === groupId) && groupsAt.current > activeAt.current) setActive(""); }, [groups, groupId]);
   const backToList = useCallback(() => setActive(""), []);
   const afterGroupDeleted = useCallback(() => { setActive(""); loadContacts(); }, [loadContacts]);
 
@@ -111,7 +118,7 @@ function ChatPage() {
             <PushToggle />
             <input className="mt-2 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent" placeholder="Cari nama staff" value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
-          <ul className="min-h-0 flex-1 overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto" style={{ touchAction: "pan-y", overscrollBehaviorY: "contain" }}>
             <li className="flex items-center justify-between bg-slate-100 px-3 py-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Grup khusus</span>
               {canMakeGroup ? <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md bg-accent px-2 text-[11px] font-bold text-white" onClick={() => setCreating(true)}><Plus className="size-3" />Grup</button> : null}

@@ -275,6 +275,16 @@ button.qty-btn {
 .chat-scope video {
   max-width: 100%;
 }
+/* Gelembung pesan memakai role="button". Efek tekan global (mengecil + bayangan 999px) membuat gelembung
+   berkedip dan berat setiap kali jari menyentuhnya untuk menggulir, jadi dimatikan khusus di area chat. */
+.chat-scope [role="button"] {
+  transition: none;
+}
+.chat-scope [role="button"]:active,
+.chat-scope [role="button"]:hover {
+  transform: none;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
 
 /* iPhone otomatis memperbesar (zoom) halaman saat mengetik di kolom berfont < 16px,
    sehingga tampilan bergeser/terpotong. Paksa 16px di layar kecil. */
