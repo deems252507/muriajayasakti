@@ -263,6 +263,12 @@ button.qty-btn {
   }
 }
 
+/* HP, percakapan terbuka: tinggi mengikuti kotak layar penuh (lihat chat.tsx), bukan rumus layar - header. */
+.chat-shell.chat-full {
+  height: 100%;
+  min-height: 0;
+}
+
 /* Teks/lampiran panjang tidak boleh melebarkan atau terpotong */
 .chat-scope {
   overscroll-behavior: contain;

@@ -64,6 +64,35 @@ function ChatPage() {
     return () => window.removeEventListener("mjs-open-chat", onOpen);
   }, []);
 
+  // HP: saat percakapan terbuka, chat memenuhi layar yang BENAR-BENAR terlihat (di atas keyboard), seperti WhatsApp.
+  // Sebelumnya tinggi chat dihitung dari tinggi layar dikurangi header, padahal header ikut tergulir keluar saat keyboard
+  // muncul, sehingga kolom ketik melayang jauh di atas keyboard.
+  const [full, setFull] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!active || typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) { setFull(null); return; }
+    const vv = window.visualViewport;
+    const sync = () => {
+      setFull({ top: Math.round(vv?.offsetTop ?? 0), height: Math.round(vv?.height ?? window.innerHeight) });
+      if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    };
+    sync();
+    const html = document.documentElement;
+    const prevOverflow = html.style.overflow;
+    html.style.overflow = "hidden";
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      html.style.overflow = prevOverflow;
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+      setFull(null);
+    };
+  }, [active]);
+
   const current = contacts?.find((c) => c.username === dm) ?? null;
   // Staff yang dipilih tapi sudah tidak aktif / tidak ada: kembali ke daftar.
   useEffect(() => { if (contacts && dm && !current && contactsAt.current > activeAt.current) setActive(""); }, [contacts, dm, current]);
@@ -106,8 +135,11 @@ function ChatPage() {
   const shown = (contacts ?? []).filter((c) => (c.lastAt || c.unread > 0 || c.username === dm) && (!filter.trim() || `${c.name} ${c.role} ${c.username}`.toLowerCase().includes(filter.trim().toLowerCase())));
 
   return (
-    <section className="chat-scope overflow-hidden rounded-2xl border border-white/80 bg-panel shadow-[0_8px_30px_rgba(15,23,42,0.05)]">
-      <div className="chat-shell grid grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)]">
+    <section
+      className={`chat-scope overflow-hidden bg-panel ${full ? "" : "rounded-2xl border border-white/80 shadow-[0_8px_30px_rgba(15,23,42,0.05)]"}`}
+      style={full ? { position: "fixed", left: 0, right: 0, top: full.top, height: full.height, zIndex: 40 } : undefined}
+    >
+      <div className={`chat-shell ${full ? "chat-full" : ""} grid grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)]`}>
         <aside className={`min-h-0 min-w-0 flex-col border-r border-line ${active ? "hidden md:flex" : "flex"}`}>
           <div className="border-b border-line p-3">
             <div className="flex items-center justify-between gap-2">
