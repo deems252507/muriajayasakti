@@ -1,5 +1,5 @@
 import {
-  Camera, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Mic, MoreVertical, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
+  Camera, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Mic, MoreVertical, Pause, Play, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
@@ -233,6 +233,89 @@ function ChatImage({ file, disabled, onOpen }: { file: { id: number; name: strin
   return <img data-act="1" src={src} alt={file.name} className="mb-1 h-44 w-56 max-w-full rounded-lg object-cover" onClick={() => { if (!disabled) onOpen(src, file.name, file.id); }} />;
 }
 
+/* ---------- Pesan suara ---------- */
+
+/** Durasi disimpan di nama file ("pesan-suara-12s.webm") karena rekaman browser sering tidak punya info durasi. */
+const voiceSecs = (name: string) => Number(/-(\d+)s\.[a-z0-9]+$/i.exec(name)?.[1] ?? 0);
+const clock = (secs: number) => { const s = Math.max(0, Math.floor(secs)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+let playingVoice: HTMLAudioElement | null = null; // hanya satu pesan suara yang diputar sekaligus
+
+function VoiceNote({ file, mine, disabled }: { file: { id: number; name: string }; mine: boolean; disabled: boolean }) {
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const url = useRef("");
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [dur, setDur] = useState(() => voiceSecs(file.name));
+  useEffect(() => () => {
+    audio.current?.pause();
+    if (url.current) URL.revokeObjectURL(url.current);
+  }, []);
+
+  async function toggle() {
+    if (disabled || loading) return;
+    let a = audio.current;
+    if (!a) {
+      setLoading(true);
+      try {
+        const f = await getFile(file.id);
+        const blob = await (await fetch(f.dataUrl)).blob();
+        url.current = URL.createObjectURL(blob);
+        a = new Audio(url.current);
+        a.preload = "auto";
+        a.ontimeupdate = () => setPos(a!.currentTime);
+        a.onloadedmetadata = () => { if (Number.isFinite(a!.duration) && a!.duration > 0) setDur(a!.duration); };
+        a.onplay = () => setPlaying(true);
+        a.onpause = () => setPlaying(false);
+        a.onended = () => { setPlaying(false); setPos(0); };
+        audio.current = a;
+      } catch {
+        toast.error("Gagal memuat pesan suara");
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (a.paused) {
+      if (playingVoice && playingVoice !== a) playingVoice.pause();
+      playingVoice = a;
+      a.play().catch(() => toast.error("Pesan suara ini tidak bisa diputar di perangkat ini."));
+    } else a.pause();
+  }
+
+  const total = dur || 0;
+  const pct = total ? Math.min(100, (pos / total) * 100) : 0;
+  return (
+    <div data-act="1" className="mb-1 flex w-60 max-w-full items-center gap-2 py-0.5">
+      <button
+        type="button"
+        aria-label={playing ? "Jeda" : "Putar pesan suara"}
+        className={`grid size-9 shrink-0 place-items-center rounded-full ${mine ? "bg-white/20 text-white" : "bg-[#00a884] text-white"} ${loading ? "opacity-60" : ""}`}
+        onClick={(e) => { e.stopPropagation(); void toggle(); }}
+      >
+        {playing ? <Pause className="size-4" fill="currentColor" /> : <Play className="ml-0.5 size-4" fill="currentColor" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div
+          className={`relative h-1.5 cursor-pointer rounded-full ${mine ? "bg-white/30" : "bg-slate-200"}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            const a = audio.current;
+            if (!a || !total) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            a.currentTime = Math.max(0, Math.min(total, ((e.clientX - r.left) / r.width) * total));
+            setPos(a.currentTime);
+          }}
+        >
+          <div className={`absolute inset-y-0 left-0 rounded-full ${mine ? "bg-white" : "bg-[#00a884]"}`} style={{ width: `${pct}%` }} />
+          <div className={`absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ${mine ? "bg-white" : "bg-[#00a884]"}`} style={{ left: `${pct}%` }} />
+        </div>
+        <p className={`mt-1 text-[10px] ${mine ? "text-white/80" : "text-muted"}`}>🎤 {clock(playing || pos ? pos : total)}{total && (playing || pos) ? ` / ${clock(total)}` : ""}</p>
+      </div>
+    </div>
+  );
+}
+
 function FileCard({ file, mine, disabled }: { file: { id: number; name: string; size: number }; mine: boolean; disabled: boolean }) {
   return (
     <button type="button" data-act="1" className={`mb-1 flex w-56 max-w-full items-center gap-2 rounded-lg p-2 text-left ${mine ? "bg-white/15" : "bg-slate-100"}`} onClick={() => { if (!disabled) void downloadFile(file.id); }}>
@@ -371,6 +454,7 @@ function Bubble(p: BubbleProps) {
     if (selecting || !inner) { e.preventDefault(); p.onToggle(); }
   };
   const isImage = Boolean(m.file && m.file.mime.startsWith("image/"));
+  const isAudio = Boolean(m.file && m.file.mime.startsWith("audio/"));
   const readCount = p.readers.filter((r) => r.lastReadId >= m.id).length;
   const tone = m.mine ? "text-white/70" : "text-muted";
 
@@ -403,7 +487,8 @@ function Bubble(p: BubbleProps) {
                 </button>
               ) : null}
               {m.file && isImage ? <ChatImage file={m.file} disabled={selecting} onOpen={p.onOpenImage} /> : null}
-              {m.file && !isImage ? <FileCard file={m.file} mine={m.mine} disabled={selecting} /> : null}
+              {m.file && isAudio ? <VoiceNote file={m.file} mine={m.mine} disabled={selecting} /> : null}
+              {m.file && !isImage && !isAudio ? <FileCard file={m.file} mine={m.mine} disabled={selecting} /> : null}
               {m.share ? <ShareCard share={m.share} mine={m.mine} role={p.role} disabled={selecting} /> : null}
               {!m.auto && m.body ? <p className="whitespace-pre-wrap break-words">{renderRich(m.body, p.names)}</p> : null}
             </>
@@ -508,6 +593,82 @@ export function Conversation(props: {
   const hasDraft = text.trim().length > 0;
   const canSend = hasDraft || attachments.length > 0 || Boolean(share) || Boolean(editing && (editing.file || editing.share));
   const showMic = !canSend && !editing;
+
+  /* ---------- rekam pesan suara (seperti WhatsApp) ---------- */
+  const [rec, setRec] = useState<{ secs: number } | null>(null);
+  const recRef = useRef<{ mr: MediaRecorder; stream: MediaStream; chunks: Blob[]; start: number; cancel: boolean; timer: number } | null>(null);
+  const VOICE_MAX = 180; // detik
+
+  async function startRecording() {
+    if (rec || sending) return;
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast.error("Perangkat/browser ini tidak mendukung rekam suara. Coba Chrome atau Safari terbaru.");
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      toast.error("Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini di pengaturan browser.");
+      return;
+    }
+    const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported?.(t));
+    const mr = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : undefined);
+    const state = { mr, stream, chunks: [] as Blob[], start: Date.now(), cancel: false, timer: 0 };
+    mr.ondataavailable = (e) => { if (e.data.size) state.chunks.push(e.data); };
+    mr.onstop = () => {
+      window.clearInterval(state.timer);
+      stream.getTracks().forEach((t) => t.stop());
+      recRef.current = null;
+      setRec(null);
+      if (state.cancel) return;
+      const secs = Math.max(1, Math.round((Date.now() - state.start) / 1000));
+      const blob = new Blob(state.chunks, { type: mr.mimeType || type || "audio/webm" });
+      void sendVoice(blob, secs);
+    };
+    state.timer = window.setInterval(() => {
+      const secs = Math.floor((Date.now() - state.start) / 1000);
+      setRec({ secs });
+      if (secs >= VOICE_MAX) { toast("Batas rekaman 3 menit, pesan suara dikirim."); mr.stop(); }
+    }, 250);
+    recRef.current = state;
+    mr.start(250);
+    setRec({ secs: 0 });
+    setMenu(false);
+    setEmojiOpen(false);
+    navigator.vibrate?.(30);
+  }
+
+  function stopRecording(cancel: boolean) {
+    const r = recRef.current;
+    if (!r) return;
+    if (!cancel && Date.now() - r.start < 800) { cancel = true; toast("Tahan lebih lama — rekaman terlalu singkat."); }
+    r.cancel = cancel;
+    if (r.mr.state !== "inactive") r.mr.stop(); else r.mr.onstop?.(new Event("stop"));
+  }
+
+  async function sendVoice(blob: Blob, secs: number) {
+    if (!blob.size) { toast.error("Rekaman kosong. Coba lagi."); return; }
+    if (blob.size > MAX_FILE) { toast.error("Rekaman terlalu besar."); return; }
+    const mime = (blob.type.split(";")[0] || "audio/webm").toLowerCase();
+    const ext = mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("mpeg") ? "mp3" : "webm";
+    const sendMime = ext === "m4a" ? "audio/mp4" : mime;
+    setSending(true);
+    try {
+      const raw = await fileToDataUrl(blob);
+      const data = `data:${sendMime};base64,${raw.slice(raw.indexOf(",") + 1)}`;
+      await chatPost({ data: { kind, target, body: "", replyTo: replyTo?.id ?? null, file: { name: `pesan-suara-${secs}s.${ext}`, data }, share: null } });
+      setReplyTo(null);
+      load(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal mengirim pesan suara");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Tinggalkan percakapan saat merekam: batalkan rekaman & matikan mikrofon.
+  useEffect(() => () => { const r = recRef.current; if (r) { r.cancel = true; if (r.mr.state !== "inactive") r.mr.stop(); r.stream.getTracks().forEach((t) => t.stop()); } }, []);
   // Kirim sinyal "sedang mengetik" ke server (paling sering tiap 3 detik), dan "berhenti" saat kolom dikosongkan.
   const typingSent = useRef(0);
   const pingTyping = useCallback((value: string) => {
@@ -1083,13 +1244,22 @@ export function Conversation(props: {
             {mentionList.map((x) => <li key={x.username}><button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-blue-50" onClick={() => pickMention(x)}>@{x.name}</button></li>)}
           </ul>
         ) : null}
-        <form className="flex items-end gap-1.5 bg-[#f0f2f5] px-2 py-2" onSubmit={(e) => { e.preventDefault(); if (canSend) void send(); }}>
-          {/* Kolom ketik bergaya WhatsApp: emoji di kiri, lampiran & kamera di kanan (di dalam "pil"). */}
-          <div className="relative flex min-h-11 flex-1 items-end rounded-3xl bg-white shadow-sm">
-            <button type="button" className={`grid size-11 shrink-0 place-items-center rounded-full transition-colors ${emojiOpen ? "text-[#00a884]" : "text-slate-500 hover:text-slate-700"}`} aria-label="Emoji" title="Emoji" onClick={() => { setEmojiOpen((v) => !v); setMenu(false); }}><Smile className="size-6" /></button>
+        <form className="flex w-full min-w-0 items-end gap-1.5 bg-[#f0f2f5] px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]" onSubmit={(e) => { e.preventDefault(); if (rec) stopRecording(false); else if (canSend) void send(); }}>
+          {rec ? (
+            /* Sedang merekam: tombol batal, titik merah berkedip, dan waktu rekaman — seperti WhatsApp. */
+            <div className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-3xl bg-white pr-3 shadow-sm">
+              <button type="button" className="grid size-11 shrink-0 place-items-center rounded-full text-red-500 hover:bg-red-50" aria-label="Batalkan rekaman" title="Batalkan" onClick={() => stopRecording(true)}><Trash2 className="size-5" /></button>
+              <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
+              <span className="text-[15px] font-semibold tabular-nums text-slate-800">{clock(rec.secs)}</span>
+              <span className="min-w-0 truncate text-xs text-muted">Merekam…</span>
+            </div>
+          ) : (
+          /* Kolom ketik bergaya WhatsApp: emoji di kiri, lampiran & kamera di kanan (di dalam "pil"). */
+          <div className="relative flex min-h-11 min-w-0 flex-1 items-end rounded-3xl bg-white shadow-sm">
+            <button type="button" className={`grid size-10 shrink-0 sm:size-11 place-items-center rounded-full transition-colors ${emojiOpen ? "text-[#00a884]" : "text-slate-500 hover:text-slate-700"}`} aria-label="Emoji" title="Emoji" onClick={() => { setEmojiOpen((v) => !v); setMenu(false); }}><Smile className="size-6" /></button>
             <textarea
               ref={taRef}
-              className="max-h-32 min-h-11 flex-1 resize-none bg-transparent py-3 pr-1 text-[15px] leading-5 outline-none placeholder:text-slate-400"
+              className="max-h-32 min-h-11 w-0 min-w-0 flex-1 resize-none bg-transparent py-3 pr-1 text-[15px] leading-5 outline-none placeholder:text-slate-400"
               rows={1}
               maxLength={2000}
               placeholder="Ketik pesan"
@@ -1114,12 +1284,12 @@ export function Conversation(props: {
               }}
             />
             {!editing ? (
-              <div className="relative flex shrink-0 items-center pr-1">
-                <button type="button" className="grid size-10 place-items-center rounded-full text-slate-500 hover:text-slate-700" aria-label="Lampirkan" title="Lampirkan" onClick={() => { setMenu((v) => !v); setEmojiOpen(false); }}><Paperclip className="size-5" /></button>
+              <div className="relative flex shrink-0 items-center pr-0.5 sm:pr-1">
+                <button type="button" className="grid size-9 place-items-center sm:size-10 rounded-full text-slate-500 hover:text-slate-700" aria-label="Lampirkan" title="Lampirkan" onClick={() => { setMenu((v) => !v); setEmojiOpen(false); }}><Paperclip className="size-5" /></button>
                 {/* Kamera hilang saat mulai mengetik, persis seperti WhatsApp. */}
                 <button
                   type="button"
-                  className={`grid place-items-center overflow-hidden rounded-full text-slate-500 transition-all duration-200 hover:text-slate-700 ${hasDraft ? "size-0 opacity-0" : "size-10 opacity-100"}`}
+                  className={`grid place-items-center overflow-hidden rounded-full text-slate-500 transition-all duration-200 hover:text-slate-700 ${hasDraft ? "size-0 opacity-0" : "size-9 opacity-100 sm:size-10"}`}
                   aria-label="Kamera"
                   title="Kamera"
                   tabIndex={hasDraft ? -1 : 0}
@@ -1137,20 +1307,21 @@ export function Conversation(props: {
               </div>
             ) : null}
           </div>
+          )}
           {/* Tombol bulat hijau: mikrofon saat kosong, berubah jadi Kirim (dengan animasi) saat ada isi. */}
           <button
-            type={showMic ? "button" : "submit"}
+            type={showMic && !rec ? "button" : "submit"}
             disabled={sending || attaching || (Boolean(editing) && !canSend)}
-            onClick={!showMic ? undefined : () => { toast("Pesan suara belum tersedia. Ketik pesan untuk mengirim."); taRef.current?.focus(); }}
+            onClick={showMic && !rec ? () => void startRecording() : undefined}
             className="relative grid size-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm transition-transform duration-150 hover:bg-[#008f72] active:scale-90 disabled:opacity-60"
-            aria-label={showMic ? "Pesan suara" : editing ? "Simpan" : "Kirim"}
-            title={showMic ? "Pesan suara" : editing ? "Simpan" : "Kirim"}
+            aria-label={rec ? "Kirim pesan suara" : showMic ? "Rekam pesan suara" : editing ? "Simpan" : "Kirim"}
+            title={rec ? "Kirim pesan suara" : showMic ? "Rekam pesan suara" : editing ? "Simpan" : "Kirim"}
           >
-            <Mic className={`absolute size-5 transition-all duration-200 ${showMic ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-0 opacity-0"}`} />
+            <Mic className={`absolute size-5 transition-all duration-200 ${showMic && !rec ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-0 opacity-0"}`} />
             {editing ? (
               <Check className="absolute size-5" />
             ) : (
-              <Send className={`absolute ml-0.5 size-5 transition-all duration-200 ${showMic ? "-rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
+              <Send className={`absolute ml-0.5 size-5 transition-all duration-200 ${showMic && !rec ? "-rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
             )}
           </button>
         </form>

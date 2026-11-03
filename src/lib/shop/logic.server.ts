@@ -2604,7 +2604,7 @@ type ChatScope = { kind: ChatKind; other: string; groupId: number };
 
 const CHAT_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const CHAT_FILE_MAX_BYTES = 2_500_000;
-const CHAT_ALLOWED_MIME = /^(image\/(jpeg|png|webp|gif)|application\/pdf|text\/(plain|csv)|application\/(msword|vnd\.ms-excel|vnd\.ms-powerpoint|zip)|application\/vnd\.openxmlformats-officedocument\.[a-z.\-]+)$/;
+const CHAT_ALLOWED_MIME = /^(image\/(jpeg|png|webp|gif)|audio\/(webm|ogg|mp4|mpeg|aac|x-m4a)|application\/pdf|text\/(plain|csv)|application\/(msword|vnd\.ms-excel|vnd\.ms-powerpoint|zip)|application\/vnd\.openxmlformats-officedocument\.[a-z.\-]+)$/;
 
 const asChatKind = (value: unknown): ChatKind => (value === "group" ? "group" : "dm");
 const chatTable = (kind: ChatKind) => (kind === "group" ? "chat_group_messages" : "chat_messages");
@@ -2869,7 +2869,7 @@ async function buildChatShare(db: ChatDb, share: { type?: unknown; ref?: unknown
 }
 
 const autoBodyFor = (file: { name: string; mime: string } | null, title: string) =>
-  file ? (file.mime.startsWith("image/") ? "📷 Foto" : `📎 ${file.name}`) : `🧾 ${title}`;
+  file ? (file.mime.startsWith("image/") ? "📷 Foto" : file.mime.startsWith("audio/") ? "🎤 Pesan suara" : `📎 ${file.name}`) : `🧾 ${title}`;
 
 /** Kirim pesan: teks, foto/file, balasan, atau data toko yang dibagikan. */
 export async function chatPost(data: {
