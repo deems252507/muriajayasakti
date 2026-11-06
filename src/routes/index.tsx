@@ -72,13 +72,13 @@ function LoginPage() {
         <div className="lg-splash-mark">
           <svg className="lg-splash-ring" viewBox="0 0 100 100">
             <defs>
-              <linearGradient id="lgGold" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#f5d98b" />
-                <stop offset="0.5" stopColor="#d4af37" />
-                <stop offset="1" stopColor="#8a6a12" />
+              <linearGradient id="lgRing" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#bfdbfe" />
+                <stop offset="0.5" stopColor="#60a5fa" />
+                <stop offset="1" stopColor="#1d4ed8" />
               </linearGradient>
             </defs>
-            <circle cx="50" cy="50" r="46" fill="none" stroke="url(#lgGold)" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="50" cy="50" r="46" fill="none" stroke="url(#lgRing)" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <img src={brand.logo} alt="" />
         </div>
@@ -156,8 +156,8 @@ function LoginPage() {
             }
             setError("");
             setPhase("busy");
-            // Minimal 0,9 detik supaya animasi loading sempat terlihat walau server cepat.
-            void Promise.all([login({ data: { username, password } }), sleep(900)])
+            // Minimal 0,4 detik supaya animasi loading sempat terlihat walau server cepat.
+            void Promise.all([login({ data: { username, password } }), sleep(400)])
               .then(async ([me]) => {
                 const role = me?.role === "Owner" ? "Owner" : me?.role === "Kasir" ? "Kasir" : "Admin";
                 sessionStorage.setItem("mjs-notice", `${role} masuk${me?.name ? ` · ${me.name}` : ""}`);
@@ -168,9 +168,9 @@ function LoginPage() {
                   /* abaikan */
                 }
                 setPhase("ok");
-                await sleep(750);
+                await sleep(350);
                 setLeaving(true);
-                await sleep(420);
+                await sleep(300);
                 await navigate({ to: "/dashboard" });
               })
               .catch((err: Error) => {
