@@ -485,7 +485,10 @@ export const shiftLedger = createServerFn({ method: "GET" })
   });
 
 export const listAudit = createServerFn({ method: "GET" })
-  .validator((input: { q?: string }) => ({ q: String(input?.q ?? "").trim() }))
+  .validator((input: { q?: string; noLogin?: boolean }) => ({
+    q: String(input?.q ?? "").trim(),
+    noLogin: Boolean(input?.noLogin),
+  }))
   .handler(async ({ data }) => {
     const { listAudit: run } = await import("./logic.server");
     return run(data);

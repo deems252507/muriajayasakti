@@ -190,6 +190,14 @@ export async function login(data: any) {
     );
     const row = rows[0];
     if (!row || !verifyPassword(data.password, String(row.password_hash))) {
+      const tried = String(data.username ?? "").trim().slice(0, 40) || "(kosong)";
+      try {
+        await db.query(`insert into audit_log (username, name, action) values ($1, $2, $3)`, [
+          tried,
+          row ? String(row.name) : tried,
+          row ? "Login gagal (password salah)" : "Login gagal (username tidak dikenal)",
+        ]);
+      } catch { /* pencatatan tidak boleh menghalangi respons login */ }
       throw new Error("Username atau password salah.");
     }
     if (row.status !== "Aktif") {
@@ -602,6 +610,12 @@ export async function saveProduct(data: any) {
     if (satuanAlt && isiSatuanAlt <= 0) throw new Error("Isi jumlah pcs di dalam 1 dus.");
     const hargaJualAlt = satuanAlt ? Number(data.hargaJualAlt) || 0 : 0;
     if (data.id) {
+      const before = (
+        await db.query<{ nama: string; stok: number; harga_beli: number; harga_jual: number; harga_jual_alt: number }>(
+          `select nama, stok, harga_beli, harga_jual, harga_jual_alt from products where id=$1`,
+          [data.id],
+        )
+      )[0];
       await db.query(
         `update products set
            part_number=$2, part_numbers_alt=$3, nama=$4, kategori=$5, merek=$6, satuan=$7,
@@ -628,7 +642,16 @@ export async function saveProduct(data: any) {
           data.keterangan ?? "",
         ],
       );
-      await audit(me, `Ubah barang ${data.nama.trim()}`);
+      const rp = (n: unknown) => `Rp${Number(n || 0).toLocaleString("id-ID")}`;
+      const changes: string[] = [];
+      if (before) {
+        if (Number(before.harga_jual) !== (Number(data.hargaJual) || 0)) changes.push(`harga jual ${rp(before.harga_jual)} → ${rp(data.hargaJual)}`);
+        if (Number(before.harga_beli) !== (Number(data.hargaBeli) || 0)) changes.push(`harga beli ${rp(before.harga_beli)} → ${rp(data.hargaBeli)}`);
+        if (Number(before.harga_jual_alt) !== hargaJualAlt) changes.push(`harga jual dus ${rp(before.harga_jual_alt)} → ${rp(hargaJualAlt)}`);
+        if (Number(before.stok) !== (Number(data.stok) || 0)) changes.push(`stok ${Number(before.stok)} → ${Number(data.stok) || 0}`);
+        if (String(before.nama).trim() !== data.nama.trim()) changes.push(`nama "${before.nama}" → "${data.nama.trim()}"`);
+      }
+      await audit(me, `Ubah barang ${data.nama.trim()}${changes.length ? ` — ${changes.join("; ")}` : ""}`);
       return { ok: true };
     }
     const kode = await nextKode(db);
@@ -672,8 +695,9 @@ export async function deleteProduct(data: any) {
       [data.id],
     );
     if (Number(used[0]?.n ?? 0) > 0) throw new Error("Barang sudah pernah ditransaksikan, tidak bisa dihapus.");
+    const gone = (await db.query<{ kode: string; nama: string }>(`select kode, nama from products where id = $1`, [data.id]))[0];
     await db.query(`delete from products where id = $1`, [data.id]);
-    await audit(me, `Hapus barang #${data.id}`);
+    await audit(me, gone ? `Hapus barang ${gone.kode} ${gone.nama}` : `Hapus barang #${data.id}`);
     return { ok: true };
   }
 
@@ -1920,12 +1944,14 @@ export async function listAudit(data: any): Promise<any> {
     if (me.role === "Kasir") throw new Error("Kasir tidak dapat membuka jejak aktivitas.");
     const db = await sql();
     const params: unknown[] = [];
-    let where = "true";
+    const conds: string[] = [];
     if (data.q) {
       params.push(`%${data.q}%`);
-      where = `(action ilike $1 or username ilike $1 or name ilike $1)`;
+      conds.push(`(action ilike $${params.length} or username ilike $${params.length} or name ilike $${params.length})`);
     }
-    return db.query(`select * from audit_log where ${where} order by ts desc limit 200`, params);
+    if (data.noLogin) conds.push(`action !~ '^(Admin|Owner|Kasir) masuk$'`);
+    const where = conds.length ? conds.join(" and ") : "true";
+    return db.query(`select * from audit_log where ${where} order by ts desc limit 1000`, params);
   }
 
 
