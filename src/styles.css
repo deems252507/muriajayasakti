@@ -512,8 +512,9 @@ button.btn-tight.lg-btn:disabled { opacity: 1; cursor: progress; }
 .lg-btn-spin, .lg-btn-check { display: none; flex: none; }
 .lg-btn-spin { width: 1.1rem; height: 1.1rem; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 999px; }
 .lg-btn[data-state="busy"] .lg-btn-spin { display: block; animation: lg-spin 0.8s linear infinite; }
-.lg-btn-check { width: 1.2rem; height: 1.2rem; }
-.lg-btn[data-state="ok"] .lg-btn-check { display: block; }
+.lg-btn-check { width: 1.3rem; height: 1.3rem; }
+button.btn-tight.lg-btn[data-state="ok"] { background: #16a34a; }
+.lg-btn[data-state="ok"] .lg-btn-check { display: block; animation: lg-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .lg-btn-check path { stroke-dasharray: 24; stroke-dashoffset: 24; }
 .lg-btn[data-state="ok"] .lg-btn-check path { animation: lg-draw 0.35s ease-out forwards; }
 @keyframes lg-spin { to { transform: rotate(360deg); } }
