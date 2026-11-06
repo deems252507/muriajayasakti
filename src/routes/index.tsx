@@ -29,12 +29,14 @@ function LoginPage() {
   const busy = phase !== "idle";
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
   const [brand, setBrand] = useState({ nama: "MURIA JAYA SAKTI", tagline: "Integrated Business System", logo: "/brand/logo.png" });
-  // Ingat username (password tidak pernah disimpan).
+  // Ingat username dan password di perangkat ini bila kotak "Ingat" dicentang.
   useEffect(() => {
     try {
       const saved = localStorage.getItem("mjs-login-user");
+      const savedPw = localStorage.getItem("mjs-login-pw");
       if (saved) {
         setUsername(saved);
+        if (savedPw) setPassword(savedPw);
         setRemember(true);
       }
     } catch {
@@ -162,8 +164,13 @@ function LoginPage() {
                 const role = me?.role === "Owner" ? "Owner" : me?.role === "Kasir" ? "Kasir" : "Admin";
                 sessionStorage.setItem("mjs-notice", `${role} masuk${me?.name ? ` · ${me.name}` : ""}`);
                 try {
-                  if (remember) localStorage.setItem("mjs-login-user", username.trim());
-                  else localStorage.removeItem("mjs-login-user");
+                  if (remember) {
+                    localStorage.setItem("mjs-login-user", username.trim());
+                    localStorage.setItem("mjs-login-pw", password);
+                  } else {
+                    localStorage.removeItem("mjs-login-user");
+                    localStorage.removeItem("mjs-login-pw");
+                  }
                 } catch {
                   /* abaikan */
                 }
@@ -212,7 +219,7 @@ function LoginPage() {
             <div style={{ "--d": "0.4s" } as CSSProperties} className="lg-item mt-4 flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 text-xs font-medium text-slate-600 select-none" style={{ cursor: "pointer" }}>
                 <input type="checkbox" className="size-4" style={{ accentColor: "#1d4ed8" }} checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                Ingat username saya
+                Ingat username dan password saya
               </label>
               <button type="button" className="btn-inline text-xs font-semibold text-accent" aria-expanded={forgot} onClick={() => setForgot((v) => !v)}>Lupa password?</button>
             </div>
