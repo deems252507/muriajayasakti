@@ -190,7 +190,7 @@ function LoginPage() {
         >
           <div className="w-full">
             <div className="lg-item mb-6 h-1 w-12 rounded-full bg-accent lg:hidden" />
-            <p className="mb-2 flex flex-wrap gap-x-[0.4em] text-lg font-extrabold tracking-wide lg:hidden" aria-label={brand.nama}><BrandName name={brand.nama} /></p>
+            <p className="lg-onlight mb-2 flex flex-wrap gap-x-[0.4em] text-lg font-extrabold tracking-wide lg:hidden" aria-label={brand.nama}><BrandName name={brand.nama} /></p>
             <h2 className="lg-item text-3xl font-bold tracking-tight">Masuk ke Sistem</h2>
             <p style={{ "--d": "0.08s" } as CSSProperties} className="lg-item mt-2 text-sm text-muted">Gunakan akun Anda untuk mengakses sistem manajemen operasional {brand.nama}.</p>
             <p style={{ "--d": "0.16s" } as CSSProperties} className="lg-item mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-accent">
