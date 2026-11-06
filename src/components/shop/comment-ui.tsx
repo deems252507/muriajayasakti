@@ -1,5 +1,5 @@
 import { useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
-import { Inbox, MessageSquare, X } from "lucide-react";
+import { MessageSquare, MessageSquareText, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -329,10 +329,10 @@ export function CommentHost({ unread }: { unread: number }) {
         type="button"
         title="Kotak komentar: tag untuk Anda dan riwayat komentar"
         aria-label="Kotak komentar"
-        className={`relative grid size-10 place-items-center rounded-xl border ${unread > 0 ? "mjs-attn border-violet-500 bg-violet-600 text-white" : "border-line bg-white text-muted"}`}
+        className={`relative grid size-10 place-items-center rounded-xl border transition-colors ${unread > 0 ? "mjs-attn border-violet-500 bg-violet-600 text-white" : "border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100"}`}
         onClick={() => setInbox(true)}
       >
-        <Inbox className="size-4" />
+        <MessageSquareText className="size-5" strokeWidth={1.9} />
         {unread > 0 ? <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-5 text-white">{unread > 99 ? "99+" : unread}</span> : null}
       </button>
       <CommentMenu />

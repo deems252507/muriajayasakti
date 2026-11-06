@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { toast } from "sonner";
 import { getMe, login, publicShop } from "@/lib/shop/api";
 
 // Versi tampil di bawah form login. Naikkan angka ini setiap ada pembaruan besar.
@@ -38,6 +39,18 @@ function LoginPage() {
         setUsername(saved);
         if (savedPw) setPassword(savedPw);
         setRemember(true);
+      }
+    } catch {
+      /* abaikan */
+    }
+  }, []);
+  // Pesan kecil setelah pengguna keluar dari aplikasi.
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem("mjs-logout-notice");
+      if (msg) {
+        sessionStorage.removeItem("mjs-logout-notice");
+        toast.success(msg, { duration: 3000 });
       }
     } catch {
       /* abaikan */
@@ -175,7 +188,7 @@ function LoginPage() {
                   /* abaikan */
                 }
                 setPhase("ok");
-                await sleep(350);
+                await sleep(500);
                 setLeaving(true);
                 await sleep(300);
                 await navigate({ to: "/dashboard" });
@@ -230,11 +243,13 @@ function LoginPage() {
             </div>
             <div style={{ "--d": "0.48s" } as CSSProperties} className={`lg-item ${shake ? "lg-shake" : ""}`}>
               <button className="btn-tight lg-btn text-white shadow-sm" data-state={phase} disabled={busy} aria-live="polite">
-                <span className="lg-btn-label">Masuk ke Sistem</span>
-                <span className="lg-btn-spin" aria-hidden="true" />
-                <svg className="lg-btn-check" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M5 12.5l4.5 4.5L19 7.5" />
-                </svg>
+                <span className="lg-btn-inner">
+                  <span className="lg-btn-spin" aria-hidden="true" />
+                  <svg className="lg-btn-check" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" />
+                  </svg>
+                  <span className="lg-btn-label">{phase === "busy" ? "Memverifikasi…" : phase === "ok" ? "Berhasil, membuka dashboard…" : "Masuk ke Sistem"}</span>
+                </span>
               </button>
             </div>
             <div style={{ "--d": "0.56s" } as CSSProperties} className="lg-item mt-8 text-center text-[11px] text-slate-400">

@@ -486,7 +486,7 @@ tbody tr:hover td {
 .lg-input { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
 .lg-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.14); }
 
-/* Tombol masuk: lebar penuh -> bulat (loading) -> centang */
+/* Tombol masuk: tetap selebar kolom; teks berganti Memverifikasi -> Berhasil, dengan spinner/centang kecil */
 button.btn-tight.lg-btn {
   position: relative;
   display: flex;
@@ -504,22 +504,18 @@ button.btn-tight.lg-btn {
   font-weight: 600;
   letter-spacing: 0;
   background: var(--color-accent);
-  transition: width 0.5s cubic-bezier(0.65, 0, 0.35, 1), border-radius 0.5s cubic-bezier(0.65, 0, 0.35, 1), background-color 0.3s ease, box-shadow 0.12s ease, transform 0.12s ease;
+  transition: background-color 0.3s ease, box-shadow 0.12s ease, transform 0.12s ease;
 }
 button.btn-tight.lg-btn:disabled { opacity: 1; cursor: progress; }
-button.btn-tight.lg-btn[data-state="busy"],
-button.btn-tight.lg-btn[data-state="ok"] { width: 3rem; border-radius: 999px; }
-button.btn-tight.lg-btn[data-state="ok"] { background: #059669; }
-.lg-btn-label { transition: opacity 0.2s ease, transform 0.3s ease; white-space: nowrap; }
-.lg-btn[data-state="busy"] .lg-btn-label,
-.lg-btn[data-state="ok"] .lg-btn-label { opacity: 0; transform: scale(0.6); }
-.lg-btn-spin, .lg-btn-check { position: absolute; inset: 0; margin: auto; opacity: 0; transition: opacity 0.25s ease 0.2s; }
-.lg-btn-spin { width: 1.4rem; height: 1.4rem; border: 2.5px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 999px; }
-.lg-btn[data-state="busy"] .lg-btn-spin { opacity: 1; animation: lg-spin 0.8s linear infinite; }
-.lg-btn-check { width: 1.5rem; height: 1.5rem; }
-.lg-btn[data-state="ok"] .lg-btn-check { opacity: 1; }
+.lg-btn-inner { display: inline-flex; align-items: center; gap: 0.6rem; }
+.lg-btn-label { white-space: nowrap; }
+.lg-btn-spin, .lg-btn-check { display: none; flex: none; }
+.lg-btn-spin { width: 1.1rem; height: 1.1rem; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 999px; }
+.lg-btn[data-state="busy"] .lg-btn-spin { display: block; animation: lg-spin 0.8s linear infinite; }
+.lg-btn-check { width: 1.2rem; height: 1.2rem; }
+.lg-btn[data-state="ok"] .lg-btn-check { display: block; }
 .lg-btn-check path { stroke-dasharray: 24; stroke-dashoffset: 24; }
-.lg-btn[data-state="ok"] .lg-btn-check path { animation: lg-draw 0.4s ease-out 0.15s forwards; }
+.lg-btn[data-state="ok"] .lg-btn-check path { animation: lg-draw 0.35s ease-out forwards; }
 @keyframes lg-spin { to { transform: rotate(360deg); } }
 @keyframes lg-draw { to { stroke-dashoffset: 0; } }
 .lg-shake { animation: lg-shake 0.45s ease-in-out; }

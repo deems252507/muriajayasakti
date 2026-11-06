@@ -29,6 +29,7 @@ import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
 import { PresenceButton } from "@/components/shop/presence";
+import { LogoutDialog } from "@/components/shop/logout-dialog";
 import type { Staff } from "@/lib/shop/types";
 
 const ADMIN = [
@@ -211,6 +212,8 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
   const [tagBadge, setTagBadge] = useState(0);
+  const [askLogout, setAskLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const pathRef = useRef(path);
   pathRef.current = path;
   useEffect(() => {
@@ -440,13 +443,9 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 key={`chat-${chatBadge > 0 ? "n" : "0"}`}
                 title="Chat Staff"
                 aria-label={chatBadge > 0 ? `Chat Staff, ${chatBadge} pesan belum dibaca` : "Chat Staff"}
-                className={`relative grid size-10 place-items-center rounded-xl border ${chatBadge > 0 ? "mjs-attn-green border-emerald-500 bg-emerald-500 text-white" : path === "/chat" ? "border-emerald-500 bg-emerald-50 text-emerald-600" : "border-line bg-white text-emerald-600"}`}
+                className={`relative grid size-10 place-items-center rounded-xl transition-transform hover:scale-105 ${chatBadge > 0 ? "mjs-attn-green" : ""} ${path === "/chat" ? "ring-2 ring-emerald-500 ring-offset-2" : ""}`}
               >
-                {/* Ikon gelembung chat + telepon, gaya aplikasi chat hijau */}
-                <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-                  <g transform="translate(6.4 6.4) scale(0.5)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" fill="currentColor" strokeWidth="1" /></g>
-                </svg>
+                <img src="/brand/whatsapp.png" alt="" width="40" height="40" className="size-10 rounded-xl" draggable={false} />
                 {chatBadge > 0 ? <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
               </Link>
               {me.role === "Admin" ? <CommentHost unread={tagBadge} /> : null}
@@ -466,13 +465,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
               </div>
               <button
                 className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-medium text-danger"
-                onClick={() => {
-                  if (!confirm("Yakin keluar dari aplikasi?")) return;
-                  void disablePush().catch(() => undefined).then(() => logout()).then(() => {
-                    clearPersistedState();
-                    window.location.href = "/";
-                  });
-                }}
+                onClick={() => setAskLogout(true)}
               >
                 <LogOut className="size-4" />
                 <span className="hidden sm:inline">Keluar</span>
@@ -480,6 +473,29 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
             </div>
           </div>
         </header>
+        {askLogout ? (
+          <LogoutDialog
+            name={me.name}
+            role={me.role}
+            busy={loggingOut}
+            onCancel={() => setAskLogout(false)}
+            onConfirm={() => {
+              setLoggingOut(true);
+              void disablePush()
+                .catch(() => undefined)
+                .then(() => logout())
+                .then(() => {
+                  clearPersistedState();
+                  try { sessionStorage.setItem("mjs-logout-notice", "Anda telah keluar"); } catch { /* abaikan */ }
+                  window.location.href = "/";
+                })
+                .catch(() => {
+                  setLoggingOut(false);
+                  toast.error("Gagal keluar. Coba lagi.");
+                });
+            }}
+          />
+        ) : null}
         <main className="px-3 py-4 md:px-6 md:py-5">
           {me.role === "Admin" && ["/barang", "/stok", "/riwayat", "/bon", "/mitra", "/pemasok", "/retur", "/kas"].includes(path) ? (
             <p className="no-print mb-3 text-[11px] text-slate-500">💬 Mau memberi catatan atau men-tag Admin lain? Klik kanan baris (di HP: tekan lama baris), lalu pilih Komentar.</p>
