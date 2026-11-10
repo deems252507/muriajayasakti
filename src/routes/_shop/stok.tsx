@@ -10,7 +10,8 @@ import { StockTable } from "@/components/shop/stock-table";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { listProducts } from "@/lib/shop/api";
 import { rupiah } from "@/lib/shop/format";
-import { printStockReport } from "@/lib/shop/print";
+import { DEFAULT_STOCK_COLUMNS, printStockReport } from "@/lib/shop/print";
+import { PrintColumnsDialog } from "@/components/shop/print-columns-dialog";
 import type { Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/stok")({ component: StokPage });
@@ -26,8 +27,27 @@ function StokPage() {
   const [data, setData] = useState<{ total: number; perPage: number; items: Product[]; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<Product | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printCols, setPrintCols] = usePersistedState<string[]>("stok:printCols", [...DEFAULT_STOCK_COLUMNS]);
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
   useCommentFinder("barang", (t) => { setKategori([]); setDupOnly(false); setStatus(""); setPage(1); setQ(t.label); });
+
+  function cetakStok(columns: string[]) {
+    void listProducts({ data: { q, dupOnly, sorts, page: 1, kategori, status, all: true } })
+      .then((res) => {
+        try {
+          const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+          const filter = [
+            `Status: ${status || "Semua"}`,
+            q.trim() ? `Pencarian: ${q.trim()}` : "",
+            dupOnly ? "Hanya barang kembar" : "",
+            `Urutan: ${sortLabel(sorts)}`,
+          ].filter(Boolean).join(" · ");
+          printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter, groupByKategori: !hideCategoryHeaders(sorts, dupOnly), columns });
+        } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+      })
+      .catch((error: Error) => toast.error(error.message));
+  }
   useEffect(() => {
     void listProducts({ data: { q, dupOnly, sorts, page, kategori, status } })
       .then((res) => { setLoadError(""); setData(res); })
@@ -158,20 +178,7 @@ function StokPage() {
         <SortPicker value={sorts} onChange={(next) => { setPage(1); setSorts(next); }} />
         <ExpandGroup align="start">
         <ExpandButton size="md" label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSorts(DEFAULT_SORTS); setPage(1); }} />
-        <ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => {
-          void listProducts({ data: { q, dupOnly, sorts, page: 1, kategori, status, all: true } }).then((res) => {
-            try {
-              const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-              const filter = [
-                `Status: ${status || "Semua"}`,
-                q.trim() ? `Pencarian: ${q.trim()}` : "",
-                dupOnly ? "Hanya barang kembar" : "",
-                `Urutan: ${sortLabel(sorts)}`,
-              ].filter(Boolean).join(" · ");
-              printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter, groupByKategori: !hideCategoryHeaders(sorts, dupOnly) });
-            } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
-          });
-        }} />
+        <ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => setPrintOpen(true)} />
         </ExpandGroup>
       </div>
       <div className="mt-3 overflow-x-auto">
@@ -199,6 +206,7 @@ function StokPage() {
           <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
         </div>
       </div>
+      {printOpen ? <PrintColumnsDialog selected={printCols} onCancel={() => setPrintOpen(false)} onConfirm={(keys) => { setPrintCols(keys); setPrintOpen(false); cetakStok(keys); }} /> : null}
       {detail ? <StockDetail item={detail} onClose={() => setDetail(null)} /> : null}
     </Panel>
   );

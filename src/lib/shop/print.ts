@@ -559,36 +559,89 @@ export function printCashDaily(input: {
   );
 }
 
-export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string; filter?: string; groupByKategori?: boolean }) {
+/** Kolom yang bisa dipilih untuk cetak PDF Laporan Stok (urutan di sini = urutan di kertas). */
+export const STOCK_COLUMNS = [
+  { key: "no", label: "No", head: "No", def: true },
+  { key: "nama", label: "Nama Barang (beserta merek)", head: "Nama", def: true },
+  { key: "kategori", label: "Kategori", head: "Kategori", def: true },
+  { key: "partNumber", label: "Part Number", head: "Part Number", def: true },
+  { key: "partNumbersAlt", label: "Part Number Alternatif", head: "Alt PN", def: true },
+  { key: "kodePajak", label: "Kode Pajak", head: "Kode Pajak", def: true },
+  { key: "stokMin", label: "Min Stok", head: "Min Stok", def: false },
+  { key: "stok", label: "Stok Akhir", head: "Stok Akhir", def: true },
+  { key: "hargaJual", label: "Harga Jual", head: "Harga Jual", def: true },
+  { key: "status", label: "Status", head: "Status", def: false },
+] as const;
+
+export type StockColumnKey = (typeof STOCK_COLUMNS)[number]["key"];
+export const DEFAULT_STOCK_COLUMNS: StockColumnKey[] = STOCK_COLUMNS.filter((col) => col.def).map((col) => col.key);
+
+export function printStockReport(items: Array<{ nama: string; merek?: string; partNumber?: string; partNumbersAlt?: string; kodePajak?: string; kategori?: string; stokMin: number; stok: number; satuan: string; hargaJual: number; hargaBeli: number }>, info?: { kategori?: string; tanggal?: string; filter?: string; groupByKategori?: boolean; columns?: readonly string[] }) {
   if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
+  const wanted = info?.columns ?? DEFAULT_STOCK_COLUMNS;
+  const cols = STOCK_COLUMNS.filter((col) => wanted.includes(col.key));
+  if (!cols.length) throw new Error("Pilih minimal satu kolom untuk dicetak.");
+  const keys: string[] = cols.map((col) => col.key);
   let lastKategori: string | null = null;
   const kategori = info?.kategori?.trim() || "Semua Kategori";
   const tanggal = info?.tanggal || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   const judul = `STOK ${kategori.toUpperCase()} PER TANGGAL ${tanggal.toUpperCase()}`;
   let totalStok = 0;
   let modal = 0;
+  const cell = (key: string, item: (typeof items)[number], index: number): string => {
+    switch (key) {
+      case "no": return `<td class="center">${index + 1}</td>`;
+      case "nama": return `<td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td>`;
+      case "kategori": return `<td>${esc(item.kategori || "-")}</td>`;
+      case "partNumber": return `<td>${esc(item.partNumber || "-")}</td>`;
+      case "partNumbersAlt": return `<td>${esc(item.partNumbersAlt || "-")}</td>`;
+      case "kodePajak": return `<td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td>`;
+      case "stokMin": return `<td class="center">${item.stokMin}</td>`;
+      case "stok": return `<td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td>`;
+      case "hargaJual": return `<td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td>`;
+      default: {
+        const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
+        return `<td class="center">${status}</td>`;
+      }
+    }
+  };
   const rows = items
     .map((item, index) => {
       totalStok += Number(item.stok);
       modal += Number(item.hargaBeli) * Number(item.stok);
-      const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
       const cat = (item.kategori || "TANPA KATEGORI").trim();
       let header = "";
       if (info?.groupByKategori && cat.toLowerCase() !== (lastKategori ?? "").toLowerCase()) {
-        header = `<tr><td colspan="10" style="background:#e5e7eb;font-weight:bold;text-transform:uppercase">${esc(cat)}</td></tr>`;
+        header = `<tr><td colspan="${cols.length}" style="background:#e5e7eb;font-weight:bold;text-transform:uppercase">${esc(cat)}</td></tr>`;
       }
       lastKategori = cat;
-      return `${header}<tr><td class="center">${index + 1}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td>${esc(item.partNumber || "-")}</td><td>${esc(item.partNumbersAlt || "-")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td><td class="center">${item.stokMin}</td><td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td><td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td><td class="center">${status}</td></tr>`;
+      return `${header}<tr>${keys.map((key) => cell(key, item, index)).join("")}</tr>`;
     })
     .join("");
+  const headAlign = (key: string) => (key === "hargaJual" ? ' class="right"' : ["no", "kodePajak", "stokMin", "stok", "status"].includes(key) ? ' class="center"' : "");
+  const thead = `<tr>${cols.map((col) => `<th${headAlign(col.key)}>${col.head}</th>`).join("")}</tr>`;
+  // Baris total hanya jika kolom Stok Akhir dan/atau Harga Jual ikut dicetak
+  const firstTotal = keys.findIndex((key) => key === "stok" || key === "hargaJual");
+  let tfoot = "";
+  if (firstTotal >= 0) {
+    const hasStok = keys.includes("stok");
+    const hasHarga = keys.includes("hargaJual");
+    const label = hasStok && hasHarga ? "Total Stok & Nilai Modal:" : hasStok ? "Total Stok:" : "Nilai Modal:";
+    const lead = firstTotal > 0 ? `<td colspan="${firstTotal}" class="right bold">${label}</td>` : "";
+    const rest = keys
+      .slice(firstTotal)
+      .map((key) => (key === "stok" ? `<td class="center bold">${totalStok}</td>` : key === "hargaJual" ? `<td class="right bold">${money(modal)}</td>` : "<td></td>"))
+      .join("");
+    tfoot = `<tfoot><tr>${lead}${rest}</tr></tfoot>`;
+  }
   openPrint(
     judul,
-    `<h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
+    `<style>table { font-size: 10px; } td, th { overflow-wrap: anywhere; }</style>
+    <h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
     <p style="text-align:center;margin:0 0 10px">Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p>
     ${info?.filter ? `<p style="text-align:center;margin:0 0 10px;font-size:11px">${esc(info.filter)}</p>` : ""}
-    <table><thead><tr><th>No</th><th>Nama</th><th>Kategori</th><th>Part Number</th><th>Alt PN</th><th class="center">Kode Pajak</th><th class="center">Min Stok</th><th class="center">Stok Akhir</th><th class="right">Harga Jual</th><th class="center">Status</th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="7" class="right bold">Total Stok & Nilai Modal:</td><td class="center bold">${totalStok}</td><td class="right bold">${money(modal)}</td><td></td></tr></tfoot></table>`,
-    true,
+    <table><thead>${thead}</thead><tbody>${rows}</tbody>${tfoot}</table>`,
+    cols.length > 8,
   );
 }
 
