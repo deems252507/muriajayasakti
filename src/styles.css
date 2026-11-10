@@ -566,53 +566,29 @@ button.lg-eye:not(:disabled):hover { color: var(--color-accent); text-decoration
 @keyframes lg-btag { from { opacity: 0; letter-spacing: 0.5em; } to { opacity: 1; letter-spacing: 0.22em; } }
 @media (prefers-reduced-motion: reduce) { .lg-bch { animation: none; opacity: 1; } .lg-btag { animation: none; } }
 
-/* ExpandButton (components/ui/button-7.tsx): ukuran tetap, tidak melebar saat hover.
-   Ditulis di luar @layer agar menang atas aturan global di atas. */
+/* ExpandButton (components/ui/button-7.tsx): ringkas, melebar saat hover / fokus / disentuh.
+   Ditulis di luar @layer agar menang atas aturan transition global di atas. */
 button.xbtn {
+  width: var(--xbtn-w);
   min-height: 0;
-  box-sizing: border-box;
+  padding: 0;
   transition:
+    width 0.3s ease,
     background-color 0.12s ease,
     box-shadow 0.12s ease,
     transform 0.12s ease;
 }
-button.xbtn:not(.p-0) {
-  padding-top: 0;
-  padding-bottom: 0;
+button.xbtn:focus-visible,
+button.xbtn:active {
+  width: var(--xbtn-xw);
+}
+@media (hover: hover) {
+  button.xbtn:hover {
+    width: var(--xbtn-xw);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   button.xbtn {
     transition: none;
-  }
-}
-
-/* Layar sentuh: target tekan minimal 44px dan jarak antartombol lebih lega,
-   supaya tombol berdampingan (mis. Ubah / Hapus) tidak mudah terpencet salah. */
-@media (pointer: coarse) {
-  button.xbtn {
-    height: 2.75rem;
-  }
-  button.xbtn.p-0 {
-    width: 2.75rem;
-  }
-  .xgroup {
-    gap: 0.5rem;
-  }
-}
-
-/* Kelompok tombol 2 kolom di sel tabel: di layar < 1280px teks disembunyikan (jadi ikon saja,
-   nama tombol tetap ada di tooltip) supaya kolom Aksi tidak mendorong tabel keluar dari kartu. */
-@media (max-width: 1279px) {
-  .xgrid .xbtn {
-    width: 2rem;
-    padding: 0;
-  }
-  .xgrid .xbtn .xlabel {
-    display: none;
-  }
-}
-@media (max-width: 1279px) and (pointer: coarse) {
-  .xgrid .xbtn {
-    width: 2.75rem;
   }
 }

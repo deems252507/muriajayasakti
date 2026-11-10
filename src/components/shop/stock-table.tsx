@@ -54,7 +54,7 @@ export function StockTable({
             <th className={`${th} text-right`}>Harga Jual</th>
             <th className={`${th} text-center`}>Kode Pajak</th>
             <th className={`${th} text-center`}>Status Stok</th>
-            <th className={`${th} sticky right-0 z-20 bg-slate-100 text-center shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.25)]`}>Aksi</th>
+            <th className={`${th} text-center`}>Aksi</th>
           </tr>
         </thead>
         <tbody>
@@ -100,7 +100,7 @@ export function StockTable({
                   <td className={`${td} text-center`}>
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold leading-4 ${level === "HABIS" ? "bg-red-100 text-red-700" : level === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{statusText}</span>
                   </td>
-                  <td className="sticky right-0 z-[5] whitespace-nowrap bg-inherit px-2 py-2.5 text-center align-middle shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.25)]" onClick={(event) => event.stopPropagation()}>
+                  <td className="whitespace-nowrap px-2 py-2.5 text-center align-middle" onClick={(event) => event.stopPropagation()}>
                     <div className="inline-flex items-center justify-center gap-1">{actions(item)}</div>
                   </td>
                 </tr>

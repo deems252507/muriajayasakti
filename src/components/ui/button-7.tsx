@@ -1,5 +1,12 @@
-import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import {
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 /** Komponen asli dari 21st.dev (tombol "Visit"), disimpan apa adanya sebagai contoh. */
 export const Component = () => {
@@ -33,131 +40,120 @@ type Variant = "primary" | "neutral" | "danger";
 type Size = "sm" | "md";
 
 const VARIANT: Record<Variant, string> = {
+  // gaya persis seperti di video (gradasi biru-ungu + garis #656fe2)
   primary: "bg-gradient-to-r from-[#c0c7ff] to-[#4c64ff] border-[#656fe2] text-white",
   neutral: "bg-white border-slate-300 text-slate-700",
   danger: "bg-white border-red-300 text-red-600",
 };
 
-const SIZE: Record<Size, { box: string; h: string; text: string; icon: string }> = {
-  sm: { box: "h-8 w-8", h: "h-8", text: "text-xs", icon: "[&_svg]:h-4 [&_svg]:w-4" },
-  md: { box: "h-11 w-11", h: "h-11", text: "text-sm", icon: "[&_svg]:h-5 [&_svg]:w-5" },
+// lebar tombol saat ringkas (px) dan tinggi
+const SIZE: Record<Size, { box: number; cls: string; icon: string }> = {
+  sm: { box: 32, cls: "h-8 text-xs", icon: "[&_svg]:h-4 [&_svg]:w-4" },
+  md: { box: 44, cls: "h-11 text-sm", icon: "[&_svg]:h-5 [&_svg]:w-5" },
 };
 
 export interface ExpandButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   /** Ikon (mis. dari lucide-react). */
   icon: ReactNode;
-  /** Teks tombol. Dipakai sebagai aria-label, tooltip, dan teks tombol bila `showLabel`. */
+  /** Teks yang muncul saat tombol disorot / disentuh. Juga dipakai sebagai aria-label. */
   label: string;
   variant?: Variant;
   size?: Size;
-  /**
-   * true (default) = ikon + teks selalu tampil.
-   * false = hanya ikon, teks muncul sebagai tooltip.
-   */
-  showLabel?: boolean;
 }
 
 /**
- * Tombol dengan ukuran tetap. TIDAK PERNAH melebar saat hover, jadi tidak menimpa kolom,
- * kartu, atau elemen lain. Mode ikon-saja menampilkan label lewat tooltip yang diposisikan
- * di dalam layar (position: fixed, tidak ikut layout, tidak terpotong tabel).
+ * Tombol bulat ringkas (hanya ikon). Saat kursor diarahkan, difokus keyboard, atau
+ * ditekan/disentuh di layar sentuh, tombol melebar dan menampilkan teks `label`.
+ * Diadaptasi dari button-7.
  */
 export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(function ExpandButton(
-  { icon, label, variant = "neutral", size = "sm", showLabel, className = "", type = "button", onPointerEnter, onPointerLeave, onFocus, onBlur, ...props },
+  { icon, label, variant = "neutral", size = "sm", className = "", style, type = "button", ...props },
   ref,
 ) {
-  const s = SIZE[size];
-  const inline = showLabel ?? true;
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
-  const innerRef = useRef<HTMLButtonElement | null>(null);
+  const { box, cls, icon: iconCls } = SIZE[size];
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(box);
 
-  const setRefs = (node: HTMLButtonElement | null) => {
-    innerRef.current = node;
-    if (typeof ref === "function") ref(node);
-    else if (ref) (ref as { current: HTMLButtonElement | null }).current = node;
-  };
-
-  const show = () => {
-    const el = innerRef.current;
-    if (inline || !el) return;
-    const r = el.getBoundingClientRect();
-    setTip({ x: r.left + r.width / 2, y: r.top });
-  };
-  const hide = () => setTip(null);
-
-  useEffect(() => {
-    if (!tip) return;
-    const off = () => setTip(null);
-    window.addEventListener("scroll", off, true);
-    window.addEventListener("resize", off);
-    return () => {
-      window.removeEventListener("scroll", off, true);
-      window.removeEventListener("resize", off);
-    };
-  }, [tip]);
-
-  const shape = inline ? `${s.h} max-w-full gap-1.5 px-3` : `${s.box} p-0`;
+  // Ukur lebar teks supaya lebar tombol saat melebar pas, berapa pun panjang labelnya.
+  useLayoutEffect(() => {
+    const el = labelRef.current;
+    if (!el) return;
+    const measure = () => setExpanded(box + el.offsetWidth + 4);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [box, label]);
 
   return (
-    <>
-      <button
-        ref={setRefs}
-        type={type}
-        aria-label={label}
-        title={label}
-        {...props}
-        onPointerEnter={(e) => { onPointerEnter?.(e); if (e.pointerType === "mouse") show(); }}
-        onPointerLeave={(e) => { onPointerLeave?.(e); hide(); }}
-        onFocus={(e) => { onFocus?.(e); if (e.currentTarget.matches(":focus-visible")) show(); }}
-        onBlur={(e) => { onBlur?.(e); hide(); }}
-        className={`xbtn inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-semibold shadow-sm disabled:opacity-40 ${shape} ${s.text} ${s.icon} ${VARIANT[variant]} ${className}`}
+    <button
+      ref={ref}
+      type={type}
+      aria-label={label}
+      {...props}
+      style={{ "--xbtn-w": `${box}px`, "--xbtn-xw": `${expanded}px`, ...style } as CSSProperties}
+      className={`xbtn group relative inline-flex shrink-0 items-center justify-end overflow-hidden rounded-full border-2 font-semibold shadow-sm disabled:opacity-40 ${cls} ${iconCls} ${VARIANT[variant]} ${className}`}
+    >
+      <span
+        ref={labelRef}
+        className="whitespace-nowrap pl-3 opacity-0 transition-all duration-200 translate-x-2 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 group-active:translate-x-0 group-active:opacity-100"
       >
-        <span className="grid shrink-0 place-items-center">{icon}</span>
-        {inline ? <span className="xlabel min-w-0 truncate whitespace-nowrap">{label}</span> : null}
-      </button>
-      {tip
-        ? createPortal(
-            <div
-              role="tooltip"
-              className="pointer-events-none fixed z-[100] rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold whitespace-nowrap text-white shadow-lg"
-              style={{
-                left: Math.min(Math.max(tip.x, 8 + label.length * 3.6), window.innerWidth - 8 - label.length * 3.6),
-                top: Math.max(tip.y - 6, 28),
-                transform: "translate(-50%, -100%)",
-              }}
-            >
-              {label}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
+        {label}
+      </span>
+      <span className="grid shrink-0 place-items-center" style={{ width: box - 4 }}>
+        {icon}
+      </span>
+    </button>
   );
 });
 
 /**
- * Pembungkus beberapa tombol. Lebar tidak pernah melebihi wadahnya (max-w-full) dan tombol
- * turun ke baris berikutnya bila tidak muat (flex-wrap), sehingga tidak keluar dari kolom/kartu.
- * `align` mengatur perataan di dalam wadah.
+ * Pembungkus beberapa ExpandButton. Lebar & tinggi grup dikunci sebesar kondisi ringkas,
+ * jadi saat satu tombol melebar, tombol lain hanya bergeser DI DALAM grup (tidak mendorong
+ * tabel, kolom, atau baris lain). Bagian yang melebar menimpa ruang kosong di sekitarnya.
+ * `align="end"` melebar ke kiri (untuk kolom Aksi di tepi kanan), `"start"` ke kanan.
  */
 export function ExpandGroup({
   children,
   align = "end",
-  grid = false,
   className = "",
 }: {
   children: ReactNode;
   align?: "start" | "end";
-  /** true = susunan 2 kolom sejajar (untuk 3+ tombol di sel tabel); lebar kolom mengikuti tombol terpanjang. */
-  grid?: boolean;
   className?: string;
 }) {
-  const layout = grid
-    ? "xgrid inline-grid grid-cols-[repeat(2,max-content)] justify-center [&>.xbtn]:w-full [&>:not(.xbtn)]:col-span-2 [&>:not(.xbtn)]:justify-self-end"
-    : `inline-flex flex-wrap items-center ${align === "end" ? "justify-end" : "justify-start"}`;
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [dim, setDim] = useState<{ w: number; h: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const measure = () => {
+      // jangan ukur ulang saat ada tombol yang sedang melebar
+      if (el.matches(":hover, :focus-within, :active")) return;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      setDim((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
   return (
-    <div className={`xgroup max-w-full gap-1 align-middle ${layout} ${className}`}>
-      {children}
+    <div
+      className={`relative inline-block shrink-0 align-middle ${className}`}
+      style={dim ? { width: dim.w, height: dim.h } : undefined}
+    >
+      <div
+        ref={innerRef}
+        className={`flex w-max items-center gap-1 hover:z-20 focus-within:z-20 ${
+          dim ? `absolute inset-y-0 ${align === "end" ? "right-0 justify-end" : "left-0 justify-start"}` : "relative"
+        }`}
+      >
+        {children}
+      </div>
     </div>
   );
 }
