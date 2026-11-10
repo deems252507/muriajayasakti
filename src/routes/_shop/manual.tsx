@@ -180,7 +180,7 @@ function ManualPage() {
             <h2 className="text-xl font-extrabold">Nota Mutasi Barang (Masuk/Keluar)</h2>
             <p className="mt-1 text-sm text-slate-600">Tambahkan beberapa barang, termasuk Masuk dan Keluar, lalu simpan sebagai satu nota.</p>
           </div>
-          <ExpandGroup align="end"><ExpandButton variant="danger" icon={<RotateCcw />} label="Reset Form" onClick={resetAll} /></ExpandGroup>
+          <ExpandGroup align="end"><ExpandButton showLabel variant="danger" icon={<RotateCcw />} label="Reset Form" onClick={resetAll} /></ExpandGroup>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm text-slate-600">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
@@ -261,7 +261,7 @@ function ManualPage() {
             <h3 className="text-base font-extrabold">2. Isi Nota <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{items.length} baris</span>
               {items.length ? <span className="ml-2 text-xs font-medium text-slate-600">{totalMasuk} masuk · {totalKeluar} keluar</span> : null}
             </h3>
-            <ExpandGroup align="end"><ExpandButton icon={<Trash2 />} label="Kosongkan Nota" onClick={() => setItems([])} disabled={!items.length} /></ExpandGroup>
+            <ExpandGroup align="end"><ExpandButton showLabel icon={<Trash2 />} label="Kosongkan Nota" onClick={() => setItems([])} disabled={!items.length} /></ExpandGroup>
           </div>
           <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
             <table className="w-full min-w-[820px] text-sm">

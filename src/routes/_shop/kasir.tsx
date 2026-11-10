@@ -449,7 +449,7 @@ function KasirPage() {
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">Metode Pembayaran</p>
-              <ExpandGroup align="end"><ExpandButton icon={<RotateCcw />} label="Reset" onClick={() => { setMetode("Tunai"); setBayar(""); setBank(""); setDiskon(""); }} /></ExpandGroup>
+              <ExpandGroup align="end"><ExpandButton showLabel icon={<RotateCcw />} label="Reset" onClick={() => { setMetode("Tunai"); setBayar(""); setBank(""); setDiskon(""); }} /></ExpandGroup>
             </div>
             <div className="mb-3 grid grid-cols-4 gap-1.5">
               {([

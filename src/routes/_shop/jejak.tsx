@@ -224,7 +224,7 @@ function JejakPage() {
           <p className="mt-1 text-xs text-muted">Pantau perubahan penting: transaksi, stok, harga, kas, dan shift.</p>
         </div>
         <ExpandGroup align="end">
-          <ExpandButton icon={<Download />} label="Ekspor CSV" disabled={filtered.length === 0} onClick={() => exportCsv(filtered)} />
+          <ExpandButton showLabel icon={<Download />} label="Ekspor CSV" disabled={filtered.length === 0} onClick={() => exportCsv(filtered)} />
         </ExpandGroup>
       </div>
 

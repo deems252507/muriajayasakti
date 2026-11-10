@@ -94,7 +94,7 @@ function SettingsPage() {
       <Panel>
         <div className="flex items-center justify-between">
           <h2 className="font-extrabold">Master Bank / Rekening</h2>
-          {me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton variant="primary" icon={<Plus />} label="Tambah" onClick={() => { setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); setBankOpen(true); }} /></ExpandGroup> : null}
+          {me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton showLabel variant="primary" icon={<Plus />} label="Tambah" onClick={() => { setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); setBankOpen(true); }} /></ExpandGroup> : null}
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -143,7 +143,7 @@ function SettingsPage() {
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">Manajemen Semua Akun</h2>
-            <ExpandGroup align="end"><ExpandButton variant="primary" icon={<Plus />} label="Akun baru" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }} /></ExpandGroup>
+            <ExpandGroup align="end"><ExpandButton showLabel variant="primary" icon={<Plus />} label="Akun baru" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }} /></ExpandGroup>
           </div>
           <p className="text-xs text-muted">Ubah nama, foto, dan password. Password baru tidak akan tertulis di halaman login.</p>
           <div className="mt-3 overflow-x-auto">

@@ -52,9 +52,9 @@ function PajakPage() {
           <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setStart(nextStart); setEnd(nextEnd); }} />
           <div className="flex flex-wrap gap-2">
           <ExpandGroup align="start">
-          <ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { const t = todayInput(); setStart(t); setEnd(t); setJenis(""); setKategori(""); }} />
-          <ExpandButton label="Cetak PDF Semua Nota" icon={<Printer />} onClick={() => cetak()} />
-          <ExpandButton label="Export CSV" icon={<Download />} onClick={() => {
+          <ExpandButton showLabel label="Reset" icon={<RotateCcw />} onClick={() => { const t = todayInput(); setStart(t); setEnd(t); setJenis(""); setKategori(""); }} />
+          <ExpandButton showLabel label="Cetak PDF Semua Nota" icon={<Printer />} onClick={() => cetak()} />
+          <ExpandButton showLabel label="Export CSV" icon={<Download />} onClick={() => {
             if (!rows.length) return toast.error("Tidak ada data untuk diexport.");
             const header = ["Tanggal", "Nota", "Part Number", "Kode Pajak", "Nama", "Jenis", "Status", "Pelanggan", "Qty", "Satuan", "DPP", "PPN %", "Nilai PPN", "Total"];
             const body = rows.map((row) => [row.tanggal, row.nomor, row.part_number, row.kode_pajak, row.nama, row.kategori, row.status_bayar, row.pelanggan, row.jumlah, row.satuan, row.dpp, row.persentase, row.nilai_pajak, Number(row.harga_satuan) * Number(row.jumlah)].map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","));

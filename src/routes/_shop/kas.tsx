@@ -167,7 +167,7 @@ function KasPage() {
           <p className="text-xs text-muted">Pantau uang kas berdasarkan shift tanpa menghitung transaksi secara manual.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ExpandGroup align="start"><ExpandButton icon={<RefreshCw />} label="Perbarui" onClick={() => { refresh(); reloadLedger(); }} /></ExpandGroup>
+          <ExpandGroup align="start"><ExpandButton showLabel icon={<RefreshCw />} label="Perbarui" onClick={() => { refresh(); reloadLedger(); }} /></ExpandGroup>
           {shifts.some((shift) => shift.status === "AKTIF") ? (
             <select className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" value={shifts.some((shift) => shift.id === selected && shift.status === "AKTIF") ? selected : ""} onChange={(e) => { setArsip(null); setSelected(e.target.value); }}>
               {shifts.filter((shift) => shift.status === "AKTIF").map((shift) => <option key={shift.id} value={shift.id}>{shift.shift} · {shift.cashierName} · AKTIF</option>)}
@@ -284,7 +284,7 @@ function KasPage() {
           </div>
           <div className="mt-3">
             <PeriodPicker start={from} end={to} onChange={(nextStart, nextEnd) => { setFrom(nextStart); setTo(nextEnd); }} />
-            <ExpandGroup align="start" className="mt-2"><ExpandButton icon={<CalendarDays />} label="Semua Tanggal" onClick={() => { setFrom(""); setTo(""); }} /></ExpandGroup>
+            <ExpandGroup align="start" className="mt-2"><ExpandButton showLabel icon={<CalendarDays />} label="Semua Tanggal" onClick={() => { setFrom(""); setTo(""); }} /></ExpandGroup>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -341,7 +341,7 @@ function KasPage() {
             <h3 className="font-extrabold">Arus Kas Shift</h3>
             <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Belum ada shift yang dipilih."} {ledger?.shift?.status === "SELESAI" ? "Ini arsip. Kas awal yang diisi saat buka shift tetap dihitung. Transaksi baru mulai dari 0 setelah shift baru dibuka." : ledger?.shift ? "Kas awal + uang masuk − uang keluar = kas seharusnya." : "Buka shift dan isi kas awal. Selama belum ada penjualan, kas di laci sama dengan kas awal itu."}</p>
           </div>
-          {selected ? <ExpandGroup align="end" className="shrink-0"><ExpandButton icon={<Printer />} label="Cetak PDF Shift" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))} /></ExpandGroup> : null}
+          {selected ? <ExpandGroup align="end" className="shrink-0"><ExpandButton showLabel icon={<Printer />} label="Cetak PDF Shift" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))} /></ExpandGroup> : null}
         </div>
         <table className="mt-3 w-full text-left text-sm">
           <thead className="text-[11px] tracking-wide text-muted uppercase"><tr><th className="py-2">Waktu / Ref</th><th>Jenis</th><th>Metode</th><th className="text-right">Masuk</th><th className="text-right">Keluar</th></tr></thead>

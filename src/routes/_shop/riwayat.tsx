@@ -139,8 +139,8 @@ function RiwayatPage() {
         <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setPage(1); setStart(nextStart); setEnd(nextEnd); }} />
         <div className="flex flex-wrap gap-2">
         <ExpandGroup align="end">
-        <ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setTujuan(""); setSource(""); setStatus(""); setJenis(""); setStart(""); setEnd(""); setPage(1); }} />
-        <ExpandButton label="Cetak PDF" icon={<Printer />} onClick={() => {
+        <ExpandButton showLabel label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setTujuan(""); setSource(""); setStatus(""); setJenis(""); setStart(""); setEnd(""); setPage(1); }} />
+        <ExpandButton showLabel label="Cetak PDF" icon={<Printer />} onClick={() => {
           const report = view === "barang"
             ? listHistoryItems({ data: { q, tujuan, source, status, jenis, start, end, all: true } }).then((res) => (res as { items: Array<Record<string, unknown>> }).items)
             : listHistoryLines({ data: { q, tujuan, source, status, jenis, start, end } });
@@ -336,10 +336,10 @@ function RiwayatPage() {
                 <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
                 {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
                 {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
-                  <ExpandGroup align="start" className="mt-2 mr-3"><ExpandButton label="Ubah Nota (per barang)" icon={<Pencil />} onClick={() => void openEditor(String(inv.nomor))} /></ExpandGroup>
+                  <ExpandGroup align="start" className="mt-2 mr-3"><ExpandButton showLabel label="Ubah Nota (per barang)" icon={<Pencil />} onClick={() => void openEditor(String(inv.nomor))} /></ExpandGroup>
                 ) : null}
                 {me.role === "Admin" ? (
-                  <ExpandGroup align="start" className="mt-2"><ExpandButton variant="danger" label="Hapus Transaksi" icon={<Trash2 />} onClick={() => {
+                  <ExpandGroup align="start" className="mt-2"><ExpandButton showLabel variant="danger" label="Hapus Transaksi" icon={<Trash2 />} onClick={() => {
                     if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
                     void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success(`Nota ${String(inv.nomor)} berhasil dihapus`, { description: "Stok dan kas yang terkait sudah dikembalikan." }); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
                   }} /></ExpandGroup>

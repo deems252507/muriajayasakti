@@ -74,7 +74,7 @@ function BonPage() {
             <h2 className="text-lg font-extrabold">Bon / Piutang Pelanggan</h2>
             <p className="mt-1 max-w-xl text-xs text-muted">Nota yang belum dibayar. Tekan <b>Lunasi</b> saat pelanggan membayar, uangnya otomatis tercatat sebagai kas masuk.</p>
           </div>
-          <ExpandGroup align="end" className="self-start"><ExpandButton label="Cetak Laporan" icon={<Printer />} onClick={() => {
+          <ExpandGroup align="end" className="self-start"><ExpandButton showLabel label="Cetak Laporan" icon={<Printer />} onClick={() => {
             void listBon({ data: { status, customer, start, end } }).then((data) => {
               try { printDebtReport(data as Array<Record<string, unknown>>, start, end, status); }
               catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
@@ -105,7 +105,7 @@ function BonPage() {
             ))}
           </div>
           <input className={`${inputClass} max-w-xs`} placeholder="Cari nama pelanggan" value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          <ExpandGroup align="end"><ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { setStatus("Bon"); setCustomer(""); setStart(""); setEnd(""); }} /></ExpandGroup>
+          <ExpandGroup align="end"><ExpandButton showLabel label="Reset" icon={<RotateCcw />} onClick={() => { setStatus("Bon"); setCustomer(""); setStart(""); setEnd(""); }} /></ExpandGroup>
         </div>
         <details className="mt-3 text-sm" open={Boolean(start || end)}>
           <summary className="cursor-pointer text-xs font-bold text-accent">Filter tanggal bon</summary>
