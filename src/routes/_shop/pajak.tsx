@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
+import { Download, Printer, RotateCcw } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { listTax } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
@@ -49,9 +51,10 @@ function PajakPage() {
         <div className="mt-3 space-y-3">
           <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setStart(nextStart); setEnd(nextEnd); }} />
           <div className="flex flex-wrap gap-2">
-          <button className="h-9 rounded-lg border border-line px-3 text-xs" onClick={() => { const t = todayInput(); setStart(t); setEnd(t); setJenis(""); setKategori(""); }}>Reset</button>
-          <button className="h-9 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => cetak()}>Cetak PDF Semua Nota</button>
-          <button className="h-9 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => {
+          <ExpandGroup align="start">
+          <ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { const t = todayInput(); setStart(t); setEnd(t); setJenis(""); setKategori(""); }} />
+          <ExpandButton label="Cetak PDF Semua Nota" icon={<Printer />} onClick={() => cetak()} />
+          <ExpandButton label="Export CSV" icon={<Download />} onClick={() => {
             if (!rows.length) return toast.error("Tidak ada data untuk diexport.");
             const header = ["Tanggal", "Nota", "Part Number", "Kode Pajak", "Nama", "Jenis", "Status", "Pelanggan", "Qty", "Satuan", "DPP", "PPN %", "Nilai PPN", "Total"];
             const body = rows.map((row) => [row.tanggal, row.nomor, row.part_number, row.kode_pajak, row.nama, row.kategori, row.status_bayar, row.pelanggan, row.jumlah, row.satuan, row.dpp, row.persentase, row.nilai_pajak, Number(row.harga_satuan) * Number(row.jumlah)].map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","));
@@ -61,7 +64,8 @@ function PajakPage() {
             link.download = `Laporan_Pajak_Internal_${start}_${end}.csv`;
             link.click();
             URL.revokeObjectURL(link.href);
-          }}>Export CSV</button>
+          }} />
+          </ExpandGroup>
           </div>
         </div>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -94,7 +98,7 @@ function PajakPage() {
               <Fragment key={nomor}>
                 <tr key={`${nomor}-head`} className="bg-blue-50">
                   <td colSpan={8} className="px-2 py-2 text-xs font-bold">NOTA {nomor} · {items.length} barang · {String(items[0].status_bayar) === "Bon" ? "BON" : "CASH"}</td>
-                  <td className="px-2 py-2 text-right"><button className="text-xs font-bold text-accent" onClick={() => cetak(nomor)}>Cetak PDF</button></td>
+                  <td className="px-2 py-2 text-right"><ExpandGroup align="end"><ExpandButton label="Cetak PDF" icon={<Printer />} onClick={() => cetak(nomor)} /></ExpandGroup></td>
                 </tr>
                 {items.map((row) => (
                   <tr key={String(row.id)}>

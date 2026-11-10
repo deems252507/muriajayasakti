@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Printer, RotateCcw } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { PeriodPicker } from "@/components/shop/period";
 import { Panel } from "@/components/shop/shell";
 import { getInvoice, shiftLedger } from "@/lib/shop/api";
@@ -37,8 +39,10 @@ function LaporanKasPage() {
       <Panel>
         <div className="flex flex-wrap items-end gap-2">
           <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setStart(nextStart); setEnd(nextEnd); }} />
-          <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { const t = todayInput(); setStart(t); setEnd(t); }}>Hari ini saja</button>
-          <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => printCashDaily({ start, end, tunai, transfer, bon, masuk, keluar, refundCash, refundTf, tambahCash, tambahTf, laci, invoices, moves, returs })}>Cetak PDF</button>
+          <ExpandGroup align="start">
+          <ExpandButton size="md" label="Hari ini saja" icon={<RotateCcw />} onClick={() => { const t = todayInput(); setStart(t); setEnd(t); }} />
+          <ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => printCashDaily({ start, end, tunai, transfer, bon, masuk, keluar, refundCash, refundTf, tambahCash, tambahTf, laci, invoices, moves, returs })} />
+          </ExpandGroup>
         </div>
       </Panel>
       <Panel>

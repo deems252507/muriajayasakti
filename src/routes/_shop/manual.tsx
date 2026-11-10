@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -179,7 +180,7 @@ function ManualPage() {
             <h2 className="text-xl font-extrabold">Nota Mutasi Barang (Masuk/Keluar)</h2>
             <p className="mt-1 text-sm text-slate-600">Tambahkan beberapa barang, termasuk Masuk dan Keluar, lalu simpan sebagai satu nota.</p>
           </div>
-          <button className="h-11 rounded-lg border border-red-200 px-4 text-sm font-bold text-danger" onClick={resetAll}>Reset Form</button>
+          <ExpandGroup align="end"><ExpandButton variant="danger" icon={<RotateCcw />} label="Reset Form" onClick={resetAll} /></ExpandGroup>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="text-sm text-slate-600">Tanggal Nota<input className={`${inputClass} mt-1 h-12`} type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></label>
@@ -260,7 +261,7 @@ function ManualPage() {
             <h3 className="text-base font-extrabold">2. Isi Nota <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{items.length} baris</span>
               {items.length ? <span className="ml-2 text-xs font-medium text-slate-600">{totalMasuk} masuk · {totalKeluar} keluar</span> : null}
             </h3>
-            <button className="h-10 rounded-lg border border-line px-3 text-sm font-medium" onClick={() => setItems([])} disabled={!items.length}>Kosongkan Nota</button>
+            <ExpandGroup align="end"><ExpandButton icon={<Trash2 />} label="Kosongkan Nota" onClick={() => setItems([])} disabled={!items.length} /></ExpandGroup>
           </div>
           <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
             <table className="w-full min-w-[820px] text-sm">
@@ -324,7 +325,7 @@ function ManualPage() {
                         <p className="num mt-0.5 text-[11px] text-slate-600">{item.harga ? `= ${rupiah(item.harga * item.qty)}` : item.jenis === "MASUK" ? "opsional" : ""}</p>
                       </td>
                       <td className={`num px-2 text-right font-semibold ${bad ? "text-red-600" : ""}`}>{item.custom ? <span className="text-xs font-medium text-slate-600">Tanpa stok</span> : <>{after} {item.product.satuan}{bad ? <span className="block text-[11px]">Stok tidak cukup</span> : null}</>}</td>
-                      <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((row) => row.key !== item.key))}>Hapus</button></td>
+                      <td className="px-2 text-right"><ExpandGroup align="end"><ExpandButton variant="danger" icon={<Trash2 />} label="Hapus" onClick={() => setItems((prev) => prev.filter((row) => row.key !== item.key))} /></ExpandGroup></td>
                     </tr>
                   );
                 })}

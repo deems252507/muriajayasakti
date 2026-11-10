@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Eye, Pencil, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -136,8 +138,9 @@ function RiwayatPage() {
         </div>
         <PeriodPicker start={start} end={end} onChange={(nextStart, nextEnd) => { setPage(1); setStart(nextStart); setEnd(nextEnd); }} />
         <div className="flex flex-wrap gap-2">
-        <button className="h-9 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => { setQ(""); setTujuan(""); setSource(""); setStatus(""); setJenis(""); setStart(""); setEnd(""); setPage(1); }}>Reset</button>
-        <button className="h-9 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => {
+        <ExpandGroup align="end">
+        <ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setTujuan(""); setSource(""); setStatus(""); setJenis(""); setStart(""); setEnd(""); setPage(1); }} />
+        <ExpandButton label="Cetak PDF" icon={<Printer />} onClick={() => {
           const report = view === "barang"
             ? listHistoryItems({ data: { q, tujuan, source, status, jenis, start, end, all: true } }).then((res) => (res as { items: Array<Record<string, unknown>> }).items)
             : listHistoryLines({ data: { q, tujuan, source, status, jenis, start, end } });
@@ -145,7 +148,8 @@ function RiwayatPage() {
             try { printHistoryReport(res as Array<Record<string, unknown>>, start, end); }
             catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
-        }}>Cetak PDF</button>
+        }} />
+        </ExpandGroup>
         </div>
       </div>
       <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-4">
@@ -226,10 +230,10 @@ function RiwayatPage() {
                       <div className="flex items-start gap-2">
                       <CommentButton kind="nota" refId={String(row.nomor)} label={`Nota ${String(row.nomor)}`} mark={comments.marks[String(row.nomor)]} size="h-9 w-9" />
                       {(String(row.source) === "Kasir" || String(row.source) === "Manual") && Number(row.line_id) > 0 ? (
-                        <div className="flex gap-2">
-                          <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(row.nomor))}>Edit</button>
-                          <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(row.nomor), Number(row.line_id))}>Hapus</button>
-                        </div>
+                        <ExpandGroup align="end">
+                          <ExpandButton label="Edit" icon={<Pencil />} onClick={() => void openEditor(String(row.nomor))} />
+                          <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => void openEditor(String(row.nomor), Number(row.line_id))} />
+                        </ExpandGroup>
                       ) : null}
                       </div>
                     </td>
@@ -252,14 +256,15 @@ function RiwayatPage() {
               </div>
               <div className="text-right">
                 <p className="num text-lg font-black">{rupiah(Number(inv.total))}</p>
-                {me.role === "Admin" ? <span className="mr-2 inline-block align-middle"><CommentButton kind="nota" refId={String(inv.nomor)} label={`Nota ${String(inv.nomor)}`} mark={comments.marks[String(inv.nomor)]} size="h-8 w-8" /></span> : null}
-                <button className="text-xs font-bold text-accent" onClick={() => {
+                <ExpandGroup align="end">
+                {me.role === "Admin" ? <CommentButton kind="nota" refId={String(inv.nomor)} label={`Nota ${String(inv.nomor)}`} mark={comments.marks[String(inv.nomor)]} size="h-8 w-8" /> : null}
+                <ExpandButton label="Lihat Detail" icon={<Eye />} onClick={() => {
                   const nomor = String(inv.nomor);
                   setDetail(null);
                   setOpen(nomor);
                   void getInvoice({ data: { nomor } }).then((res) => setDetail(res ? { invoice: res.invoice as Record<string, unknown>, lines: res.lines as Array<Record<string, unknown>> } : null));
-                }}>Lihat Detail</button>
-                <button className="ml-3 text-xs font-bold text-slate-700" onClick={() => {
+                }} />
+                <ExpandButton label="Cetak Nota" icon={<Printer />} onClick={() => {
                   const nomor = String(inv.nomor);
                   void getInvoice({ data: { nomor } }).then(async (res) => {
                     if (!res) return toast.error("Nota tidak ditemukan");
@@ -272,7 +277,8 @@ function RiwayatPage() {
                       printReturSlip({ ...(retur as Record<string, unknown>), nomorTukar: invoice.nomor });
                     } else printStoredSale(invoice, lines);
                   }).catch((error: Error) => toast.error(error.message));
-                }}>Cetak Nota</button>
+                }} />
+                </ExpandGroup>
               </div>
             </div>
           </li>
@@ -320,23 +326,23 @@ function RiwayatPage() {
                       <p className="text-xs">Qty {String(line.jumlah)} {String(line.satuan)} · Harga {rupiah(Number(line.harga_satuan))} · Nilai {rupiah(Number(line.harga_satuan) * Number(line.jumlah))}</p>
                     </div>
                     {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
-                      <div className="flex shrink-0 gap-2">
-                        <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Edit</button>
-                        <button type="button" className="h-9 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => void openEditor(String(inv.nomor), Number(line.id))}>Hapus</button>
-                      </div>
+                      <ExpandGroup align="end">
+                        <ExpandButton label="Edit" icon={<Pencil />} onClick={() => void openEditor(String(inv.nomor))} />
+                        <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => void openEditor(String(inv.nomor), Number(line.id))} />
+                      </ExpandGroup>
                     ) : null}
                   </div>
                 ))}
                 <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">Pembayaran: {String(inv.metode_bayar || "-")} {inv.bank_transfer ? `· ${String(inv.bank_transfer)}` : ""} · Tujuan: {String(inv.tujuan || "-")}</p>
                 {String(inv.source) === "Retur" ? <p className="mt-2 text-xs text-muted">Kalau retur salah, hapus dulu. Stok dan uang kembali, lalu proses ulang dari nota asal.</p> : null}
                 {me.role === "Admin" && (String(inv.source) === "Kasir" || String(inv.source) === "Manual") ? (
-                  <button className="mt-2 mr-3 text-sm font-bold text-accent" onClick={() => void openEditor(String(inv.nomor))}>Ubah Nota (per barang)</button>
+                  <ExpandGroup align="start" className="mt-2 mr-3"><ExpandButton label="Ubah Nota (per barang)" icon={<Pencil />} onClick={() => void openEditor(String(inv.nomor))} /></ExpandGroup>
                 ) : null}
                 {me.role === "Admin" ? (
-                  <button className="mt-2 text-sm font-bold text-danger" onClick={() => {
+                  <ExpandGroup align="start" className="mt-2"><ExpandButton variant="danger" label="Hapus Transaksi" icon={<Trash2 />} onClick={() => {
                     if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
                     void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success(`Nota ${String(inv.nomor)} berhasil dihapus`, { description: "Stok dan kas yang terkait sudah dikembalikan." }); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
-                  }}>Hapus Transaksi</button>
+                  }} /></ExpandGroup>
                 ) : null}
               </div>
             ) : <p className="py-10 text-center text-sm text-muted">Memuat rincian...</p>}

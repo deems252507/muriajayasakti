@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
+import { Download, Printer } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { PeriodPicker } from "@/components/shop/period";
 import { inputClass, Panel } from "@/components/shop/shell";
 import { listSalesNotes, listSoldItems, type SalesNote } from "@/lib/shop/api";
@@ -79,8 +81,10 @@ function LaporanPenjualanPage() {
               <option value="Semua">Kasir + Manual</option>
             </select>
             <div className="flex gap-2">
-              <button type="button" className="h-11 flex-1 rounded-lg border border-line px-3 text-sm font-bold" onClick={exportCsv} disabled={!items.length}>Unduh Excel (CSV)</button>
-              <button type="button" className="h-11 flex-1 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={cetak} disabled={!notes.length}>Cetak / Simpan PDF</button>
+              <ExpandGroup align="start" className="self-start">
+                <ExpandButton size="md" label="Unduh Excel (CSV)" icon={<Download />} onClick={exportCsv} disabled={!items.length} />
+                <ExpandButton size="md" label="Cetak / Simpan PDF" icon={<Printer />} onClick={cetak} disabled={!notes.length} />
+              </ExpandGroup>
             </div>
           </div>
         </div>

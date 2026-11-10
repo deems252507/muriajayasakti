@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Pencil, Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
@@ -252,7 +254,7 @@ function PemasokPage() {
             <h2 className="text-xl font-extrabold">Barang Masuk Pemasok</h2>
             <p className="mt-1 text-sm text-muted">Penerimaan dari supplier dicatat terpisah dari Riwayat Transaksi. Stok barang otomatis bertambah setelah disimpan.</p>
           </div>
-          {canEdit ? <PrimaryButton onClick={() => { resetForm(); setOpen(true); }}>+ Barang Masuk</PrimaryButton> : null}
+          {canEdit ? <ExpandGroup align="end" className="self-start"><ExpandButton size="md" variant="primary" label="Barang Masuk" icon={<Plus />} onClick={() => { resetForm(); setOpen(true); }} /></ExpandGroup> : null}
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
           <input className={inputClass} placeholder="Cari invoice, supplier, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
@@ -260,12 +262,14 @@ function PemasokPage() {
           <input className={inputClass} type="date" value={start} onChange={(e) => { setPage(1); setStart(e.target.value); }} />
           <input className={inputClass} type="date" value={end} onChange={(e) => { setPage(1); setEnd(e.target.value); }} />
           <div className="flex gap-2">
-            <button className="h-11 flex-1 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setSupplierId(""); setStart(""); setEnd(""); setPage(1); }}>Reset</button>
-            <button className="h-11 flex-1 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
+            <ExpandGroup align="start" className="self-start">
+            <ExpandButton size="md" label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setSupplierId(""); setStart(""); setEnd(""); setPage(1); }} />
+            <ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => {
               void listSupplierReceipts({ data: { q, supplierId: supplierId ? Number(supplierId) : 0, start, end, page: 1, all: true } }).then((res) => {
                 try { printSupplierReceiptReport(res.items as SupplierReceipt[], { start, end }); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
               }).catch((error: Error) => toast.error(error.message));
-            }}>Cetak PDF</button>
+            }} />
+            </ExpandGroup>
           </div>
         </div>
       </Panel>
@@ -286,7 +290,7 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                <td className="px-2 py-3 whitespace-nowrap"><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <><button className="mr-2 text-xs font-bold text-blue-700" onClick={() => openEdit(row)}>Edit</button><button className="text-xs font-bold text-danger" onClick={() => removeReceipt(row)}>Hapus</button></> : null}</td>
+                <td className="px-2 py-3 whitespace-nowrap"><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
               </tr>
             ))}
           </tbody>
@@ -442,7 +446,7 @@ function PemasokPage() {
                               />
                             </td>
                             <td className="num px-2 text-right font-semibold">{rupiah(item.qty * item.hargaBeli)}</td>
-                            <td className="px-2 text-right"><button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>Hapus</button></td>
+                            <td className="px-2 text-right"><ExpandGroup align="end"><ExpandButton type="button" variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))} /></ExpandGroup></td>
                           </tr>
                         ))}
                       </tbody>

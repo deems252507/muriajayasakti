@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
-import { Barcode, History, Pencil, Trash2 } from "lucide-react";
+import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -58,6 +59,7 @@ function BarangPage() {
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<{ item: Product; rows: PriceRow[] | null } | null>(null);
   const importingRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
   // Dari tag komentar: barang yang tidak tampil di halaman awal dicari lewat namanya, filter dikosongkan.
   useCommentFinder("barang", (t) => { setKategori([]); setDupOnly(false); setPage(1); setQ(t.label); });
@@ -92,12 +94,13 @@ function BarangPage() {
     <div className="space-y-4">
       <Panel>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {canEdit ? <PrimaryButton onClick={() => { setForm(empty); setUseDus(false); setOpen(true); }}>+ Tambah</PrimaryButton> : null}
+          <ExpandGroup align="start" className="self-start">
+            {canEdit ? <ExpandButton size="md" variant="primary" label="Tambah" icon={<Plus />} onClick={() => { setForm(empty); setUseDus(false); setOpen(true); }} /> : null}
             {canEdit ? (
-              <label className={`inline-flex h-11 cursor-pointer items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700 ${importing ? "pointer-events-none opacity-50" : ""}`}>
-                Import CSV
+              <>
+                <ExpandButton size="md" label="Import CSV" icon={<Upload />} disabled={importing} onClick={() => fileInputRef.current?.click()} />
                 <input
+                  ref={fileInputRef}
                   className="hidden"
                   type="file"
                   accept=".csv,text/csv"
@@ -133,10 +136,12 @@ function BarangPage() {
                     }).catch((error: Error) => toast.error(error.message));
                   }}
                 />
-              </label>
+              </>
             ) : null}
-            <button
-              className="inline-flex h-11 items-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700"
+            <ExpandButton
+              size="md"
+              label="Export CSV"
+              icon={<Download />}
               onClick={() => {
                 void exportProducts().then((csv) => {
                   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -148,10 +153,8 @@ function BarangPage() {
                   URL.revokeObjectURL(url);
                 }).catch((error: Error) => toast.error(error.message));
               }}
-            >
-              Export CSV
-            </button>
-          </div>
+            />
+          </ExpandGroup>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
             <label className="flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold" title="Tampilkan hanya barang dengan part number dan merek yang sama"><input type="checkbox" checked={dupOnly} onChange={(e) => { setPage(1); setDupOnly(e.target.checked); }} />Hanya yang kembar</label>
@@ -269,7 +272,7 @@ function BarangPage() {
               </div>
             </details>
         <SortPicker value={sorts} onChange={(next) => { setPage(1); setSorts(next); }} />
-            <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setSorts(DEFAULT_SORTS); setPage(1); }}>Reset</button>
+            <ExpandGroup className="self-start"><ExpandButton size="md" label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setSorts(DEFAULT_SORTS); setPage(1); }} /></ExpandGroup>
           </div>
         </div>
         {canEdit ? (
@@ -293,25 +296,17 @@ function BarangPage() {
           groupByPart={hideCategoryHeaders(sorts, dupOnly)}
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
-            <>
+            <ExpandGroup>
               <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
-              <button type="button" title="Riwayat harga" aria-label="Riwayat harga" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => openHistory(item)}>
-                <History className="h-4 w-4" />
-              </button>
-              <button type="button" title="Barcode" aria-label="Barcode" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => void printBarcode(item)}>
-                <Barcode className="h-4 w-4" />
-              </button>
+              <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
+              <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item)} />
               {canEdit ? (
                 <>
-                  <button type="button" title="Ubah" aria-label="Ubah" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}>
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button type="button" title="Hapus" aria-label="Hapus" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-red-200 bg-white text-danger hover:bg-red-50" onClick={() => { if (confirm(`Hapus barang "${item.nama}"?`)) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }}>
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <ExpandButton label="Ubah" icon={<Pencil />} onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }} />
+                  <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => { if (confirm(`Hapus barang "${item.nama}"?`)) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }} />
                 </>
               ) : null}
-            </>
+            </ExpandGroup>
           )}
         />
         <div className="mt-3 flex items-center justify-between text-sm">

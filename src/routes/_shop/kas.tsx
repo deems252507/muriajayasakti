@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Eye, Printer, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { PeriodPicker } from "@/components/shop/period";
 import { inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useComments } from "@/components/shop/comment-ui";
@@ -165,7 +167,7 @@ function KasPage() {
           <p className="text-xs text-muted">Pantau uang kas berdasarkan shift tanpa menghitung transaksi secara manual.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" onClick={() => { refresh(); reloadLedger(); }}>Perbarui</button>
+          <ExpandGroup align="start"><ExpandButton icon={<RefreshCw />} label="Perbarui" onClick={() => { refresh(); reloadLedger(); }} /></ExpandGroup>
           {shifts.some((shift) => shift.status === "AKTIF") ? (
             <select className="h-10 rounded-lg border border-line px-3 text-xs font-semibold" value={shifts.some((shift) => shift.id === selected && shift.status === "AKTIF") ? selected : ""} onChange={(e) => { setArsip(null); setSelected(e.target.value); }}>
               {shifts.filter((shift) => shift.status === "AKTIF").map((shift) => <option key={shift.id} value={shift.id}>{shift.shift} · {shift.cashierName} · AKTIF</option>)}
@@ -282,7 +284,7 @@ function KasPage() {
           </div>
           <div className="mt-3">
             <PeriodPicker start={from} end={to} onChange={(nextStart, nextEnd) => { setFrom(nextStart); setTo(nextEnd); }} />
-            <button className="mt-2 h-11 rounded-lg border border-line px-3 text-xs" onClick={() => { setFrom(""); setTo(""); }}>Semua Tanggal</button>
+            <ExpandGroup align="start" className="mt-2"><ExpandButton icon={<CalendarDays />} label="Semua Tanggal" onClick={() => { setFrom(""); setTo(""); }} /></ExpandGroup>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -298,9 +300,11 @@ function KasPage() {
                     <td className="num text-right">{rupiah(drawers[shift.id] ?? shift.kasAkhir ?? 0)}</td>
                     <td className="text-right">
                       <span className="mr-2 inline-block align-middle"><CommentButton kind="shift" refId={shift.id} label={`Shift ${shift.shift} · ${shift.cashierName} · ${when(shift.start)}`} mark={comments.marks[String(shift.id)]} /></span>
-                      <button className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700" onClick={() => lihat(shift.id)}>Lihat</button>
-                      <button className="ml-2 rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white" onClick={() => void cetakShift(shift.id).catch((err: Error) => toast.error(err.message))}>Cetak</button>
-                      <button className="ml-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-danger" onClick={() => hapusArsip(shift)}>Hapus</button>
+                      <ExpandGroup align="end" className="align-middle">
+                        <ExpandButton icon={<Eye />} label="Lihat" onClick={() => lihat(shift.id)} />
+                        <ExpandButton icon={<Printer />} label="Cetak" onClick={() => void cetakShift(shift.id).catch((err: Error) => toast.error(err.message))} />
+                        <ExpandButton variant="danger" icon={<Trash2 />} label="Hapus" onClick={() => hapusArsip(shift)} />
+                      </ExpandGroup>
                     </td>
                   </tr>
                 ))}
@@ -337,7 +341,7 @@ function KasPage() {
             <h3 className="font-extrabold">Arus Kas Shift</h3>
             <p className="text-xs text-muted">{ledger?.shift ? `${ledger.shift.shift} · ${ledger.shift.cashierName} · ${ledger.shift.status}` : "Belum ada shift yang dipilih."} {ledger?.shift?.status === "SELESAI" ? "Ini arsip. Kas awal yang diisi saat buka shift tetap dihitung. Transaksi baru mulai dari 0 setelah shift baru dibuka." : ledger?.shift ? "Kas awal + uang masuk − uang keluar = kas seharusnya." : "Buka shift dan isi kas awal. Selama belum ada penjualan, kas di laci sama dengan kas awal itu."}</p>
           </div>
-          {selected ? <button className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))}>Cetak PDF Shift</button> : null}
+          {selected ? <ExpandGroup align="end" className="shrink-0"><ExpandButton icon={<Printer />} label="Cetak PDF Shift" onClick={() => void cetakShift(selected).catch((err: Error) => toast.error(err.message))} /></ExpandGroup> : null}
         </div>
         <table className="mt-3 w-full text-left text-sm">
           <thead className="text-[11px] tracking-wide text-muted uppercase"><tr><th className="py-2">Waktu / Ref</th><th>Jenis</th><th>Metode</th><th className="text-right">Masuk</th><th className="text-right">Keluar</th></tr></thead>
@@ -361,7 +365,7 @@ function KasPage() {
                 <td>Tunai</td>
                 <td className="num text-right text-emerald-700">{String(move.jenis) === "MASUK" ? `+ ${rupiah(Number(move.jumlah))}` : "-"}</td>
                 <td className="num text-right text-rose-600">{String(move.jenis) === "KELUAR" ? `- ${rupiah(Number(move.jumlah))}` : "-"}</td>
-                <td>{me.role !== "Kasir" ? <button className="btn-tight border border-red-200 bg-red-50 text-danger" onClick={() => { if (!confirm(`Hapus transaksi kas ${move.keterangan || "ini"}? Laporan kas akan ikut menyesuaikan.`)) return; void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); }).catch((error: Error) => toast.error(error.message)); }}>Hapus</button> : null}</td>
+                <td>{me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton variant="danger" icon={<Trash2 />} label="Hapus" onClick={() => { if (!confirm(`Hapus transaksi kas ${move.keterangan || "ini"}? Laporan kas akan ikut menyesuaikan.`)) return; void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); }).catch((error: Error) => toast.error(error.message)); }} /></ExpandGroup> : null}</td>
               </tr>
             ))}
             {returs.map((retur) => {
@@ -460,8 +464,10 @@ function KasPage() {
             </div>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => setArsip(null)}>Tutup</button>
-              <button className="h-11 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-bold text-danger" onClick={() => hapusArsip(arsip)}>Hapus</button>
-              <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => void cetakShift(arsip.id).catch((err: Error) => toast.error(err.message))}>Cetak Shift</button>
+              <ExpandGroup align="end">
+                <ExpandButton variant="danger" size="md" icon={<Trash2 />} label="Hapus" onClick={() => hapusArsip(arsip)} />
+                <ExpandButton size="md" icon={<Printer />} label="Cetak Shift" onClick={() => void cetakShift(arsip.id).catch((err: Error) => toast.error(err.message))} />
+              </ExpandGroup>
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { AlertTriangle, ChevronDown, Download, LogIn, Package, ReceiptText, Settings, Truck, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { inputClass, Panel } from "@/components/shop/shell";
@@ -222,14 +223,9 @@ function JejakPage() {
           <h2 className="text-lg font-extrabold">Riwayat Aktivitas</h2>
           <p className="mt-1 text-xs text-muted">Pantau perubahan penting: transaksi, stok, harga, kas, dan shift.</p>
         </div>
-        <button
-          type="button"
-          disabled={filtered.length === 0}
-          onClick={() => exportCsv(filtered)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
-        >
-          <Download size={14} /> Ekspor CSV
-        </button>
+        <ExpandGroup align="end">
+          <ExpandButton icon={<Download />} label="Ekspor CSV" disabled={filtered.length === 0} onClick={() => exportCsv(filtered)} />
+        </ExpandGroup>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">

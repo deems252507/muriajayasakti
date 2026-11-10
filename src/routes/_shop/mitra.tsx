@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { deletePartner, listPartners, savePartner } from "@/lib/shop/api";
@@ -62,7 +64,7 @@ function MitraPage() {
             <p className="mt-0.5 text-xs text-muted">Pelanggan dipakai di Kasir dan Bon. Supplier dipakai di Barang Masuk Pemasok.</p>
           </div>
           {isAdmin ? (
-            <PrimaryButton onClick={() => { setForm(emptyForm(tab)); setOpen(true); }}>+ Tambah {tab}</PrimaryButton>
+            <ExpandGroup align="end" className="self-start"><ExpandButton size="md" variant="primary" label={`Tambah ${tab}`} icon={<Plus />} onClick={() => { setForm(emptyForm(tab)); setOpen(true); }} /></ExpandGroup>
           ) : null}
         </div>
 
@@ -109,8 +111,7 @@ function MitraPage() {
                   {isAdmin ? (
                     <td className="px-2 py-2 text-right whitespace-nowrap">
                       <span className="mr-2 inline-block align-middle"><CommentButton kind="mitra" refId={row.id} label={`${row.tipe}: ${row.nama}`} mark={comments.marks[String(row.id)]} size="h-9 w-9" /></span>
-                      <button className="h-9 rounded-lg border border-line px-3 text-sm font-medium" onClick={() => { setForm(row); setOpen(true); }}>Edit</button>
-                      <button className="ml-2 h-9 rounded-lg border border-red-200 px-3 text-sm font-medium text-danger" onClick={() => remove(row)}>Hapus</button>
+                      <ExpandGroup align="end"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => { setForm(row); setOpen(true); }} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => remove(row)} /></ExpandGroup>
                     </td>
                   ) : null}
                 </tr>

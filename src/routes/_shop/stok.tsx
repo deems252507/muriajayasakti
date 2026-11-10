@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Eye } from "lucide-react";
+import { Eye, Printer, RotateCcw } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -155,8 +156,9 @@ function StokPage() {
           <option value="Habis">Habis</option>
         </select>
         <SortPicker value={sorts} onChange={(next) => { setPage(1); setSorts(next); }} />
-        <button className="h-11 rounded-lg border border-line px-3 text-sm" onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSorts(DEFAULT_SORTS); setPage(1); }}>Reset</button>
-        <button className="h-11 rounded-lg bg-slate-800 px-3 text-sm font-bold text-white" onClick={() => {
+        <ExpandGroup align="start">
+        <ExpandButton size="md" label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setDupOnly(false); setKategori([]); setKategoriQ(""); setStatus(""); setSorts(DEFAULT_SORTS); setPage(1); }} />
+        <ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => {
           void listProducts({ data: { q, dupOnly, sorts, page: 1, kategori, status, all: true } }).then((res) => {
             try {
               const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -169,7 +171,8 @@ function StokPage() {
               printStockReport(res.items, { kategori: kategori.length ? kategori.join(" + ") : "Semua Kategori", tanggal, filter, groupByKategori: !hideCategoryHeaders(sorts, dupOnly) });
             } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
           });
-        }}>Cetak PDF</button>
+        }} />
+        </ExpandGroup>
       </div>
       <div className="mt-3 overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
@@ -181,12 +184,10 @@ function StokPage() {
           groupByPart={hideCategoryHeaders(sorts, dupOnly)}
           onOpen={setDetail}
           actions={(item) => (
-            <>
+            <ExpandGroup>
             <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
-            <button type="button" title="Detail" aria-label="Detail" className="inline-grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-700 hover:bg-slate-100" onClick={() => setDetail(item)}>
-              <Eye className="h-4 w-4" />
-            </button>
-            </>
+            <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} />
+            </ExpandGroup>
           )}
         />
       </div>

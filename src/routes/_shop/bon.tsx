@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { CheckCircle2, Pencil, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -72,12 +74,12 @@ function BonPage() {
             <h2 className="text-lg font-extrabold">Bon / Piutang Pelanggan</h2>
             <p className="mt-1 max-w-xl text-xs text-muted">Nota yang belum dibayar. Tekan <b>Lunasi</b> saat pelanggan membayar, uangnya otomatis tercatat sebagai kas masuk.</p>
           </div>
-          <button className="h-10 rounded-lg bg-slate-800 px-4 text-xs font-bold text-white" onClick={() => {
+          <ExpandGroup align="end" className="self-start"><ExpandButton label="Cetak Laporan" icon={<Printer />} onClick={() => {
             void listBon({ data: { status, customer, start, end } }).then((data) => {
               try { printDebtReport(data as Array<Record<string, unknown>>, start, end, status); }
               catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
             });
-          }}>Cetak Laporan</button>
+          }} /></ExpandGroup>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <div className="rounded-xl border border-red-200 bg-red-50 p-3">
@@ -103,7 +105,7 @@ function BonPage() {
             ))}
           </div>
           <input className={`${inputClass} max-w-xs`} placeholder="Cari nama pelanggan" value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          <button className="h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => { setStatus("Bon"); setCustomer(""); setStart(""); setEnd(""); }}>Reset</button>
+          <ExpandGroup align="end"><ExpandButton label="Reset" icon={<RotateCcw />} onClick={() => { setStatus("Bon"); setCustomer(""); setStart(""); setEnd(""); }} /></ExpandGroup>
         </div>
         <details className="mt-3 text-sm" open={Boolean(start || end)}>
           <summary className="cursor-pointer text-xs font-bold text-accent">Filter tanggal bon</summary>
@@ -163,10 +165,11 @@ function BonPage() {
                       </ul>
                     ) : null}
                     <div className="mt-3 flex flex-wrap justify-end gap-2">
-                      <button className="h-10 rounded-lg border border-line px-3 text-sm font-semibold" onClick={() => cetak(nomor)}>Cetak Nota</button>
+                      <ExpandGroup align="end">
+                      <ExpandButton label="Cetak Nota" icon={<Printer />} onClick={() => cetak(nomor)} />
                       {canEdit && !lunas ? (
                         <>
-                          <button className="h-10 rounded-lg border border-line px-3 text-sm font-semibold" onClick={() => {
+                          <ExpandButton label="Edit" icon={<Pencil />} onClick={() => {
                             void getInvoice({ data: { nomor } }).then((res) => {
                               if (!res) return;
                               const invoice = res.invoice as { diskon: number; keterangan?: string };
@@ -180,18 +183,18 @@ function BonPage() {
                                 adds: [],
                               });
                             });
-                          }}>Edit</button>
-                          <button className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700" onClick={() => {
+                          }} />
+                          <ExpandButton variant="primary" label="Lunasi" icon={<CheckCircle2 />} onClick={() => {
                             if (Number(inv.total) <= 0) return toast.error("Harga bon masih Rp 0. Klik Edit dulu untuk mengisi harga.");
                             if (!confirm(`Lunasi ${nomor} atas nama ${name} sebesar ${rupiah(Number(inv.total))}?`)) return;
                             void payoffBon({ data: { nomor } })
                               .then((res) => { toast.success(`Bon ${nomor} berhasil dilunasi`, { description: `${name} · kas masuk ${rupiah(Number((res as { total: number }).total))}` }); load(); })
                               .catch((error: Error) => toast.error(error.message));
-                          }}>Lunasi</button>
+                          }} />
                         </>
                       ) : null}
                       {canEdit ? (
-                        <button className="h-10 rounded-lg border border-red-200 px-3 text-sm font-bold text-danger" onClick={() => {
+                        <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => {
                           const warn = lunas
                             ? `Hapus ${nomor} (${name})? Bon ini sudah lunas, catatan kas pelunasannya juga ikut dihapus. Stok barang dikembalikan.`
                             : `Hapus ${nomor} (${name})? Stok barang dikembalikan.`;
@@ -199,8 +202,9 @@ function BonPage() {
                           void removeInvoice({ data: { nomor } })
                             .then(() => { toast.success(`Bon ${nomor} berhasil dihapus`, { description: "Stok barang dikembalikan." }); load(); })
                             .catch((error: Error) => toast.error(error.message));
-                        }}>Hapus</button>
+                        }} />
                       ) : null}
+                      </ExpandGroup>
                     </div>
                   </li>
                 );

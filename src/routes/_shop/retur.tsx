@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Printer, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, inputClass, Panel } from "@/components/shop/shell";
@@ -308,7 +310,7 @@ function ReturPage() {
         <h3 className="font-extrabold">Histori Retur</h3>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
           <PeriodPicker start={from} end={to} onChange={(nextStart, nextEnd) => { setFrom(nextStart); setTo(nextEnd); }} />
-          <button className="h-11 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white" onClick={() => printReturList(shown, from, to)}>Cetak PDF</button>
+          <ExpandGroup align="end"><ExpandButton size="md" label="Cetak PDF" icon={<Printer />} onClick={() => printReturList(shown, from, to)} /></ExpandGroup>
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -323,18 +325,20 @@ function ReturPage() {
                   <td>{String(row.pelanggan)}</td>
                   <td className="num text-right">{rupiah(Number(row.net_amount))}</td>
                   <td className="text-right">
-                    <span className="mr-3 inline-block align-middle"><CommentButton kind="retur" refId={String(row.id)} label={`Retur ${String(row.id)} · ${String(row.pelanggan || "-")}`} mark={comments.marks[String(row.id)]} /></span>
-                    <button className="text-xs font-bold text-accent" onClick={() => {
+                    <ExpandGroup align="end">
+                    <CommentButton kind="retur" refId={String(row.id)} label={`Retur ${String(row.id)} · ${String(row.pelanggan || "-")}`} mark={comments.marks[String(row.id)]} />
+                    <ExpandButton label="Cetak" icon={<Printer />} onClick={() => {
                       try { printReturSlip(row); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
-                    }}>Cetak</button>
+                    }} />
                     {me.role !== "Kasir" ? (
-                      <button className="ml-3 text-xs font-bold text-danger" onClick={() => {
+                      <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => {
                         if (!confirm(`Hapus nota retur ${String(row.id)}? Stok dan uang laci dikembalikan.`)) return;
                         void deleteRetur({ data: { id: String(row.id) } })
                           .then(() => { toast.success(`Retur ${String(row.id)} berhasil dihapus`, { description: "Stok dan kas dikembalikan." }); loadHistory(); })
                           .catch((error: Error) => toast.error(error.message));
-                      }}>Hapus</button>
+                      }} />
                     ) : null}
+                    </ExpandGroup>
                   </td>
                 </tr>
               ))}

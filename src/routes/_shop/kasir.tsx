@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
@@ -448,7 +449,7 @@ function KasirPage() {
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">Metode Pembayaran</p>
-              <button className="text-[10px] text-slate-500" onClick={() => { setMetode("Tunai"); setBayar(""); setBank(""); setDiskon(""); }}>Reset</button>
+              <ExpandGroup align="end"><ExpandButton icon={<RotateCcw />} label="Reset" onClick={() => { setMetode("Tunai"); setBayar(""); setBank(""); setDiskon(""); }} /></ExpandGroup>
             </div>
             <div className="mb-3 grid grid-cols-4 gap-1.5">
               {([

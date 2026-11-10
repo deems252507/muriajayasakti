@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Pencil, Plus } from "lucide-react";
+import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { changeOwnPassword, listMasters, listStaff, saveBank, savePajak, saveShopProfile, saveStaff, updateOwnProfile } from "@/lib/shop/api";
 import { setShopProfile } from "@/lib/shop/print";
@@ -92,7 +94,7 @@ function SettingsPage() {
       <Panel>
         <div className="flex items-center justify-between">
           <h2 className="font-extrabold">Master Bank / Rekening</h2>
-          {me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => { setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); setBankOpen(true); }}>+ Tambah</button> : null}
+          {me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton variant="primary" icon={<Plus />} label="Tambah" onClick={() => { setBank({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" }); setBankOpen(true); }} /></ExpandGroup> : null}
         </div>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -104,7 +106,7 @@ function SettingsPage() {
                   <td>{item.rekening || "-"}</td>
                   <td>{item.atasNama || "-"}</td>
                   <td>{item.aktif ? "Aktif" : "Nonaktif"}</td>
-                  <td>{me.role !== "Kasir" ? <button className="text-xs font-bold text-accent" onClick={() => { setBank(item); setBankOpen(true); }}>Edit</button> : null}</td>
+                  <td>{me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit" onClick={() => { setBank(item); setBankOpen(true); }} /></ExpandGroup> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -141,7 +143,7 @@ function SettingsPage() {
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">Manajemen Semua Akun</h2>
-            <button className="text-xs font-bold text-accent" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }}>+ Akun baru</button>
+            <ExpandGroup align="end"><ExpandButton variant="primary" icon={<Plus />} label="Akun baru" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }} /></ExpandGroup>
           </div>
           <p className="text-xs text-muted">Ubah nama, foto, dan password. Password baru tidak akan tertulis di halaman login.</p>
           <div className="mt-3 overflow-x-auto">
@@ -160,7 +162,7 @@ function SettingsPage() {
                     <td>{item.role}</td>
                     <td>{item.shift || "-"}</td>
                     <td>{item.status}</td>
-                    <td><button className="text-xs font-bold text-accent" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true }); setAccountOpen(true); }}>Edit Akun</button></td>
+                    <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true }); setAccountOpen(true); }} /></ExpandGroup></td>
                   </tr>
                 ))}
               </tbody>
