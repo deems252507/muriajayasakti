@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -7,6 +8,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 /** Komponen asli dari 21st.dev (tombol "Visit"), disimpan apa adanya sebagai contoh. */
 export const Component = () => {
@@ -39,51 +41,126 @@ export const Component = () => {
 type Variant = "primary" | "neutral" | "danger";
 type Size = "sm" | "md";
 
-const VARIANT: Record<Variant, string> = {
-  // gaya persis seperti di video (gradasi biru-ungu + garis #656fe2)
-  primary: "bg-gradient-to-r from-[#c0c7ff] to-[#4c64ff] border-[#656fe2] text-white",
-  neutral: "bg-white border-slate-300 text-slate-700",
-  danger: "bg-white border-red-300 text-red-600",
+// ikon per ukuran; bentuk, warna, dan tinggi diatur di styles.css (button.xbtn)
+const SIZE: Record<Size, { icon: string }> = {
+  sm: { icon: "[&_svg]:h-4 [&_svg]:w-4" },
+  md: { icon: "[&_svg]:h-[1.125rem] [&_svg]:w-[1.125rem]" },
 };
 
-// lebar tombol saat ringkas (px) dan tinggi
-const SIZE: Record<Size, { box: number; cls: string; icon: string }> = {
-  sm: { box: 32, cls: "h-8 text-xs", icon: "[&_svg]:h-4 [&_svg]:w-4" },
-  md: { box: 44, cls: "h-11 text-sm", icon: "[&_svg]:h-5 [&_svg]:w-5" },
-};
+interface TipState {
+  cx: number;
+  top: number;
+  bottom: number;
+}
+
+/** Keterangan kecil di atas (atau di bawah) tombol. Dipasang di <body> supaya tidak terpotong tabel / kartu. */
+function Tip({ label, cx, top, bottom }: { label: string; cx: number; top: number; bottom: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const margin = 8;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.min(Math.max(margin, cx - w / 2), Math.max(margin, window.innerWidth - w - margin));
+    const above = top - h - 6;
+    setPos({ left, top: above >= margin ? above : bottom + 6 });
+  }, [label, cx, top, bottom]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      role="tooltip"
+      className="xbtn-tip"
+      style={{ left: pos ? pos.left : 0, top: pos ? pos.top : 0, visibility: pos ? "visible" : "hidden" }}
+    >
+      {label}
+    </div>,
+    document.body,
+  );
+}
 
 export interface ExpandButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   /** Ikon (mis. dari lucide-react). */
   icon: ReactNode;
-  /** Teks yang muncul saat tombol disorot / disentuh. Juga dipakai sebagai aria-label. */
+  /** Nama tombol. Tampil sebagai keterangan saat kursor diarahkan / difokus keyboard, dan dipakai sebagai aria-label. */
   label: string;
   variant?: Variant;
   size?: Size;
 }
 
 /**
- * Tombol bulat ringkas (hanya ikon). Saat kursor diarahkan, difokus keyboard, atau
- * ditekan/disentuh di layar sentuh, tombol melebar dan menampilkan teks `label`.
- * Diadaptasi dari button-7.
+ * Tombol dengan ukuran tetap (tidak pernah melebar atau menimpa elemen lain).
+ * - Di toolbar / form (layar >= 640px): ikon + teks, tampil jelas tanpa perlu disorot.
+ * - Di dalam tabel dan di layar kecil: kotak ikon rapi; nama tombol muncul sebagai keterangan kecil
+ *   saat mouse diarahkan atau difokus keyboard. Di layar sentuh langsung menjalankan aksi.
  */
 export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(function ExpandButton(
-  { icon, label, variant = "neutral", size = "sm", className = "", style, type = "button", ...props },
+  {
+    icon,
+    label,
+    variant = "neutral",
+    size = "sm",
+    className = "",
+    style,
+    type = "button",
+    onPointerEnter,
+    onPointerLeave,
+    onPointerDown,
+    onFocus,
+    onBlur,
+    onClick,
+    ...props
+  },
   ref,
 ) {
-  const { box, cls, icon: iconCls } = SIZE[size];
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const [expanded, setExpanded] = useState(box);
+  const { icon: iconCls } = SIZE[size];
+  const [tip, setTip] = useState<TipState | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Ukur lebar teks supaya lebar tombol saat melebar pas, berapa pun panjang labelnya.
-  useLayoutEffect(() => {
-    const el = labelRef.current;
-    if (!el) return;
-    const measure = () => setExpanded(box + el.offsetWidth + 4);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [box, label]);
+  const clearTimer = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+
+  const showTip = (el: HTMLElement, delay: number) => {
+    clearTimer();
+    timer.current = setTimeout(() => {
+      // Teks sudah terlihat di tombol? Tidak perlu keterangan lagi.
+      const text = el.querySelector<HTMLElement>(".xbtn-label");
+      if (text && text.offsetParent !== null) return;
+      const r = el.getBoundingClientRect();
+      setTip({ cx: r.left + r.width / 2, top: r.top, bottom: r.bottom });
+    }, delay);
+  };
+
+  const hideTip = () => {
+    clearTimer();
+    setTip(null);
+  };
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // Sembunyikan keterangan saat halaman digulir / ukuran jendela berubah.
+  useEffect(() => {
+    if (!tip) return;
+    const close = () => setTip(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [tip]);
 
   return (
     <button
@@ -91,69 +168,52 @@ export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(fun
       type={type}
       aria-label={label}
       {...props}
-      style={{ "--xbtn-w": `${box}px`, "--xbtn-xw": `${expanded}px`, ...style } as CSSProperties}
-      className={`xbtn group relative inline-flex shrink-0 items-center justify-end overflow-hidden rounded-full border-2 font-semibold shadow-sm disabled:opacity-40 ${cls} ${iconCls} ${VARIANT[variant]} ${className}`}
+      onPointerEnter={(e) => {
+        onPointerEnter?.(e);
+        if (e.pointerType === "mouse") showTip(e.currentTarget, 350);
+      }}
+      onPointerLeave={(e) => {
+        onPointerLeave?.(e);
+        hideTip();
+      }}
+      onPointerDown={(e) => {
+        onPointerDown?.(e);
+        hideTip();
+      }}
+      onFocus={(e) => {
+        onFocus?.(e);
+        if (e.currentTarget.matches(":focus-visible")) showTip(e.currentTarget, 0);
+      }}
+      onBlur={(e) => {
+        onBlur?.(e);
+        hideTip();
+      }}
+      onClick={(e) => {
+        hideTip();
+        onClick?.(e);
+      }}
+      style={style}
+      data-variant={variant}
+      className={`xbtn xbtn-${size} group relative inline-flex shrink-0 items-center justify-center shadow-sm disabled:opacity-40 ${iconCls} ${className}`}
     >
-      <span
-        ref={labelRef}
-        className="whitespace-nowrap pl-3 opacity-0 transition-all duration-200 translate-x-2 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 group-active:translate-x-0 group-active:opacity-100"
-      >
-        {label}
-      </span>
-      <span className="grid shrink-0 place-items-center" style={{ width: box - 4 }}>
-        {icon}
-      </span>
+      <span className="grid shrink-0 place-items-center">{icon}</span>
+      <span className="xbtn-label">{label}</span>
+      {tip ? <Tip label={label} cx={tip.cx} top={tip.top} bottom={tip.bottom} /> : null}
     </button>
   );
 });
 
 /**
- * Pembungkus beberapa ExpandButton. Lebar & tinggi grup dikunci sebesar kondisi ringkas,
- * jadi saat satu tombol melebar, tombol lain hanya bergeser DI DALAM grup (tidak mendorong
- * tabel, kolom, atau baris lain). Bagian yang melebar menimpa ruang kosong di sekitarnya.
- * `align="end"` melebar ke kiri (untuk kolom Aksi di tepi kanan), `"start"` ke kanan.
+ * Pembungkus beberapa ExpandButton: tombol berjajar rapi dengan jarak tetap dan tidak
+ * mendorong atau menimpa elemen lain. Properti `align` dipertahankan agar pemakaian lama tetap valid.
  */
 export function ExpandGroup({
   children,
-  align = "end",
   className = "",
 }: {
   children: ReactNode;
   align?: "start" | "end";
   className?: string;
 }) {
-  const innerRef = useRef<HTMLDivElement>(null);
-  const [dim, setDim] = useState<{ w: number; h: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = innerRef.current;
-    if (!el) return;
-    const measure = () => {
-      // jangan ukur ulang saat ada tombol yang sedang melebar
-      if (el.matches(":hover, :focus-within, :active")) return;
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      setDim((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  });
-
-  return (
-    <div
-      className={`relative inline-block shrink-0 align-middle ${className}`}
-      style={dim ? { width: dim.w, height: dim.h } : undefined}
-    >
-      <div
-        ref={innerRef}
-        className={`flex w-max items-center gap-1 hover:z-20 focus-within:z-20 ${
-          dim ? `absolute inset-y-0 ${align === "end" ? "right-0 justify-end" : "left-0 justify-start"}` : "relative"
-        }`}
-      >
-        {children}
-      </div>
-    </div>
-  );
+  return <div className={`inline-flex shrink-0 items-center gap-1 align-middle ${className}`}>{children}</div>;
 }
