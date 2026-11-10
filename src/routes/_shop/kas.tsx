@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Eye, Printer, RefreshCw, Trash2 } from "lucide-react";
@@ -101,8 +102,8 @@ function KasPage() {
     setArsip(shift);
   }
 
-  function hapusArsip(shift: Shift) {
-    if (!confirm(`Hapus arsip ${shift.shift} milik ${shift.cashierName}?\n\nSemua kas masuk & kas keluar milik shift ini juga akan dihapus dari Laporan Kas Harian.`)) return;
+  async function hapusArsip(shift: Shift) {
+    if (!(await confirmDialog(`Hapus arsip ${shift.shift} milik ${shift.cashierName}?\n\nSemua kas masuk & kas keluar milik shift ini juga akan dihapus dari Laporan Kas Harian.`, { title: "Hapus arsip shift?", danger: true }))) return;
     void deleteClosedShift({ data: { id: shift.id } })
       .then(() => {
         toast.success("Arsip shift beserta kas-nya dihapus");
@@ -248,11 +249,11 @@ function KasPage() {
               <input className={`${inputClass} num`} placeholder="Kas awal" value={kasAwal} onChange={(e) => setKasAwal(grouped(digits(e.target.value)))} />
               <PrimaryButton type="submit">Buka Shift</PrimaryButton>
             </form>
-            <form id="tutup-shift" className="space-y-2" onSubmit={(e) => {
+            <form id="tutup-shift" className="space-y-2" onSubmit={async (e) => {
               e.preventDefault();
               const aktif = shifts.find((item) => item.id === selected && item.status === "AKTIF");
               if (!aktif) return toast.error("Tidak ada shift aktif untuk ditutup.");
-              if (!confirm(`Tutup ${aktif.shift} milik ${aktif.cashierName} dan arsipkan?`)) return;
+              if (!(await confirmDialog(`Tutup ${aktif.shift} milik ${aktif.cashierName} dan arsipkan?`, { title: "Tutup shift?", confirmText: "Tutup shift" }))) return;
               void closeShift({ data: { id: aktif.id, countedCash: counted === "" ? null : digits(counted) } })
                 .then(async () => {
                   toast.success("Shift ditutup dan diarsip. Transaksi berjalan kembali ke 0.");
@@ -365,7 +366,7 @@ function KasPage() {
                 <td>Tunai</td>
                 <td className="num text-right text-emerald-700">{String(move.jenis) === "MASUK" ? `+ ${rupiah(Number(move.jumlah))}` : "-"}</td>
                 <td className="num text-right text-rose-600">{String(move.jenis) === "KELUAR" ? `- ${rupiah(Number(move.jumlah))}` : "-"}</td>
-                <td>{me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton variant="danger" icon={<Trash2 />} label="Hapus" onClick={() => { if (!confirm(`Hapus transaksi kas ${move.keterangan || "ini"}? Laporan kas akan ikut menyesuaikan.`)) return; void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); }).catch((error: Error) => toast.error(error.message)); }} /></ExpandGroup> : null}</td>
+                <td>{me.role !== "Kasir" ? <ExpandGroup align="end"><ExpandButton variant="danger" icon={<Trash2 />} label="Hapus" onClick={async () => { if (!(await confirmDialog(`Hapus transaksi kas ${move.keterangan || "ini"}? Laporan kas akan ikut menyesuaikan.`, { title: "Hapus transaksi kas?", danger: true }))) return; void deleteCashMove({ data: { id: Number(move.id) } }).then(() => { refresh(); reloadLedger(); }).catch((error: Error) => toast.error(error.message)); }} /></ExpandGroup> : null}</td>
               </tr>
             ))}
             {returs.map((retur) => {

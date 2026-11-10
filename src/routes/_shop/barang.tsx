@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
 import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
@@ -303,7 +304,7 @@ function BarangPage() {
               {canEdit ? (
                 <>
                   <ExpandButton label="Ubah" icon={<Pencil />} onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }} />
-                  <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => { if (confirm(`Hapus barang "${item.nama}"?`)) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }} />
+                  <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={async () => { if (await confirmDialog(`Barang "${item.nama}" akan dihapus dari daftar.`, { title: "Hapus barang?", danger: true })) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }} />
                 </>
               ) : null}
             </ExpandGroup>

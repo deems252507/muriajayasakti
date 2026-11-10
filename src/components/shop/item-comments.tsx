@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { MapPin, MessageSquare, Reply, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -106,9 +107,9 @@ export function ItemComments({ kind, refId, label, locate, onClose, onChanged }:
     }
   }
 
-  function remove(c: Comment) {
+  async function remove(c: Comment) {
     const hasReplies = c.parentId == null && repliesOf(c.id).length > 0;
-    if (!confirm(hasReplies ? "Hapus komentar ini beserta semua balasannya?" : (c.mine ? "Hapus komentar ini?" : `Hapus komentar milik ${c.authorName}?`))) return;
+    if (!(await confirmDialog(hasReplies ? "Hapus komentar ini beserta semua balasannya?" : (c.mine ? "Hapus komentar ini?" : `Hapus komentar milik ${c.authorName}?`), { title: "Hapus komentar?", danger: true }))) return;
     void itemCommentDelete({ data: { id: c.id } })
       .then(() => { if (replyTo?.id === c.id) setReplyTo(null); load(); onChanged(); })
       .catch((e: Error) => toast.error(e.message));

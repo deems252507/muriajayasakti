@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { Toaster } from "sonner";
+import { ConfirmHost } from "@/lib/confirm";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -33,6 +34,7 @@ export const Route = createRootRoute({
       <body>
         <Outlet />
         <Toaster position="top-center" richColors closeButton />
+        <ConfirmHost />
         <Scripts />
       </body>
     </html>

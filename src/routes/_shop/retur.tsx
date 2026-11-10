@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { Printer, Trash2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
@@ -331,8 +332,8 @@ function ReturPage() {
                       try { printReturSlip(row); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
                     }} />
                     {me.role !== "Kasir" ? (
-                      <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => {
-                        if (!confirm(`Hapus nota retur ${String(row.id)}? Stok dan uang laci dikembalikan.`)) return;
+                      <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={async () => {
+                        if (!(await confirmDialog(`Hapus nota retur ${String(row.id)}? Stok dan uang laci dikembalikan.`, { title: "Hapus nota retur?", danger: true }))) return;
                         void deleteRetur({ data: { id: String(row.id) } })
                           .then(() => { toast.success(`Retur ${String(row.id)} berhasil dihapus`, { description: "Stok dan kas dikembalikan." }); loadHistory(); })
                           .catch((error: Error) => toast.error(error.message));

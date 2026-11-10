@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
@@ -39,8 +40,8 @@ function MitraPage() {
       .sort((a, b) => a.nama.localeCompare(b.nama, "id"));
   }, [rows, tab, q]);
 
-  function remove(row: Partner) {
-    if (!window.confirm(`Hapus ${row.tipe.toLowerCase()} "${row.nama}"?`)) return;
+  async function remove(row: Partner) {
+    if (!(await confirmDialog(`Hapus ${row.tipe.toLowerCase()} "${row.nama}"?`, { title: "Hapus data mitra?", danger: true }))) return;
     void deletePartner({ data: { id: row.id } })
       .then(() => { toast.success(`${row.tipe} berhasil dihapus`, { description: row.nama }); load(); })
       .catch((err: Error) => toast.error(err.message));

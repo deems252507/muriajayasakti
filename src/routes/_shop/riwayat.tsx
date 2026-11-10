@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye, Pencil, Printer, RotateCcw, Trash2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
@@ -339,8 +340,8 @@ function RiwayatPage() {
                   <ExpandGroup align="start" className="mt-2 mr-3"><ExpandButton label="Ubah Nota (per barang)" icon={<Pencil />} onClick={() => void openEditor(String(inv.nomor))} /></ExpandGroup>
                 ) : null}
                 {me.role === "Admin" ? (
-                  <ExpandGroup align="start" className="mt-2"><ExpandButton variant="danger" label="Hapus Transaksi" icon={<Trash2 />} onClick={() => {
-                    if (!confirm(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?")) return;
+                  <ExpandGroup align="start" className="mt-2"><ExpandButton variant="danger" label="Hapus Transaksi" icon={<Trash2 />} onClick={async () => {
+                    if (!(await confirmDialog(String(inv.source) === "Kasir" ? "Hapus nota ini beserta retur yang terkait? Stok dan uang laci dikembalikan." : "Hapus transaksi ini dan kembalikan stok?", { title: "Hapus transaksi?", danger: true }))) return;
                     void removeInvoice({ data: { nomor: String(inv.nomor) } }).then(() => { toast.success(`Nota ${String(inv.nomor)} berhasil dihapus`, { description: "Stok dan kas yang terkait sudah dikembalikan." }); setOpen(""); load(); }).catch((error: Error) => toast.error(error.message));
                   }} /></ExpandGroup>
                 ) : null}

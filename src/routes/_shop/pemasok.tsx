@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -196,8 +197,8 @@ function PemasokPage() {
       });
   }
 
-  function removeReceipt(row: SupplierReceipt) {
-    if (!window.confirm(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi.`)) return;
+  async function removeReceipt(row: SupplierReceipt) {
+    if (!(await confirmDialog(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi.`, { title: "Hapus penerimaan?", danger: true }))) return;
     void deleteSupplierReceipt({ data: { id: row.id } })
       .then(() => { toast.success(`Penerimaan ${row.invoiceNo} berhasil dihapus`, { description: "Stok barang dikurangi sesuai penerimaan." }); load(page); })
       .catch((error: Error) => toast.error(error.message));

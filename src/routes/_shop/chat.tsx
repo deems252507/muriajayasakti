@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowLeft, MessageSquarePlus, MoreVertical, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -103,7 +104,7 @@ function ChatPage() {
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   async function deleteChat(c: Contact, scope: "me" | "all") {
     setRowMenu(null);
-    if (!confirm(scope === "me" ? `Hapus obrolan dengan ${c.name}? Obrolan hilang dari daftar Anda. Untuk chat lagi, pakai Pesan baru.` : `Hapus obrolan dengan ${c.name} untuk SEMUA orang? Tidak bisa dikembalikan.`)) return;
+    if (!(await confirmDialog(scope === "me" ? `Hapus obrolan dengan ${c.name}? Obrolan hilang dari daftar Anda. Untuk chat lagi, pakai Pesan baru.` : `Hapus obrolan dengan ${c.name} untuk SEMUA orang? Tidak bisa dikembalikan.`, { title: "Hapus obrolan?", danger: true }))) return;
     try {
       if (scope === "me") await chatHideAll({ data: { kind: "dm", target: c.username } });
       else await chatClear({ data: { with: c.username } });
@@ -119,7 +120,7 @@ function ChatPage() {
   async function groupAction(g: Group, action: "clear" | "delete") {
     setGroupMenu(null);
     const ask = action === "clear" ? `Kosongkan chat grup "${g.nama}" dari tampilan Anda? Anggota lain tetap bisa melihatnya.` : `Hapus grup "${g.nama}"? Semua chat dan catatan ikut terhapus untuk SEMUA anggota dan tidak bisa dikembalikan.`;
-    if (!confirm(ask)) return;
+    if (!(await confirmDialog(ask, { title: action === "clear" ? "Kosongkan chat grup?" : "Hapus grup?", danger: true }))) return;
     try {
       if (action === "clear") await chatHideAll({ data: { kind: "group", target: String(g.id) } });
       else await groupDelete({ data: { id: g.id } });

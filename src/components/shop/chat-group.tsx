@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { ArrowLeft, Copy, ImagePlus, Pencil, Pin, PinOff, Plus, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -150,8 +151,8 @@ export function GroupPanel(props: { groupId: number; staff: StaffPerson[]; meUse
           {info?.canManage ? (
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-bold" onClick={() => setEditing(true)}>Atur nama & anggota</button>
-              <button type="button" className="h-10 rounded-lg border border-red-200 px-4 text-sm font-bold text-danger" onClick={() => {
-                if (!confirm(`Hapus grup "${info.nama}"? Semua chat dan catatan di grup ini ikut terhapus dan tidak bisa dikembalikan.`)) return;
+              <button type="button" className="h-10 rounded-lg border border-red-200 px-4 text-sm font-bold text-danger" onClick={async () => {
+                if (!(await confirmDialog(`Hapus grup "${info.nama}"? Semua chat dan catatan di grup ini ikut terhapus dan tidak bisa dikembalikan.`, { title: "Hapus grup?", danger: true }))) return;
                 void groupDelete({ data: { id: groupId } }).then(() => { toast.success("Grup dihapus"); onDeleted(); }).catch((error: Error) => toast.error(error.message));
               }}>Hapus grup</button>
             </div>
@@ -236,8 +237,8 @@ function GroupNotes({ groupId }: { groupId: number }) {
                 <button type="button" title={n.pinned ? "Lepas sematan" : "Sematkan"} aria-label="Sematkan" className="grid size-8 place-items-center rounded-lg border border-line text-slate-700 hover:bg-slate-100" onClick={() => void save({ id: n.id, judul: n.judul, isi: n.isi, pinned: !n.pinned })}>{n.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</button>
                 <button type="button" title="Salin isi" aria-label="Salin" className="grid size-8 place-items-center rounded-lg border border-line text-slate-700 hover:bg-slate-100" onClick={() => { void navigator.clipboard?.writeText(`${n.judul}\n${n.isi}`.trim()).then(() => toast.success("Catatan disalin")).catch(() => toast.error("Tidak bisa menyalin")); }}><Copy className="size-4" /></button>
                 <button type="button" title="Ubah" aria-label="Ubah" className="grid size-8 place-items-center rounded-lg border border-line text-slate-700 hover:bg-slate-100" onClick={() => setDraft({ id: n.id, judul: n.judul, isi: n.isi, pinned: n.pinned })}><Pencil className="size-4" /></button>
-                <button type="button" title="Hapus" aria-label="Hapus" className="grid size-8 place-items-center rounded-lg border border-red-200 text-danger hover:bg-red-50" onClick={() => {
-                  if (!confirm("Hapus catatan ini?")) return;
+                <button type="button" title="Hapus" aria-label="Hapus" className="grid size-8 place-items-center rounded-lg border border-red-200 text-danger hover:bg-red-50" onClick={async () => {
+                  if (!(await confirmDialog("Hapus catatan ini?", { title: "Hapus catatan?", danger: true }))) return;
                   void noteDelete({ data: { groupId, id: n.id } }).then(load).catch((error: Error) => toast.error(error.message));
                 }}><Trash2 className="size-4" /></button>
               </div>

@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import {
   Camera, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, Download, FileText, Image as ImageIcon, Info, Mic, MoreVertical, Pause, Play, Package, Paperclip, Pencil, Pin, PinOff, Plus, Palette, Receipt, Search, Send, Smile, Trash2, X,
 } from "lucide-react";
@@ -950,7 +951,7 @@ export function Conversation(props: {
     const warn = scope === "me"
       ? `Kosongkan semua pesan di ${label} dari tampilan Anda? Lawan bicara tetap bisa melihatnya.`
       : `Hapus SEMUA pesan di ${label} untuk semua orang? Tidak bisa dikembalikan.`;
-    if (!confirm(warn)) return;
+    if (!(await confirmDialog(warn, { danger: true, title: scope === "me" ? "Kosongkan percakapan?" : "Hapus semua pesan?", confirmText: scope === "me" ? "Kosongkan" : "Hapus semua" }))) return;
     setDeleting(true);
     try {
       if (scope === "me") await chatHideAll({ data: { kind: kind === "group" ? "group" : "dm", target } });

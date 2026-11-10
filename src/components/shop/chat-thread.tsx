@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowDown, Check, ChevronDown, Copy, FileText, Paperclip, Pencil, Pin, PinOff, Reply, Search, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -426,7 +427,7 @@ export function Thread(props: { scope: Scope; target: string; name: string; meUs
   async function deleteIds(ids: number[]) {
     if (!ids.length || deleting) return;
     const note = scope === "dm" ? "Pesan hilang untuk Anda dan lawan bicara." : "Pesan hilang untuk semua anggota grup. Tidak bisa dikembalikan.";
-    if (!confirm(`Hapus ${ids.length} pesan? ${note}`)) return;
+    if (!(await confirmDialog(`Hapus ${ids.length} pesan? ${note}`, { title: `Hapus ${ids.length} pesan?`, danger: true }))) return;
     setDeleting(true);
     try {
       const res = scope === "dm" ? await chatDeleteMessages({ data: { ids } }) : await groupDeleteMessages({ data: { ids } });

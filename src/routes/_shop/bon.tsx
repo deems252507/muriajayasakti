@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Pencil, Printer, RotateCcw, Trash2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
@@ -184,9 +185,9 @@ function BonPage() {
                               });
                             });
                           }} />
-                          <ExpandButton variant="primary" label="Lunasi" icon={<CheckCircle2 />} onClick={() => {
+                          <ExpandButton variant="primary" label="Lunasi" icon={<CheckCircle2 />} onClick={async () => {
                             if (Number(inv.total) <= 0) return toast.error("Harga bon masih Rp 0. Klik Edit dulu untuk mengisi harga.");
-                            if (!confirm(`Lunasi ${nomor} atas nama ${name} sebesar ${rupiah(Number(inv.total))}?`)) return;
+                            if (!(await confirmDialog(`Lunasi ${nomor} atas nama ${name} sebesar ${rupiah(Number(inv.total))}?`, { title: "Lunasi bon?", confirmText: "Lunasi" }))) return;
                             void payoffBon({ data: { nomor } })
                               .then((res) => { toast.success(`Bon ${nomor} berhasil dilunasi`, { description: `${name} · kas masuk ${rupiah(Number((res as { total: number }).total))}` }); load(); })
                               .catch((error: Error) => toast.error(error.message));
@@ -194,11 +195,11 @@ function BonPage() {
                         </>
                       ) : null}
                       {canEdit ? (
-                        <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => {
+                        <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={async () => {
                           const warn = lunas
                             ? `Hapus ${nomor} (${name})? Bon ini sudah lunas, catatan kas pelunasannya juga ikut dihapus. Stok barang dikembalikan.`
                             : `Hapus ${nomor} (${name})? Stok barang dikembalikan.`;
-                          if (!confirm(warn)) return;
+                          if (!(await confirmDialog(warn, { title: "Hapus bon?", danger: true }))) return;
                           void removeInvoice({ data: { nomor } })
                             .then(() => { toast.success(`Bon ${nomor} berhasil dihapus`, { description: "Stok barang dikembalikan." }); load(); })
                             .catch((error: Error) => toast.error(error.message));
