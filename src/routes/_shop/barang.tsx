@@ -296,7 +296,7 @@ function BarangPage() {
           groupByPart={hideCategoryHeaders(sorts, dupOnly)}
           onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => (
-            <ExpandGroup>
+            <ExpandGroup grid>
               <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
               <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
               <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item)} />

@@ -599,3 +599,20 @@ button.xbtn:not(.p-0) {
     gap: 0.5rem;
   }
 }
+
+/* Kelompok tombol 2 kolom di sel tabel: di layar < 1280px teks disembunyikan (jadi ikon saja,
+   nama tombol tetap ada di tooltip) supaya kolom Aksi tidak mendorong tabel keluar dari kartu. */
+@media (max-width: 1279px) {
+  .xgrid .xbtn {
+    width: 2rem;
+    padding: 0;
+  }
+  .xgrid .xbtn .xlabel {
+    display: none;
+  }
+}
+@media (max-width: 1279px) and (pointer: coarse) {
+  .xgrid .xbtn {
+    width: 2.75rem;
+  }
+}

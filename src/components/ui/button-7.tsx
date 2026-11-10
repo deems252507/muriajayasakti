@@ -104,6 +104,7 @@ export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(fun
         ref={setRefs}
         type={type}
         aria-label={label}
+        title={label}
         {...props}
         onPointerEnter={(e) => { onPointerEnter?.(e); if (e.pointerType === "mouse") show(); }}
         onPointerLeave={(e) => { onPointerLeave?.(e); hide(); }}
@@ -112,7 +113,7 @@ export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(fun
         className={`xbtn inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-semibold shadow-sm disabled:opacity-40 ${shape} ${s.text} ${s.icon} ${VARIANT[variant]} ${className}`}
       >
         <span className="grid shrink-0 place-items-center">{icon}</span>
-        {inline ? <span className="min-w-0 truncate whitespace-nowrap">{label}</span> : null}
+        {inline ? <span className="xlabel min-w-0 truncate whitespace-nowrap">{label}</span> : null}
       </button>
       {tip
         ? createPortal(
@@ -142,18 +143,20 @@ export const ExpandButton = forwardRef<HTMLButtonElement, ExpandButtonProps>(fun
 export function ExpandGroup({
   children,
   align = "end",
+  grid = false,
   className = "",
 }: {
   children: ReactNode;
   align?: "start" | "end";
+  /** true = susunan 2 kolom sejajar (untuk 3+ tombol di sel tabel); lebar kolom mengikuti tombol terpanjang. */
+  grid?: boolean;
   className?: string;
 }) {
+  const layout = grid
+    ? "xgrid inline-grid grid-cols-[repeat(2,max-content)] justify-center [&>.xbtn]:w-full [&>:not(.xbtn)]:col-span-2 [&>:not(.xbtn)]:justify-self-end"
+    : `inline-flex flex-wrap items-center ${align === "end" ? "justify-end" : "justify-start"}`;
   return (
-    <div
-      className={`xgroup inline-flex max-w-full flex-wrap items-center gap-1 align-middle ${
-        align === "end" ? "justify-end" : "justify-start"
-      } ${className}`}
-    >
+    <div className={`xgroup max-w-full gap-1 align-middle ${layout} ${className}`}>
       {children}
     </div>
   );
