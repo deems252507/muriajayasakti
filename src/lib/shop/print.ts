@@ -51,14 +51,14 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   @page { size: ${landscape ? "A4 landscape" : "A4"}; margin: 12mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #1f2937; margin: 0; line-height: 1.4; }
-  .top { display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 64px 12px; border-bottom: 3px solid #0f2a4a; position: relative; min-height: 58px; }
+  .top { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2px; padding: 0 0 12px; border-bottom: 3px solid #0f2a4a; position: relative; }
   .top::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
-  .top img { position: absolute; left: 0; top: 0; width: 54px; height: 54px; object-fit: contain; border-radius: 10px; }
+  .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 10px; margin-bottom: 4px; }
   .top h1 { margin: 0; font-size: 20px; letter-spacing: .06em; color: #0f2a4a; }
-  .top p { margin: 2px 0 0; font-size: 11px; color: #4b5563; }
-  .doc-title { display: flex; justify-content: space-between; align-items: flex-end; margin: 20px 0 12px; }
-  .doc-title h2 { margin: 0; font-size: 22px; font-weight: 800; color: #0f2a4a; letter-spacing: -.01em; }
-  .doc-title p { margin: 2px 0 0; color: #6b7280; font-size: 11px; }
+  .top p { margin: 0; font-size: 11px; color: #4b5563; }
+  .doc-title { display: flex; justify-content: flex-start; text-align: left; margin: 16px 0 10px; }
+  .doc-title h2 { margin: 0; font-size: 13px; font-weight: 800; color: #0f2a4a; letter-spacing: .02em; }
+  .doc-title p { margin: 2px 0 0; color: #4b5563; font-size: 10px; }
   .cards { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 14px; }
   .card { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
   .card p { margin: 2px 0 0; color: #4b5563; font-size: 10.5px; }
