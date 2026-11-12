@@ -36,6 +36,20 @@ function isAltUnit(product: Product, satuan: string) { return hasAlt(product) &&
 function masterJual(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaJualAlt : product.hargaJual; }
 function masterBeli(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaBeli * product.isiSatuanAlt : product.hargaBeli; }
 
+/** Identitas barang selengkapnya: nama, merek, kode pajak (kalau ada), part number, part number alt, kategori. */
+function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kategori }: { nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; kategori?: string }) {
+  return (
+    <div className="leading-snug">
+      <b className="text-sm">{nama}</b>
+      {merek ? <span className="ml-2 inline-block rounded bg-blue-100 px-1.5 py-px align-middle text-[11px] font-bold text-blue-800">{merek}</span> : null}
+      <span className="mt-0.5 block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{partNumber || "-"}</span></span>
+      {partNumbersAlt ? <span className="block text-xs text-slate-600">PN Alt: <span className="font-mono">{partNumbersAlt}</span></span> : null}
+      {kodePajak ? <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-px text-[11px] font-bold text-amber-800">Kode pajak: {kodePajak}</span> : null}
+      {kategori ? <span className="block text-[11px] text-muted">{kategori}</span> : null}
+    </div>
+  );
+}
+
 /** Kolom pemasok: daftar muncul saat diklik, dan bisa disaring dengan mengetik. */
 function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers: Partner[]; value: string; onChange: (id: string) => void; placeholder: string }) {
   const selected = suppliers.find((row) => String(row.id) === value);
@@ -166,10 +180,10 @@ function PemasokPage() {
         id: item.productId,
         kode: "",
         partNumber: item.partNumber,
-        partNumbersAlt: "",
+        partNumbersAlt: item.partNumbersAlt || "",
         nama: item.nama,
         kategori: item.kategori || "",
-        merek: "",
+        merek: item.merek || "",
         satuan: item.satuan || "Pcs",
         stokMin: 0,
         stok: 0,
@@ -179,7 +193,7 @@ function PemasokPage() {
         isiSatuanAlt: 0,
         hargaJualAlt: 0,
         pajakStatus: "",
-        kodePajak: "",
+        kodePajak: item.kodePajak || "",
         keterangan: "",
       },
       qty: item.qty,
@@ -300,7 +314,7 @@ function PemasokPage() {
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
                 <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}</td>
-                <td className="px-2 py-3"><div className="space-y-1">{row.items.map((item, index) => <div key={`${row.id}-${item.productId}-${index}`}><b>{item.nama}</b><span className="ml-2 text-[11px] text-muted">{item.partNumber || "-"}</span></div>)}</div></td>
+                <td className="px-2 py-3"><div className="space-y-1">{row.items.map((item, index) => <div key={`${row.id}-${item.productId}-${index}`}><ProductInfo nama={item.nama} partNumber={item.partNumber} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kodePajak={item.kodePajak} /></div>)}</div></td>
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
@@ -363,7 +377,7 @@ function PemasokPage() {
                         onClick={() => addProduct(product)}
                       >
                         <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} /></p>
-                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
+                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"}{product.kodePajak ? ` · Pajak: ${product.kodePajak}` : ""} · Stok: {product.stok} {product.satuan}</p>
                       </button>
                     ))}
                   </div>
@@ -388,7 +402,7 @@ function PemasokPage() {
                     <span className="text-xs text-muted">Harga jual = harga beli + persen, dibulatkan ke ribuan terdekat. Tiap barang tetap bisa diubah sendiri.</span>
                   </div>
                   <div className="no-row-hover mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
-                    <table className="w-full min-w-[980px] text-sm">
+                    <table className="w-full min-w-[1080px] text-sm">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
                         <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-center">Persen</th><th className="px-2 py-2 text-right">Harga Jual</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
                       </thead>
@@ -396,7 +410,7 @@ function PemasokPage() {
                         {items.length === 0 ? <tr><td colSpan={9} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => (
                           <tr key={item.product.id} className={`border-t border-line ${justAdded?.id === item.product.id ? "bg-yellow-50" : ""}`}>
                             <td className="px-2 py-2 text-muted">{index + 1}</td>
-                            <td className="px-2 py-2"><b className="text-sm">{item.product.nama}</b><span className="block text-xs text-muted">{item.product.partNumber || item.product.kode}</span></td>
+                            <td className="min-w-[260px] px-2 py-2"><ProductInfo nama={item.product.nama} partNumber={item.product.partNumber || item.product.kode} partNumbersAlt={item.product.partNumbersAlt} merek={item.product.merek} kodePajak={item.product.kodePajak} kategori={item.product.kategori} /></td>
                             <td className="px-2 text-center">
                               {unitOptions(item.product, item.satuan).length > 1 ? (
                                 <select

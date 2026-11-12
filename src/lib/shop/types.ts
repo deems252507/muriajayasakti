@@ -79,6 +79,9 @@ export type SupplierReceiptItem = {
   satuan: string;
   qtyDasar: number;
   hargaBeli: number;
+  merek?: string;
+  kodePajak?: string;
+  partNumbersAlt?: string;
 };
 
 export type SupplierReceipt = {
