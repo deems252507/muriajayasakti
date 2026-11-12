@@ -502,7 +502,7 @@ export async function listProductSuppliers(data: any) {
     supplierId: s.supplierId, supplierName: s.supplierName, totalQtyDasar: s.totalQtyDasar, receiptCount: s.receipts.size,
     lastAt: s.lastAt, lastInvoice: s.lastInvoice, lastHargaBeli: s.lastHargaBeli, lastSatuan: s.lastSatuan,
   }));
-  return { suppliers, history: history.slice(0, 100) };
+  return { suppliers, history };
 }
 
 export async function searchProducts(data: any) {

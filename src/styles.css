@@ -332,6 +332,13 @@ thead th {
 tbody tr:hover td {
   background: #dbeafe;
 }
+/* Tabel isian (mis. form barang masuk): tanpa warna biru saat kursor lewat, supaya tidak bentrok dengan kolom yang sedang diketik */
+.no-row-hover tbody tr:hover td {
+  background: transparent;
+}
+.no-row-hover tbody tr:hover td:first-child {
+  box-shadow: none;
+}
 
 @media print {
   .no-print,

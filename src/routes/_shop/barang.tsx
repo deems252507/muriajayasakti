@@ -1,5 +1,5 @@
 import { confirmDialog } from "@/lib/confirm";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
 import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Truck, Upload } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
@@ -38,6 +38,7 @@ const empty = {
 
 function BarangPage() {
   const me = Route.useRouteContext().me;
+  const navigate = useNavigate();
   const canEdit = me.role === "Admin";
   const [q, setQ] = usePersistedState("barang:q", "");
   useEffect(() => {
@@ -401,7 +402,7 @@ function BarangPage() {
           </form>
         </div>
       ) : null}
-      {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} /> : null}
+      {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} onGoInvoice={(inv) => { setOrigin(null); void navigate({ to: "/pemasok", search: { inv } }); }} /> : null}
       {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir"} onClose={() => setHistory(null)} /> : null}
     </div>
   );
@@ -548,8 +549,12 @@ type OriginData = {
 };
 
 /** Asal barang: pemasok mana saja yang pernah memasok barang ini (dari catatan Barang Masuk Pemasok). */
-function OriginModal({ item, data, onClose }: { item: Product; data: OriginData | null; onClose: () => void }) {
+function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data: OriginData | null; onClose: () => void; onGoInvoice: (invoiceNo: string) => void }) {
   const suppliers = data?.suppliers ?? [];
+  // Tampil 5 terbaru dulu; sisanya dimuat per 5 lewat tombol supaya popup tidak penuh.
+  const PAGE = 5;
+  const [showSup, setShowSup] = useState(PAGE);
+  const [showHist, setShowHist] = useState(PAGE);
   const prices = suppliers.map((s) => s.lastHargaBeli).filter((n) => n > 0);
   const cheapest = suppliers.length > 1 && prices.length ? Math.min(...prices) : 0;
   const hasDus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
@@ -578,40 +583,42 @@ function OriginModal({ item, data, onClose }: { item: Product; data: OriginData 
                 <div className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[11px] text-muted">Jumlah pemasok</span><b>{suppliers.length}</b></div>
                 <div className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[11px] text-muted">Harga beli terakhir termurah</span><b>{cheapest > 0 ? rupiah(cheapest) : "-"}</b></div>
               </div>
-              <h4 className="mt-4 text-sm font-extrabold">Per pemasok</h4>
+              <h4 className="mt-4 text-sm font-extrabold">Per pemasok <span className="font-normal text-muted">· klik baris untuk membuka invoice-nya</span></h4>
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full text-sm">
                   <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
                     <tr><th className="px-3 py-2 text-left">Pemasok</th><th className="px-3 py-2 text-right">Total masuk</th><th className="px-3 py-2 text-left">Terakhir masuk</th><th className="px-3 py-2 text-left">Invoice</th><th className="px-3 py-2 text-right">Harga beli terakhir</th></tr>
                   </thead>
                   <tbody>
-                    {suppliers.map((s, index) => (
-                      <tr key={s.supplierId} className="border-t border-line align-top">
-                        <td className="px-3 py-2 font-semibold">{s.supplierName}{index === 0 ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Terbaru</span> : null}</td>
+                    {suppliers.slice(0, showSup).map((s, index) => (
+                      <tr key={s.supplierId} className="cursor-pointer border-t border-line align-top" title="Klik untuk membuka invoice terakhir dari pemasok ini" onClick={() => onGoInvoice(s.lastInvoice)}>
+                        <td className="px-3 py-2 font-semibold underline decoration-dotted underline-offset-2">{s.supplierName}{index === 0 ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Terbaru</span> : null}</td>
                         <td className="px-3 py-2 text-right">{qtyText(s.totalQtyDasar)}<span className="block text-[11px] text-muted">{s.receiptCount}x penerimaan</span></td>
                         <td className="whitespace-nowrap px-3 py-2">{dateOnly(s.lastAt)}</td>
-                        <td className="px-3 py-2 font-mono text-xs font-bold">{s.lastInvoice}</td>
+                        <td className="px-3 py-2 font-mono text-xs font-bold text-accent underline">{s.lastInvoice}</td>
                         <td className={`num px-3 py-2 text-right ${cheapest > 0 && s.lastHargaBeli === cheapest ? "font-bold text-emerald-700" : ""}`}>{rupiah(s.lastHargaBeli)}<span className="block text-[11px] font-normal text-muted">per {s.lastSatuan}</span></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {suppliers.length > showSup ? <button type="button" className="mt-2 h-9 w-full rounded-lg border border-line text-sm font-semibold hover:bg-slate-50" onClick={() => setShowSup((n) => n + PAGE)}>Tampilkan pemasok lainnya ({suppliers.length - showSup} lagi)</button> : null}
               </div>
               <h4 className="mt-4 text-sm font-extrabold">Riwayat penerimaan (terbaru di atas)</h4>
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full text-sm">
                   <tbody>
-                    {data.history.map((row, index) => (
-                      <tr key={`${row.receiptId}-${index}`} className="border-t border-line">
+                    {data.history.slice(0, showHist).map((row, index) => (
+                      <tr key={`${row.receiptId}-${index}`} className="cursor-pointer border-t border-line" title="Klik untuk membuka invoice ini" onClick={() => onGoInvoice(row.invoiceNo)}>
                         <td className="whitespace-nowrap px-3 py-2">{dateOnly(row.receivedAt)}</td>
                         <td className="px-3 py-2 font-semibold">{row.supplierName}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{row.invoiceNo}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-accent underline">{row.invoiceNo}</td>
                         <td className="px-3 py-2 text-right">{grouped(row.qty)} {row.satuan}</td>
                         <td className="num px-3 py-2 text-right">{rupiah(row.hargaBeli)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {data.history.length > showHist ? <button type="button" className="mt-2 h-9 w-full rounded-lg border border-line text-sm font-semibold hover:bg-slate-50" onClick={() => setShowHist((n) => n + PAGE)}>Tampilkan yang lebih lama ({data.history.length - showHist} lagi)</button> : null}
               </div>
             </>
           ) : null}

@@ -11,7 +11,11 @@ import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReceiptReport } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 
-export const Route = createFileRoute("/_shop/pemasok")({ component: PemasokPage });
+export const Route = createFileRoute("/_shop/pemasok")({
+  component: PemasokPage,
+  // ?inv=NO-INVOICE: dibuka dari popup Asal Barang (Daftar Sparepart), langsung menyaring ke invoice itu.
+  validateSearch: (search: Record<string, unknown>): { inv?: string } => ({ inv: typeof search.inv === "string" && search.inv.trim() ? search.inv.trim() : undefined }),
+});
 
 type Draft = { product: Product; qty: number; satuan: string; hargaBeli: number; hargaJual: number; markup: string };
 
@@ -73,9 +77,10 @@ function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers
 
 function PemasokPage() {
   const me = Route.useRouteContext().me;
+  const { inv } = Route.useSearch();
   const [suppliers, setSuppliers] = useState<Partner[]>([]);
   const [rows, setRows] = useState<SupplierReceipt[]>([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(inv ?? "");
   const [supplierId, setSupplierId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -109,6 +114,7 @@ function PemasokPage() {
   }, []);
 
   useEffect(() => { load(page); }, [q, supplierId, start, end, page]);
+  useEffect(() => { if (inv) { setSupplierId(""); setStart(""); setEnd(""); setPage(1); setQ(inv); } }, [inv]);
 
   useEffect(() => {
     if (!productQ.trim()) return setHits([]);
@@ -373,7 +379,7 @@ function PemasokPage() {
                     <span className="font-semibold">%</span>
                     <span className="text-xs text-muted">Harga jual = harga beli + persen, dibulatkan ke ribuan terdekat. Tiap barang tetap bisa diubah sendiri.</span>
                   </div>
-                  <div className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
+                  <div className="no-row-hover mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
                     <table className="w-full min-w-[980px] text-sm">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
                         <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-center">Persen</th><th className="px-2 py-2 text-right">Harga Jual</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
@@ -399,7 +405,7 @@ function PemasokPage() {
                             <td className="px-2">
                               <input
                                 ref={(el) => { cellRefs.current[`q-${item.product.id}`] = el; }}
-                                className="num h-12 w-24 rounded-lg border border-line text-center text-base"
+                                className="num h-12 w-24 rounded-lg border border-line text-center text-base selection:bg-amber-200 selection:text-slate-900"
                                 inputMode="numeric"
                                 value={item.qty}
                                 onFocus={(e) => e.target.select()}
@@ -410,7 +416,7 @@ function PemasokPage() {
                             <td className="px-2">
                               <input
                                 ref={(el) => { cellRefs.current[`h-${item.product.id}`] = el; }}
-                                className="num h-12 w-36 rounded-lg border border-line text-right text-base"
+                                className="num h-12 w-36 rounded-lg border border-line text-right text-base selection:bg-amber-200 selection:text-slate-900"
                                 inputMode="numeric"
                                 value={grouped(item.hargaBeli)}
                                 onFocus={(e) => e.target.select()}
@@ -422,7 +428,7 @@ function PemasokPage() {
                               <div className="flex items-center justify-center gap-1">
                                 <input
                                   ref={(el) => { cellRefs.current[`m-${item.product.id}`] = el; }}
-                                  className="num h-12 w-20 rounded-lg border border-line text-center text-base"
+                                  className="num h-12 w-20 rounded-lg border border-line text-center text-base selection:bg-amber-200 selection:text-slate-900"
                                   inputMode="decimal"
                                   placeholder="0"
                                   value={item.markup}
@@ -436,7 +442,7 @@ function PemasokPage() {
                             <td className="px-2">
                               <input
                                 ref={(el) => { cellRefs.current[`j-${item.product.id}`] = el; }}
-                                className="num h-12 w-36 rounded-lg border border-line text-right text-base"
+                                className="num h-12 w-36 rounded-lg border border-line text-right text-base selection:bg-amber-200 selection:text-slate-900"
                                 inputMode="numeric"
                                 placeholder="Tetap"
                                 title="Kosong = harga jual barang tidak diubah"
