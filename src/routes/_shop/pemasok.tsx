@@ -8,7 +8,7 @@ import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
-import { printSupplierReceiptReport } from "@/lib/shop/print";
+import { printSupplierInvoice, printSupplierReceiptReport, shopBrand } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/pemasok")({
@@ -37,15 +37,82 @@ function masterJual(product: Product, satuan: string) { return isAltUnit(product
 function masterBeli(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaBeli * product.isiSatuanAlt : product.hargaBeli; }
 
 /** Identitas barang selengkapnya: nama, merek, kode pajak (kalau ada), part number, part number alt, kategori. */
-function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kategori }: { nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; kategori?: string }) {
+function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kategori, hidePn }: { nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; kategori?: string; hidePn?: boolean }) {
   return (
     <div className="leading-snug">
-      <b className="text-sm">{nama}</b>
+      <b className="text-sm">{nama}{kodePajak ? ` (${kodePajak})` : ""}</b>
       {merek ? <span className="ml-2 inline-block rounded bg-blue-100 px-1.5 py-px align-middle text-[11px] font-bold text-blue-800">{merek}</span> : null}
-      <span className="mt-0.5 block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{partNumber || "-"}</span></span>
+      {hidePn ? null : <span className="mt-0.5 block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{partNumber || "-"}</span></span>}
       {partNumbersAlt ? <span className="block text-xs text-slate-600">PN Alt: <span className="font-mono">{partNumbersAlt}</span></span> : null}
-      {kodePajak ? <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-px text-[11px] font-bold text-amber-800">Kode pajak: {kodePajak}</span> : null}
       {kategori ? <span className="block text-[11px] text-muted">{kategori}</span> : null}
+    </div>
+  );
+}
+
+/** Tampilan faktur pembelian per invoice (hanya untuk dilihat; Admin bisa lanjut ke Ubah). */
+function FakturModal({ row, supplier, canEdit, onClose, onEdit }: { row: SupplierReceipt; supplier?: Partner; canEdit: boolean; onClose: () => void; onEdit: () => void }) {
+  const brand = shopBrand();
+  const tanggal = row.receivedAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }).format(new Date(row.receivedAt)) : "-";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
+      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3">
+          <h3 className="text-lg font-extrabold">Faktur Pembelian</h3>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => { try { printSupplierInvoice(row, supplier); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); } }}>Cetak</button>
+            {canEdit ? <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onEdit}>Ubah</button> : null}
+            <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onClose}>Tutup</button>
+          </div>
+        </div>
+        <div className="no-row-hover min-h-0 flex-1 overflow-auto bg-slate-100 p-3 sm:p-5">
+          <div className="mx-auto max-w-3xl rounded-lg bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xl font-extrabold tracking-wide">{brand.nama}</p>
+                <p className="text-xs text-slate-600">{[brand.alamat, brand.telepon].filter(Boolean).join(" | ")}</p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-xl font-bold">Faktur Pembelian</p>
+                <p className="mt-1 text-sm">No. Invoice: <b className="font-mono">{row.invoiceNo}</b></p>
+                <p className="text-sm">Tanggal: <b>{tanggal}</b></p>
+                {row.createdBy ? <p className="text-xs text-slate-600">Dicatat oleh: {row.createdBy}</p> : null}
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg bg-slate-100 px-3 py-2 text-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dari (Pemasok)</p>
+              <p className="text-base font-extrabold">{row.supplierName}</p>
+              {supplier?.alamat ? <p className="text-xs text-slate-600">{supplier.alamat}</p> : null}
+              {supplier?.telp ? <p className="text-xs text-slate-600">Telp: {supplier.telp}</p> : null}
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
+                  <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Kode / PN</th><th className="px-2 py-2 text-left">Nama Barang</th><th className="px-2 py-2 text-right">Kts</th><th className="px-2 py-2 text-right">@Harga</th><th className="px-2 py-2 text-right">Total Harga</th></tr>
+                </thead>
+                <tbody>
+                  {row.items.map((item, index) => (
+                    <tr key={`${item.productId}-${index}`} className="align-top">
+                      <td className="px-2 py-2 text-muted">{index + 1}</td>
+                      <td className="px-2 py-2 font-mono text-xs font-semibold">{item.partNumber || "-"}</td>
+                      <td className="px-2 py-2"><ProductInfo nama={item.nama} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kodePajak={item.kodePajak} kategori={item.kategori} hidePn /></td>
+                      <td className="px-2 py-2 text-right font-semibold">{grouped(item.qty)} {item.satuan}</td>
+                      <td className="num px-2 py-2 text-right">{rupiah(item.hargaBeli)}</td>
+                      <td className="num px-2 py-2 text-right font-semibold">{rupiah(item.hargaBeli * item.qty)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-between">
+              <div className="flex-1 text-sm"><p className="font-bold">Keterangan</p><p className="text-slate-700">{row.notes || "-"}</p></div>
+              <div className="w-full rounded-lg border border-line sm:w-64">
+                <div className="flex justify-between px-3 py-1.5 text-sm"><span>Total Qty</span><span>{grouped(row.totalQty)}</span></div>
+                <div className="flex justify-between border-t-2 border-slate-800 px-3 py-2 text-base font-extrabold"><span>Total</span><span className="num">{rupiah(row.totalValue)}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -102,6 +169,7 @@ function PemasokPage() {
   const [total, setTotal] = useState(0);
   const [perPage, setPerPage] = useState(15);
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState<SupplierReceipt | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [productQ, setProductQ] = useState("");
   const [hits, setHits] = useState<Product[]>([]);
@@ -308,8 +376,8 @@ function PemasokPage() {
                 key={row.id}
                 {...comments.row(row.id, `Barang masuk ${row.invoiceNo} · ${row.supplierName}`)}
                 className="cursor-pointer border-t border-line align-top"
-                title={canEdit ? "Klik baris untuk melihat detail / mengubah" : "Klik baris untuk melihat detail"}
-                onClick={() => { if (!window.getSelection()?.toString()) openEdit(row); }}
+                title="Klik baris untuk melihat faktur"
+                onClick={() => { if (!window.getSelection()?.toString()) setViewing(row); }}
               >
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
@@ -328,6 +396,16 @@ function PemasokPage() {
           <div className="flex items-center gap-2"><button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button><span>Hal: {page}/{pages}</span><button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button></div>
         </div>
       </Panel>
+
+      {viewing ? (
+        <FakturModal
+          row={viewing}
+          supplier={suppliers.find((s) => s.id === viewing.supplierId)}
+          canEdit={canEdit}
+          onClose={() => setViewing(null)}
+          onEdit={() => { const r = viewing; setViewing(null); openEdit(r); }}
+        />
+      ) : null}
 
       {open ? (
         <div className="fixed inset-0 z-50 flex bg-ink/40 p-2 sm:p-4">
@@ -376,8 +454,8 @@ function PemasokPage() {
                         onMouseEnter={() => setActiveHit(index)}
                         onClick={() => addProduct(product)}
                       >
-                        <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} /></p>
-                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"}{product.kodePajak ? ` · Pajak: ${product.kodePajak}` : ""} · Stok: {product.stok} {product.satuan}</p>
+                        <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} />{product.kodePajak ? ` (${product.kodePajak})` : ""}</p>
+                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
                       </button>
                     ))}
                   </div>
@@ -402,7 +480,7 @@ function PemasokPage() {
                     <span className="text-xs text-muted">Harga jual = harga beli + persen, dibulatkan ke ribuan terdekat. Tiap barang tetap bisa diubah sendiri.</span>
                   </div>
                   <div className="no-row-hover mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
-                    <table className="w-full min-w-[1080px] text-sm">
+                    <table className="w-full min-w-[960px] text-sm">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
                         <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-right">Harga Beli</th><th className="px-2 py-2 text-center">Persen</th><th className="px-2 py-2 text-right">Harga Jual</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-20"></th></tr>
                       </thead>
@@ -410,7 +488,7 @@ function PemasokPage() {
                         {items.length === 0 ? <tr><td colSpan={9} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu tekan Enter.</td></tr> : items.map((item, index) => (
                           <tr key={item.product.id} className={`border-t border-line ${justAdded?.id === item.product.id ? "bg-yellow-50" : ""}`}>
                             <td className="px-2 py-2 text-muted">{index + 1}</td>
-                            <td className="min-w-[260px] px-2 py-2"><ProductInfo nama={item.product.nama} partNumber={item.product.partNumber || item.product.kode} partNumbersAlt={item.product.partNumbersAlt} merek={item.product.merek} kodePajak={item.product.kodePajak} kategori={item.product.kategori} /></td>
+                            <td className="min-w-[200px] px-2 py-2"><ProductInfo nama={item.product.nama} partNumber={item.product.partNumber || item.product.kode} partNumbersAlt={item.product.partNumbersAlt} merek={item.product.merek} kodePajak={item.product.kodePajak} kategori={item.product.kategori} /></td>
                             <td className="px-2 text-center">
                               {unitOptions(item.product, item.satuan).length > 1 ? (
                                 <select

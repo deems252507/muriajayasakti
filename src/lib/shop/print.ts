@@ -791,3 +791,46 @@ export function printSalesReport(
     <p style="font-size:9px;color:#555">Catatan: retur/tukar belum dikurangkan. Nilai barang = harga satuan × jumlah.</p>`,
   );
 }
+
+/** Cetak satu faktur pembelian (barang masuk dari pemasok), tampilan seperti faktur pembelian pada umumnya. */
+export function printSupplierInvoice(
+  row: {
+    invoiceNo: string;
+    receivedAt: string;
+    supplierName: string;
+    notes?: string;
+    createdBy?: string;
+    totalQty: number;
+    totalValue: number;
+    items: Array<{ nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; qty: number; satuan: string; hargaBeli: number }>;
+  },
+  supplier?: { alamat?: string; telp?: string },
+) {
+  const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+  const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
+  const lines = row.items.map((item, index) => `<tr>
+    <td class="center">${index + 1}</td>
+    <td>${esc(item.partNumber || "-")}</td>
+    <td><b>${esc(item.nama)}${item.kodePajak ? ` (${esc(item.kodePajak)})` : ""}</b>${item.merek ? ` <span style="color:#555">[${esc(item.merek)}]</span>` : ""}${item.partNumbersAlt ? `<br><span style="color:#555">PN Alt: ${esc(item.partNumbersAlt)}</span>` : ""}</td>
+    <td class="right">${Number(item.qty).toLocaleString("id-ID")} ${esc(item.satuan)}</td>
+    <td class="right">${money(item.hargaBeli)}</td>
+    <td class="right bold">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
+  </tr>`).join("");
+  openPrint(
+    `Faktur Pembelian ${row.invoiceNo}`,
+    `<h2>FAKTUR PEMBELIAN</h2>
+    <div class="info">
+      <div>Dari (Pemasok):<br><b style="font-size:13px">${esc(row.supplierName)}</b>${supplier?.alamat ? `<br>${esc(supplier.alamat)}` : ""}${supplier?.telp ? `<br>Telp: ${esc(supplier.telp)}` : ""}</div>
+      <div style="text-align:right">No. Invoice: <b>${esc(row.invoiceNo)}</b><br>Tanggal: <b>${esc(date)}</b>${row.createdBy ? `<br>Dicatat oleh: ${esc(row.createdBy)}` : ""}</div>
+    </div>
+    <table>
+      <thead><tr><th class="center" style="width:28px">No</th><th>Kode / Part Number</th><th>Nama Barang</th><th class="right">Kts</th><th class="right">@Harga</th><th class="right">Total Harga</th></tr></thead>
+      <tbody>${lines}</tbody>
+    </table>
+    <div style="display:flex;justify-content:space-between;gap:16px;margin-top:10px">
+      <div style="flex:1"><b>Keterangan</b><br>${esc(row.notes || "-")}</div>
+      <div class="sum" style="width:260px"><div><span>Total Qty</span><span>${Number(row.totalQty || 0).toLocaleString("id-ID")}</span></div><div class="total" style="color:#111"><span>Total</span><span>${money(row.totalValue)}</span></div></div>
+    </div>
+    <div style="margin-top:40px">Bagian Pembelian,<br><br><br>______________________</div>`,
+  );
+}
