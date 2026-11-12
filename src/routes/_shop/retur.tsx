@@ -9,7 +9,7 @@ import { CommentButton, useComments } from "@/components/shop/comment-ui";
 import { deleteRetur, getInvoice, listInvoices, listMasters, listShifts, returNota, searchProducts, shiftLedger } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, when } from "@/lib/shop/format";
-import { printReturSlip, shopBrand } from "@/lib/shop/print";
+import { printReturSlip, openModernPrint } from "@/lib/shop/print";
 import type { Bank, Product, Shift } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/retur")({ component: ReturPage });
@@ -357,11 +357,14 @@ function printReturList(rows: Array<Record<string, unknown>>, start: string, end
     return;
   }
   const body = rows.map((row) => `<tr><td>${row.id}</td><td>${row.parent_invoice || "-"}</td><td>${when(String(row.tanggal || ""))}</td><td>${row.pelanggan || "-"}</td><td style="text-align:right">${rupiah(Number(row.net_amount || 0))}</td></tr>`).join("");
-  const win = window.open("", "_blank", "width=800,height=700");
-  if (!win) {
-    toast.error("Izinkan popup untuk mencetak.");
-    return;
+  const total = rows.reduce((sum, row) => sum + Number(row.net_amount || 0), 0);
+  try {
+    openModernPrint(
+      "Laporan Retur",
+      `<div class="doc-title"><div><h2>Laporan Retur & Tukar</h2><p>Periode: ${start || "Awal"} s/d ${end || "Sekarang"} · ${rows.length} retur</p></div></div>
+      <table><thead><tr><th>No Retur</th><th>Invoice</th><th>Tanggal</th><th>Pelanggan</th><th class="right">Selisih</th></tr></thead><tbody>${body.replace(/style="text-align:right"/g, 'class="right"')}</tbody><tfoot><tr><td colspan="4" class="right">Total selisih</td><td class="right">${rupiah(total)}</td></tr></tfoot></table>`,
+    );
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Izinkan popup untuk mencetak.");
   }
-  win.document.write(`<!doctype html><html><head><title>Laporan Retur</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat} ${shopBrand().telepon}</p><p>Laporan Retur ${start || "awal"} s/d ${end || "sekarang"}</p><table><thead><tr><th>No Retur</th><th>Invoice</th><th>Tanggal</th><th>Pelanggan</th><th>Selisih</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
-  win.document.close();
 }

@@ -19,6 +19,13 @@ export function setShopProfile(next: Partial<typeof shop>) {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mjs-shop", { detail: { ...shop } }));
 }
 
+/** Pengguna yang sedang login; namanya dicantumkan di kaki setiap cetakan ("Dicetak oleh"). */
+const printer = { name: "", role: "" };
+export function setPrintUser(user: { name?: string; username?: string; role?: string } | null) {
+  printer.name = user?.name || user?.username || "";
+  printer.role = user?.role || "";
+}
+
 export function shopBrand() {
   return shop;
 }
@@ -31,40 +38,7 @@ function esc(value: unknown) {
 }
 
 export function openPrint(title: string, inner: string, landscape = false) {
-  const win = window.open("", "_blank", "width=1100,height=800");
-  if (!win) throw new Error("Popup diblokir browser. Izinkan popup untuk mencetak.");
-  win.document.write(`<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${esc(title)}</title>
-<style>
-  @page { size: ${landscape ? "A4 landscape" : "A4"}; margin: 10mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 0; }
-  .head { text-align: center; border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
-  .head h1 { margin: 0; font-size: 18px; letter-spacing: .04em; }
-  .head p { margin: 2px 0; font-size: 11px; }
-  h2 { text-align: center; margin: 0 0 10px; font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  th, td { border: 1px solid #222; padding: 5px 6px; vertical-align: top; }
-  th { background: #f0f0f0; text-align: left; }
-  .right { text-align: right; white-space: nowrap; }
-  .center { text-align: center; }
-  .bold { font-weight: 700; }
-  .info { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #000; padding: 8px; margin-bottom: 12px; }
-  .sum { border: 1px solid #000; margin-bottom: 12px; }
-  .sum div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 8px; border-bottom: 1px dashed #ccc; }
-  .sum .total { font-weight: 800; color: #b91c1c; border-top: 2px solid #111; border-bottom: 0; }
-  .invoice-head td { background: #e7eef8; font-weight: 700; }
-  .invoice-total td { background: #eef2ff; font-weight: 700; }
-  .cash { color: #15803d; }
-  .bon { color: #b91c1c; }
-  .foot { margin-top: 16px; text-align: center; font-size: 9px; color: #555; }
-  @media print { thead { display: table-header-group; } tr { break-inside: avoid; } }
-</style></head><body>
-  <div class="head"><h1>${esc(shop.nama)}</h1><p>${esc([shop.alamat, shop.telepon].filter(Boolean).join(" | "))}</p></div>
-  ${inner}
-  <div class="foot">Dicetak pada: ${esc(new Date().toLocaleString("id-ID"))}</div>
-</body></html>`);
-  win.document.close();
-  setTimeout(() => win.print(), 400);
+  openModernPrint(title, inner, landscape);
 }
 
 /** Cetak bergaya modern: kop berlogo, tabel header navy, baris bergaris tipis, kotak total. */
@@ -77,9 +51,9 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   @page { size: ${landscape ? "A4 landscape" : "A4"}; margin: 12mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #1f2937; margin: 0; line-height: 1.4; }
-  .top { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 3px solid #0f2a4a; position: relative; }
-  .top::after { content: ""; position: absolute; left: 0; bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
-  .top img { width: 54px; height: 54px; object-fit: contain; border-radius: 10px; }
+  .top { display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 64px 12px; border-bottom: 3px solid #0f2a4a; position: relative; min-height: 58px; }
+  .top::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
+  .top img { position: absolute; left: 0; top: 0; width: 54px; height: 54px; object-fit: contain; border-radius: 10px; }
   .top h1 { margin: 0; font-size: 20px; letter-spacing: .06em; color: #0f2a4a; }
   .top p { margin: 2px 0 0; font-size: 10.5px; color: #6b7280; }
   .doc-title { display: flex; justify-content: space-between; align-items: flex-end; margin: 20px 0 12px; }
@@ -98,16 +72,41 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   .stats span { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; }
   .stats b { display: block; font-size: 16px; color: #0f2a4a; margin-top: 2px; }
   table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
-  table.grid th { background: #0f2a4a; color: #fff; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 8px 9px; }
-  table.grid th:first-child { border-top-left-radius: 8px; }
-  table.grid th:last-child { border-top-right-radius: 8px; }
-  table.grid td { padding: 8px 9px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-  table.grid tbody tr:nth-child(even) td { background: #fafafa; }
+  table th { background: #0f2a4a; color: #fff; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 8px 9px; }
+  table th:first-child { border-top-left-radius: 8px; }
+  table th:last-child { border-top-right-radius: 8px; }
+  table td { padding: 8px 9px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  table tbody tr:nth-child(even) td { background: #fafafa; }
   .c { text-align: center; } .r { text-align: right; white-space: nowrap; } .b { font-weight: 700; }
   .mono { font-family: Consolas, "SFMono-Regular", Menlo, monospace; font-size: 10.5px; font-weight: 600; }
   .muted { color: #9ca3af; }
   .sub { display: block; margin-top: 2px; font-size: 9.5px; color: #6b7280; }
   .chip { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: 700; vertical-align: middle; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 6px; }
+  h2 { margin: 0; font-size: 20px; font-weight: 800; color: #0f2a4a; letter-spacing: -.01em; }
+  h3 { margin: 18px 0 6px; padding-left: 9px; border-left: 4px solid #f59e0b; font-size: 12.5px; color: #0f2a4a; }
+  .center { text-align: center; } .right { text-align: right; white-space: nowrap; } .bold { font-weight: 700; }
+  .info { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+  .info p { margin: 2px 0; }
+  .sum { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+  .sum div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 12px; border-bottom: 1px dashed #e5e7eb; }
+  .sum .total { background: #0f2a4a; color: #fff; font-weight: 800; font-size: 13px; border: 0; padding: 9px 12px; }
+  .invoice-head td { background: #e8eef7 !important; color: #0f2a4a; font-weight: 700; }
+  .invoice-total td { background: #f1f5f9 !important; font-weight: 700; }
+  .cash { color: #15803d; font-weight: 700; } .bon { color: #b91c1c; font-weight: 700; } .pos { color: #15803d; } .neg { color: #b91c1c; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stats > div { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 9px 12px; }
+  .stats small { display: block; color: #9ca3af; font-size: 9px; margin-top: 2px; }
+  tfoot td { background: #0f2a4a; color: #fff; font-weight: 800; padding: 8px 9px; }
+  .cust { margin-bottom: 18px; border-left: 4px solid #b91c1c; padding-left: 12px; }
+  .cust-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f2a4a; padding-bottom: 5px; margin-bottom: 8px; }
+  .cust-head h3 { margin: 0; padding: 0; border: 0; font-size: 14px; }
+  .nota { border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 9px; overflow: hidden; break-inside: avoid; }
+  .nota-head { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+  table.mini { margin: 0; font-size: 9.5px; }
+  table.mini th { background: #f1f5f9; color: #475569; padding: 5px 9px; font-size: 9px; }
+  table.mini td { padding: 5px 9px; }
+  table.mini th:first-child, table.mini th:last-child { border-radius: 0; }
   tr.grp td { background: #e8eef7 !important; color: #0f2a4a; font-size: 10.5px; padding: 7px 9px; }
   tr.grp .dot { margin: 0 7px; color: #94a3b8; }
   tr.sumrow td { background: #f1f5f9 !important; font-weight: 700; }
@@ -125,7 +124,7 @@ export function openModernPrint(title: string, inner: string, landscape = false)
 </style></head><body>
   <div class="top">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : ""}<div><h1>${esc(shop.nama)}</h1><p>${esc([shop.alamat, shop.telepon].filter(Boolean).join(" | "))}</p></div></div>
   ${inner}
-  <div class="foot">Dicetak pada ${esc(new Date().toLocaleString("id-ID", { timeZone: "Asia/Makassar" }))} · ${esc(shop.nama)}</div>
+  <div class="foot">Dicetak pada ${esc(new Date().toLocaleString("id-ID", { timeZone: "Asia/Makassar" }))}${printer.name ? ` oleh <b>${esc(printer.name)}</b>${printer.role ? ` (${esc(printer.role)})` : ""}` : ""} · ${esc(shop.nama)}</div>
 </body></html>`);
   win.document.close();
   // Tunggu logo selesai dimuat (maks. 1,5 detik) sebelum dialog cetak dibuka.
@@ -172,16 +171,15 @@ export function printTaxNotes(rows: TaxLine[], start: string, end: string, onlyN
   }
   openPrint(
     onlyNomor ? `Nota Pajak ${onlyNomor}` : "Laporan Pajak Internal",
-    `<h2>LAPORAN PAJAK INTERNAL</h2>
-    <p class="period" style="text-align:center;margin:0 0 10px;color:#555">Periode: ${esc(start || "-")} s/d ${esc(end || "-")}</p>
-    <div class="summary" style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #222;margin-bottom:10px">
-      <div style="text-align:center;padding:7px 5px;border-right:1px solid #222"><span style="display:block;font-size:8px;color:#555">TOTAL NOTA</span><strong>${groups.size}</strong></div>
-      <div style="text-align:center;padding:7px 5px;border-right:1px solid #222"><span style="display:block;font-size:8px;color:#555">TOTAL DPP</span><strong>${money(dpp)}</strong></div>
-      <div style="text-align:center;padding:7px 5px;border-right:1px solid #222"><span style="display:block;font-size:8px;color:#555">TOTAL PPN INTERNAL</span><strong>${money(ppn)}</strong></div>
-      <div style="text-align:center;padding:7px 5px"><span style="display:block;font-size:8px;color:#555">TOTAL PENJUALAN</span><strong>${money(bruto)}</strong></div>
+    `<div class="doc-title"><div><h2>LAPORAN PAJAK INTERNAL</h2><p>Periode: ${esc(start || "-")} s/d ${esc(end || "-")}</p></div></div>
+    <div class="stats">
+      <div><span>TOTAL NOTA</span><b>${groups.size}</b></div>
+      <div><span>TOTAL DPP</span><b>${money(dpp)}</b></div>
+      <div><span>TOTAL PPN INTERNAL</span><b>${money(ppn)}</b></div>
+      <div><span>TOTAL PENJUALAN</span><b>${money(bruto)}</b></div>
     </div>
     <table><thead><tr><th>No</th><th>Barang</th><th>Part Number</th><th>Kode Pajak</th><th>Qty</th><th>DPP</th><th>PPN</th><th>Nilai PPN</th><th>Total</th></tr></thead><tbody>${body}</tbody></table>
-    <p class="foot">DPP + Nilai PPN = Total Barang &nbsp;•&nbsp; Dicetak pada: ${esc(new Date().toLocaleString("id-ID"))}</p>`,
+    <p class="foot">DPP + Nilai PPN = Total Barang</p>`,
     true,
   );
 }
@@ -228,7 +226,7 @@ export function printShiftReport(input: {
   }).join("") || kosong(5, "Tidak ada retur barang");
   openPrint(
     `Laporan Kas ${input.shift}`,
-    `<h2>LAPORAN KAS KASIR (SHIFT)</h2>
+    `<div class="doc-title"><div><h2>LAPORAN KAS KASIR (SHIFT)</h2></div></div>
     <div class="info">
       <div>
         <p><b>Shift:</b> ${esc(input.shift)}</p>
@@ -236,7 +234,7 @@ export function printShiftReport(input: {
         <p><b>Mulai:</b> ${esc(input.mulai)} • <b>Kasir Mulai:</b> ${esc(input.kasir)}</p>
         <p><b>Selesai:</b> ${esc(input.selesai || "-")} • <b>Kasir Selesai:</b> ${esc(input.closedBy || input.kasir)}</p>
       </div>
-      <div style="text-align:right"><p><b>Status:</b> ${esc(input.status)}</p><p><b>Tgl Cetak:</b> ${esc(new Date().toLocaleString("id-ID"))}</p></div>
+      <div style="text-align:right"><p><b>Status:</b> ${esc(input.status)}</p><p><b>Tgl Cetak:</b> ${esc(new Date().toLocaleString("id-ID"))}</p>${printer.name ? `<p><b>Dicetak oleh:</b> ${esc(printer.name)}${printer.role ? ` (${esc(printer.role)})` : ""}</p>` : ""}</div>
     </div>
     <div class="sum">
       <div><span>Kas Awal (Modal Awal Shift)</span><b>${money(input.kasAwal)}</b></div>
@@ -603,15 +601,14 @@ export function printCashDaily(input: {
   }).join("") || kosong(5, "Tidak ada retur barang");
   openPrint(
     "Laporan Kas Harian",
-    `<h2>LAPORAN KAS HARIAN</h2>
-    <p style="text-align:center;margin:0 0 12px">Periode: ${esc(input.start)} s/d ${esc(input.end)}</p>
-    <div style="display:flex;justify-content:space-around;gap:8px;border:1px solid #000;background:#f9f9f9;padding:12px;margin-bottom:16px;text-align:center">
-      <div><span>Total Penjualan</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(input.invoices.reduce((sum, row) => sum + Number(row.total || 0), 0))}</p><small>Semua nota kasir</small></div>
-      <div><span>Uang Masuk Laci</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(uangMasuk)}</p><small>Penjualan Cash + Tambahan</small></div>
-      <div><span>Uang Keluar Laci</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(uangKeluar)}</p><small>Refund tunai + pengeluaran</small></div>
-      <div><span>Pergerakan Bersih Laci</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(bersih)}</p></div>
-      <div><span>Transfer Bersih</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(transferBersih)}</p></div>
-      <div><span>Bon / Piutang</span><p style="margin:4px 0 0;font-weight:bold;color:#dc2626">${money(input.bon)}</p></div>
+    `<div class="doc-title"><div><h2>LAPORAN KAS HARIAN</h2><p>Periode: ${esc(input.start)} s/d ${esc(input.end)}</p></div></div>
+    <div class="stats">
+      <div><span>Total Penjualan</span><b>${money(input.invoices.reduce((sum, row) => sum + Number(row.total || 0), 0))}</b><small>Semua nota kasir</small></div>
+      <div><span>Uang Masuk Laci</span><b>${money(uangMasuk)}</b><small>Penjualan Cash + Tambahan</small></div>
+      <div><span>Uang Keluar Laci</span><b>${money(uangKeluar)}</b><small>Refund tunai + pengeluaran</small></div>
+      <div><span>Pergerakan Bersih Laci</span><b>${money(bersih)}</b></div>
+      <div><span>Transfer Bersih</span><b>${money(transferBersih)}</b></div>
+      <div><span>Bon / Piutang</span><b>${money(input.bon)}</b></div>
     </div>
     <h3>1. Buku Keuangan Harian — Semua Penambahan & Pengurangan</h3>
     <table><thead><tr><th>No</th><th>Waktu</th><th>Ref</th><th>Jenis</th><th>Kasir</th><th>Metode / Bank</th><th class="right">Laci Masuk</th><th class="right">Laci Keluar</th><th class="right">Net Laci</th><th class="right">Transfer</th><th class="right">Bon</th></tr></thead><tbody>${bukuHtml}</tbody></table>
@@ -659,17 +656,18 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
   const cell = (key: string, item: (typeof items)[number], index: number): string => {
     switch (key) {
       case "no": return `<td class="center">${index + 1}</td>`;
-      case "nama": return `<td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.merek || "-")}</span></td>`;
+      case "nama": return `<td><b>${esc(item.nama)}</b><span class="sub">${esc(item.merek || "-")}</span></td>`;
       case "kategori": return `<td>${esc(item.kategori || "-")}</td>`;
       case "partNumber": return `<td>${esc(item.partNumber || "-")}</td>`;
       case "partNumbersAlt": return `<td>${esc(item.partNumbersAlt || "-")}</td>`;
-      case "kodePajak": return `<td class="center" style="font-weight:bold;color:#7c3aed">${esc(item.kodePajak || "-")}</td>`;
+      case "kodePajak": return `<td class="center mono">${esc(item.kodePajak || "-")}</td>`;
       case "stokMin": return `<td class="center">${item.stokMin}</td>`;
       case "stok": return `<td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td>`;
       case "hargaJual": return `<td class="right">${Number(item.hargaJual || 0).toLocaleString("id-ID")}</td>`;
       default: {
         const status = item.stok <= 0 ? "HABIS" : item.stokMin > 0 && item.stok <= item.stokMin ? "KRITIS" : "CUKUP";
-        return `<td class="center">${status}</td>`;
+        const tone = status === "CUKUP" ? "pos" : "neg";
+        return `<td class="center bold ${tone}">${status}</td>`;
       }
     }
   };
@@ -680,7 +678,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
       const cat = (item.kategori || "TANPA KATEGORI").trim();
       let header = "";
       if (info?.groupByKategori && cat.toLowerCase() !== (lastKategori ?? "").toLowerCase()) {
-        header = `<tr><td colspan="${cols.length}" style="background:#e5e7eb;font-weight:bold;text-transform:uppercase">${esc(cat)}</td></tr>`;
+        header = `<tr class="grp"><td colspan="${cols.length}"><b>${esc(cat).toUpperCase()}</b></td></tr>`;
       }
       lastKategori = cat;
       return `${header}<tr>${keys.map((key) => cell(key, item, index)).join("")}</tr>`;
@@ -705,9 +703,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
   openPrint(
     judul,
     `<style>table { font-size: 10px; } td, th { overflow-wrap: anywhere; }</style>
-    <h2 style="text-align:center;margin:0 0 4px">${esc(judul)}</h2>
-    <p style="text-align:center;margin:0 0 10px">Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p>
-    ${info?.filter ? `<p style="text-align:center;margin:0 0 10px;font-size:11px">${esc(info.filter)}</p>` : ""}
+    <div class="doc-title"><div><h2>${esc(judul)}</h2><p>Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang${info?.filter ? ` · ${esc(info.filter)}` : ""}</p></div></div>
     <table><thead>${thead}</thead><tbody>${rows}</tbody>${tfoot}</table>`,
     cols.length > 8,
   );
@@ -730,21 +726,19 @@ export function printDebtReport(rows: Array<Record<string, unknown>>, start: str
     lunas += sudah;
     const notes = invoices.map((inv) => {
       const items = asList(inv.items);
-      const itemRows = items.map((item) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">${esc(item.nama)} ${item.kode_pajak ? `(${esc(item.kode_pajak)})` : ""}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center">${esc(item.qty)} ${esc(item.satuan || "")}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${money(item.harga)}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${money(Number(item.harga) * Number(item.qty))}</td></tr>`).join("");
-      const color = inv.status_bayar === "Lunas" ? "#16a34a" : "#dc2626";
-      const lunasInfo = inv.status_bayar === "Lunas" && inv.tanggal_lunas ? `<br><span style="font-size:9px;color:#16a34a">Lunas: ${esc(whenText(inv.tanggal_lunas))}</span>` : "";
+      const itemRows = items.map((item) => `<tr><td><b>${esc(item.nama)}</b>${item.kode_pajak ? `<span class="sub">Kode ${esc(item.kode_pajak)}</span>` : ""}</td><td class="center">${esc(item.qty)} ${esc(item.satuan || "")}</td><td class="right">${money(item.harga)}</td><td class="right bold">${money(Number(item.harga) * Number(item.qty))}</td></tr>`).join("");
+      const lunasInfo = inv.status_bayar === "Lunas" && inv.tanggal_lunas ? `<br><span class="pos">Lunas: ${esc(whenText(inv.tanggal_lunas))}</span>` : "";
       const ket = inv.keterangan ? `<br><b>Keterangan:</b> ${esc(inv.keterangan)}` : "";
-      return `<div style="border:1px solid #ccc;margin-bottom:10px"><div style="display:flex;justify-content:space-between;padding:8px;background:#f8f9fa;border-bottom:1px solid #ccc"><div style="font-size:10px"><b>Inv:</b> ${esc(inv.nomor)}<br><b>${String(inv.source) === "Manual" ? "Dibuat Admin" : "Kasir"}:</b> ${esc(inv.kasir || "-")}<br><b>Tgl Bon:</b> ${esc(whenText(inv.tanggal))} ${lunasInfo}${ket}</div><div style="text-align:right;font-size:10px"><b style="color:${color}">${esc(String(inv.status_bayar || "").toUpperCase())}</b><br><b>Total: ${money(inv.total)}</b></div></div><table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr><th style="padding:4px 8px;text-align:left;border-bottom:1px solid #ddd">Nama Barang</th><th style="padding:4px 8px;text-align:center;border-bottom:1px solid #ddd">Qty</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Harga</th><th style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd">Subtotal</th></tr></thead><tbody>${itemRows || `<tr><td colspan="4" class="center">Tidak ada barang</td></tr>`}</tbody></table></div>`;
+      return `<div class="nota"><div class="nota-head"><div><b>Inv:</b> ${esc(inv.nomor)}<br><b>${String(inv.source) === "Manual" ? "Dibuat Admin" : "Kasir"}:</b> ${esc(inv.kasir || "-")}<br><b>Tgl Bon:</b> ${esc(whenText(inv.tanggal))}${lunasInfo}${ket}</div><div class="right"><b class="${inv.status_bayar === "Lunas" ? "pos" : "neg"}">${esc(String(inv.status_bayar || "").toUpperCase())}</b><br><b style="font-size:12px">Total: ${money(inv.total)}</b></div></div><table class="mini"><thead><tr><th>Nama Barang</th><th class="center">Qty</th><th class="right">Harga</th><th class="right">Subtotal</th></tr></thead><tbody>${itemRows || `<tr><td colspan="4" class="center">Tidak ada barang</td></tr>`}</tbody></table></div>`;
     }).join("");
-    cards += `<div style="margin-bottom:25px;border-left:4px solid #dc2626;padding-left:15px"><div style="display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:10px"><h3 style="margin:0;font-size:14px">${esc(name)}</h3><div style="font-size:11px;text-align:right">Sisa Piutang: <b style="color:#dc2626;font-size:13px">${money(piutang)}</b> <span style="color:#999">| Histori Lunas: <b style="color:#16a34a">${money(sudah)}</b></span></div></div>${notes}</div>`;
+    cards += `<div class="cust"><div class="cust-head"><h3>${esc(name)}</h3><div>Sisa Piutang: <b class="neg" style="font-size:13px">${money(piutang)}</b> <span class="muted">|</span> Histori Lunas: <b class="pos">${money(sudah)}</b></div></div>${notes}</div>`;
   }
   openPrint(
     "Laporan Piutang",
-    `<h2>LAPORAN BON / PIUTANG PELANGGAN</h2>
-    <p style="text-align:center;margin:0 0 12px">Periode Bon: ${esc(start || "Awal")} s/d ${esc(end || "Sekarang")} | Status: ${esc(status || "Semua")}</p>
-    <div style="display:flex;justify-content:space-around;border:2px solid #000;background:#f9f9f9;padding:12px;margin-bottom:20px;text-align:center">
-      <div><span>Total Sisa Piutang</span><p style="margin:4px 0 0;font-size:16px;font-weight:bold;color:#dc2626">${money(sisa)}</p></div>
-      <div><span>Total Histori Lunas</span><p style="margin:4px 0 0;font-size:16px;font-weight:bold;color:#16a34a">${money(lunas)}</p></div>
+    `<div class="doc-title"><div><h2>LAPORAN BON / PIUTANG PELANGGAN</h2><p>Periode Bon: ${esc(start || "Awal")} s/d ${esc(end || "Sekarang")} | Status: ${esc(status || "Semua")}</p></div></div>
+    <div class="stats">
+      <div><span>Total Sisa Piutang</span><b style="color:#dc2626">${money(sisa)}</b></div>
+      <div><span>Total Histori Lunas</span><b style="color:#16a34a">${money(lunas)}</b></div>
     </div>
     ${cards}`,
   );
@@ -763,17 +757,16 @@ export function printHistoryReport(rows: Array<Record<string, unknown>>, start: 
         else if (row.metode_bayar === "Tunai") cash += nilai;
         else if (row.metode_bayar === "Transfer") transfer += nilai;
       }
-      return `<tr><td class="center">${index + 1}</td><td style="white-space:nowrap">${esc(whenText(row.tanggal))}</td><td>${esc(row.nomor || "-")}</td><td>${esc(row.part_number || "-")}</td><td>${esc(row.nama || "Barang")}</td><td class="center" style="font-weight:bold;color:#7c3aed">${esc(row.kode_pajak || "-")}</td><td class="center">${esc(row.source)}</td><td class="center">${esc(row.source === "Kasir" ? row.metode_bayar || "-" : "-")}</td><td class="center">${esc(row.source === "Kasir" ? row.status_bayar || "-" : "-")}</td><td class="center">${esc(row.jenis === "MASUK" ? "MASUK" : "KELUAR")}</td><td class="center" style="font-weight:bold">${esc(row.jumlah)} ${esc(row.satuan || "")}</td><td class="right">${Number(row.harga_satuan) ? money(row.harga_satuan) : "-"}</td><td class="right">${nilai > 0 ? money(nilai) : "-"}</td></tr>`;
+      return `<tr><td class="center">${index + 1}</td><td style="white-space:nowrap">${esc(whenText(row.tanggal))}</td><td>${esc(row.nomor || "-")}</td><td>${esc(row.part_number || "-")}</td><td>${esc(row.nama || "Barang")}</td><td class="center mono">${esc(row.kode_pajak || "-")}</td><td class="center">${esc(row.source)}</td><td class="center">${esc(row.source === "Kasir" ? row.metode_bayar || "-" : "-")}</td><td class="center">${esc(row.source === "Kasir" ? row.status_bayar || "-" : "-")}</td><td class="center">${esc(row.jenis === "MASUK" ? "MASUK" : "KELUAR")}</td><td class="center" style="font-weight:bold">${esc(row.jumlah)} ${esc(row.satuan || "")}</td><td class="right">${Number(row.harga_satuan) ? money(row.harga_satuan) : "-"}</td><td class="right">${nilai > 0 ? money(nilai) : "-"}</td></tr>`;
     })
     .join("");
   openPrint(
     "Riwayat Transaksi",
-    `<h2>LAPORAN RIWAYAT TRANSAKSI</h2>
-    <p style="text-align:center;margin:0 0 12px">Periode: ${esc(start || "Awal")} s/d ${esc(end || "Sekarang")}</p>
-    <div style="display:flex;justify-content:space-around;border:1px solid #000;background:#f9f9f9;padding:12px;margin-bottom:16px;text-align:center">
-      <div><span>Total Tunai</span><p style="margin:4px 0 0;font-size:16px;font-weight:bold;color:#16a34a">${money(cash)}</p></div>
-      <div><span>Total Transfer</span><p style="margin:4px 0 0;font-size:16px;font-weight:bold;color:#2563eb">${money(transfer)}</p></div>
-      <div><span>Total Bon</span><p style="margin:4px 0 0;font-size:16px;font-weight:bold;color:#dc2626">${money(bon)}</p></div>
+    `<div class="doc-title"><div><h2>LAPORAN RIWAYAT TRANSAKSI</h2><p>Periode: ${esc(start || "Awal")} s/d ${esc(end || "Sekarang")}</p></div></div>
+    <div class="stats">
+      <div><span>Total Tunai</span><b style="color:#16a34a">${money(cash)}</b></div>
+      <div><span>Total Transfer</span><b style="color:#2563eb">${money(transfer)}</b></div>
+      <div><span>Total Bon</span><b style="color:#dc2626">${money(bon)}</b></div>
     </div>
     <table><thead><tr><th>No</th><th>Tanggal</th><th>Invoice</th><th>Part Number</th><th>Nama Barang</th><th>Kode Pajak</th><th>Sumber</th><th>Metode</th><th>Status</th><th>Jenis</th><th>Qty</th><th>Harga</th><th>Total</th></tr></thead><tbody>${body}</tbody></table>`,
     true,
@@ -843,7 +836,7 @@ export function printSalesReport(
     .join("");
   openPrint(
     "Laporan Penjualan",
-    `<h2>LAPORAN PENJUALAN PER NOTA</h2>
+    `<div class="doc-title"><div><h2>LAPORAN PENJUALAN PER NOTA</h2></div></div>
     <div class="info"><div>Periode: <b>${esc(periode)}</b><br>Sumber: ${esc(sumberLabel)}</div><div style="text-align:right">Jumlah nota: <b>${num(notes.length)}</b><br>Total barang keluar: <b>${num(totalQty)}</b></div></div>
     <div class="sum">
       <div><span>Total Penjualan (Kasir)</span><b>${rp(summary.omzet)}</b></div>

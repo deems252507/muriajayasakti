@@ -8,7 +8,7 @@ import { inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell"
 import { listPartners, manualNota, searchProducts } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { PartnerPicker } from "@/components/shop/partner-picker";
-import { shopBrand } from "@/lib/shop/print";
+import { openModernPrint } from "@/lib/shop/print";
 import type { Partner, Product } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/manual")({ component: ManualPage });
@@ -354,8 +354,14 @@ function ManualPage() {
 
 function printManual(nomor: string, tanggal: string, items: Draft[]) {
   const rows = items.map((item) => `<tr><td>${item.jenis}</td><td>${item.product.nama}</td><td>${item.qty}</td><td>${item.isAlt ? item.product.satuanAlt : item.product.satuan}</td><td style="text-align:right">${item.harga > 0 ? rupiah(item.harga * item.qty) : "-"}</td></tr>`).join("");
-  const win = window.open("", "_blank", "width=720,height=640");
-  if (!win) return;
-  win.document.write(`<!doctype html><html><head><title>${nomor}</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #cbd5e1;padding:6px;text-align:left}</style></head><body><h2>${shopBrand().nama}</h2><p>${shopBrand().alamat}<br>${shopBrand().telepon}</p><p>${nomor} · ${tanggal}</p><table><thead><tr><th>Jenis</th><th>Barang</th><th>Qty</th><th>Satuan</th><th>Nilai</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`);
-  win.document.close();
+  const total = items.reduce((sum, item) => sum + (item.harga > 0 ? item.harga * item.qty : 0), 0);
+  try {
+    openModernPrint(
+      nomor,
+      `<div class="doc-title"><div><h2>Nota Transaksi Manual</h2><p>${nomor} · ${tanggal}</p></div></div>
+      <table><thead><tr><th>Jenis</th><th>Barang</th><th class="center">Qty</th><th>Satuan</th><th class="right">Nilai</th></tr></thead><tbody>${rows.replace(/style="text-align:right"/g, 'class="right"')}</tbody>${total > 0 ? `<tfoot><tr><td colspan="4" class="right">Total</td><td class="right">${rupiah(total)}</td></tr></tfoot>` : ""}</table>`,
+    );
+  } catch {
+    return;
+  }
 }

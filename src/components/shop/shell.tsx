@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
 import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
-import { setShopProfile } from "@/lib/shop/print";
+import { setPrintUser, setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
 import { PresenceButton } from "@/components/shop/presence";
 import { LogoutDialog } from "@/components/shop/logout-dialog";
@@ -183,6 +183,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   useEffect(() => { installStockAlerts(); }, []);
+  useEffect(() => { setPrintUser(me); }, [me]);
   // Ukur tinggi layar yang BENAR-BENAR terlihat (memperhitungkan bar alamat & keyboard HP)
   // dan tinggi header, lalu simpan sebagai CSS variable untuk halaman yang butuh tinggi penuh (chat).
   useEffect(() => {
