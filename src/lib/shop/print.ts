@@ -51,9 +51,9 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   @page { size: ${landscape ? "A4 landscape" : "A4"}; margin: 12mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #1f2937; margin: 0; line-height: 1.4; }
-  .top { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2px; padding: 0 0 12px; border-bottom: 3px solid #0f2a4a; position: relative; }
+  .top { display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 0 0 12px; border-bottom: 3px solid #0f2a4a; position: relative; }
   .top::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
-  .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 10px; margin-bottom: 4px; }
+  .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 10px; flex: none; }
   .top h1 { margin: 0; font-size: 20px; letter-spacing: .06em; color: #0f2a4a; }
   .top p { margin: 0; font-size: 11px; color: #4b5563; }
   .doc-title { display: flex; justify-content: flex-start; text-align: left; margin: 16px 0 10px; }
