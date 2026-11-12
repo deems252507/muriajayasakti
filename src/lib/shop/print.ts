@@ -55,14 +55,14 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   .top::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
   .top img { position: absolute; left: 0; top: 0; width: 54px; height: 54px; object-fit: contain; border-radius: 10px; }
   .top h1 { margin: 0; font-size: 20px; letter-spacing: .06em; color: #0f2a4a; }
-  .top p { margin: 2px 0 0; font-size: 10.5px; color: #6b7280; }
+  .top p { margin: 2px 0 0; font-size: 11px; color: #4b5563; }
   .doc-title { display: flex; justify-content: space-between; align-items: flex-end; margin: 20px 0 12px; }
   .doc-title h2 { margin: 0; font-size: 22px; font-weight: 800; color: #0f2a4a; letter-spacing: -.01em; }
   .doc-title p { margin: 2px 0 0; color: #6b7280; font-size: 11px; }
   .cards { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 14px; }
   .card { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
   .card p { margin: 2px 0 0; color: #4b5563; font-size: 10.5px; }
-  .lbl { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; margin-bottom: 3px; }
+  .lbl { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #4b5563; margin-bottom: 3px; }
   .big { font-size: 14px; color: #111827; }
   .meta > div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dashed #d1d5db; }
   .meta > div:last-child { border-bottom: 0; }
@@ -72,15 +72,15 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   .stats span { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; }
   .stats b { display: block; font-size: 16px; color: #0f2a4a; margin-top: 2px; }
   table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
-  table th { background: #0f2a4a; color: #fff; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 8px 9px; }
+  table th { background: #0f2a4a; color: #fff; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 8px 9px; }
   table th:first-child { border-top-left-radius: 8px; }
   table th:last-child { border-top-right-radius: 8px; }
   table td { padding: 8px 9px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
   table tbody tr:nth-child(even) td { background: #fafafa; }
   .c { text-align: center; } .r { text-align: right; white-space: nowrap; } .b { font-weight: 700; }
   .mono { font-family: Consolas, "SFMono-Regular", Menlo, monospace; font-size: 10.5px; font-weight: 600; }
-  .muted { color: #9ca3af; }
-  .sub { display: block; margin-top: 2px; font-size: 9.5px; color: #6b7280; }
+  .muted { color: #6b7280; }
+  .sub { display: block; margin-top: 2px; font-size: 10px; color: #374151; }
   .chip { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: 700; vertical-align: middle; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 6px; }
   h2 { margin: 0; font-size: 20px; font-weight: 800; color: #0f2a4a; letter-spacing: -.01em; }
@@ -96,7 +96,7 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   .cash { color: #15803d; font-weight: 700; } .bon { color: #b91c1c; font-weight: 700; } .pos { color: #15803d; } .neg { color: #b91c1c; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .stats > div { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 9px 12px; }
-  .stats small { display: block; color: #9ca3af; font-size: 9px; margin-top: 2px; }
+  .stats small { display: block; color: #6b7280; font-size: 9px; margin-top: 2px; }
   tfoot td { background: #0f2a4a; color: #fff; font-weight: 800; padding: 8px 9px; }
   .cust { margin-bottom: 18px; border-left: 4px solid #b91c1c; padding-left: 12px; }
   .cust-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f2a4a; padding-bottom: 5px; margin-bottom: 8px; }
@@ -119,7 +119,7 @@ export function openModernPrint(title: string, inner: string, landscape = false)
   .sign > div { width: 190px; text-align: center; }
   .sign p { margin: 0; color: #4b5563; }
   .sign i { display: block; margin-top: 52px; border-top: 1px solid #111827; }
-  .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 9px; color: #9ca3af; }
+  .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #d1d5db; text-align: center; font-size: 10px; font-weight: 600; color: #374151; }
   @media print { thead { display: table-header-group; } tr { break-inside: avoid; } .sign, .bottom { break-inside: avoid; } }
 </style></head><body>
   <div class="top">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : ""}<div><h1>${esc(shop.nama)}</h1><p>${esc([shop.alamat, shop.telepon].filter(Boolean).join(" | "))}</p></div></div>
@@ -655,7 +655,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
   let modal = 0;
   const cell = (key: string, item: (typeof items)[number], index: number): string => {
     switch (key) {
-      case "no": return `<td class="center">${index + 1}</td>`;
+      case "no": return `<td class="center no">${index + 1}</td>`;
       case "nama": return `<td><b>${esc(item.nama)}</b><span class="sub">${esc(item.merek || "-")}</span></td>`;
       case "kategori": return `<td>${esc(item.kategori || "-")}</td>`;
       case "partNumber": return `<td>${esc(item.partNumber || "-")}</td>`;
@@ -684,7 +684,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
       return `${header}<tr>${keys.map((key) => cell(key, item, index)).join("")}</tr>`;
     })
     .join("");
-  const headAlign = (key: string) => (key === "hargaJual" ? ' class="right"' : ["no", "kodePajak", "stokMin", "stok", "status"].includes(key) ? ' class="center"' : "");
+  const headAlign = (key: string) => (key === "no" ? ' class="center no"' : key === "hargaJual" ? ' class="right"' : ["no", "kodePajak", "stokMin", "stok", "status"].includes(key) ? ' class="center"' : "");
   const thead = `<tr>${cols.map((col) => `<th${headAlign(col.key)}>${col.head}</th>`).join("")}</tr>`;
   // Baris total hanya jika kolom Stok Akhir dan/atau Harga Jual ikut dicetak
   const firstTotal = keys.findIndex((key) => key === "stok" || key === "hargaJual");
@@ -702,7 +702,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
   }
   openPrint(
     judul,
-    `<style>table { font-size: 10px; } td, th { overflow-wrap: anywhere; }</style>
+    `<style>table { font-size: 11px; } td, th { overflow-wrap: break-word; } th.no, td.no { width: 34px; white-space: nowrap; }</style>
     <div class="doc-title"><div><h2>${esc(judul)}</h2><p>Kategori: ${esc(kategori)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang${info?.filter ? ` · ${esc(info.filter)}` : ""}</p></div></div>
     <table><thead>${thead}</thead><tbody>${rows}</tbody>${tfoot}</table>`,
     cols.length > 8,
