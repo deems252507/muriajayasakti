@@ -1,14 +1,14 @@
 import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
-import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Truck, Upload } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { SortPicker, hideCategoryHeaders, DEFAULT_SORTS } from "@/components/shop/sort-picker";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProducts, saveProduct } from "@/lib/shop/api";
+import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
 import { shopBrand } from "@/lib/shop/print";
@@ -59,6 +59,7 @@ function BarangPage() {
   const [replaceStock, setReplaceStock] = useState(true);
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<{ item: Product; rows: PriceRow[] | null } | null>(null);
+  const [origin, setOrigin] = useState<{ item: Product; data: OriginData | null } | null>(null);
   const importingRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const comments = useComments("barang", (data?.items ?? []).map((i) => i.id));
@@ -70,6 +71,13 @@ function BarangPage() {
     void listPriceHistory({ data: { productId: item.id } })
       .then((rows) => setHistory((cur) => cur && cur.item.id === item.id ? { item, rows: rows as PriceRow[] } : cur))
       .catch((e: Error) => { toast.error(e.message); setHistory(null); });
+  }
+
+  function openOrigin(item: Product) {
+    setOrigin({ item, data: null });
+    void listProductSuppliers({ data: { productId: item.id } })
+      .then((data) => setOrigin((cur) => cur && cur.item.id === item.id ? { item, data: data as OriginData } : cur))
+      .catch((e: Error) => { toast.error(e.message); setOrigin(null); });
   }
 
   function load(next = page) {
@@ -300,6 +308,7 @@ function BarangPage() {
             <ExpandGroup>
               <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
               <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
+              {me.role !== "Kasir" ? <ExpandButton label="Pemasok" icon={<Truck />} onClick={() => openOrigin(item)} /> : null}
               <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item)} />
               {canEdit ? (
                 <>
@@ -392,6 +401,7 @@ function BarangPage() {
           </form>
         </div>
       ) : null}
+      {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} /> : null}
       {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir"} onClose={() => setHistory(null)} /> : null}
     </div>
   );
@@ -530,4 +540,84 @@ async function printBarcode(item: Product) {
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 300);
+}
+
+type OriginData = {
+  suppliers: Array<{ supplierId: number; supplierName: string; totalQtyDasar: number; receiptCount: number; lastAt: string; lastInvoice: string; lastHargaBeli: number; lastSatuan: string }>;
+  history: Array<{ receiptId: number; invoiceNo: string; receivedAt: string; supplierId: number; supplierName: string; qty: number; satuan: string; qtyDasar: number; hargaBeli: number }>;
+};
+
+/** Asal barang: pemasok mana saja yang pernah memasok barang ini (dari catatan Barang Masuk Pemasok). */
+function OriginModal({ item, data, onClose }: { item: Product; data: OriginData | null; onClose: () => void }) {
+  const suppliers = data?.suppliers ?? [];
+  const prices = suppliers.map((s) => s.lastHargaBeli).filter((n) => n > 0);
+  const cheapest = suppliers.length > 1 && prices.length ? Math.min(...prices) : 0;
+  const hasDus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
+  /** Total dalam satuan dasar, plus setara satuan kedua (mis. dus) kalau barangnya punya. */
+  function qtyText(dasar: number) {
+    const base = `${grouped(dasar)} ${item.satuan}`;
+    return hasDus && dasar >= item.isiSatuanAlt ? `${base} (± ${grouped(Math.floor(dasar / item.isiSatuanAlt))} ${item.satuanAlt})` : base;
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+          <div>
+            <h3 className="text-lg font-extrabold">Asal Barang (Pemasok)</h3>
+            <p className="text-sm text-muted">{item.nama}{item.partNumber ? ` · ${item.partNumber}` : ""}</p>
+          </div>
+          <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onClose}>Tutup</button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          {data === null ? <p className="py-8 text-center text-sm text-muted">Memuat data pemasok...</p> : null}
+          {data && suppliers.length === 0 ? <p className="py-8 text-center text-sm text-muted">Belum ada catatan Barang Masuk Pemasok untuk barang ini.</p> : null}
+          {data && suppliers.length ? (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[11px] text-muted">Stok sekarang</span><b>{qtyText(item.stok)}</b></div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[11px] text-muted">Jumlah pemasok</span><b>{suppliers.length}</b></div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2"><span className="block text-[11px] text-muted">Harga beli terakhir termurah</span><b>{cheapest > 0 ? rupiah(cheapest) : "-"}</b></div>
+              </div>
+              <h4 className="mt-4 text-sm font-extrabold">Per pemasok</h4>
+              <div className="overflow-x-auto">
+                <table className="mt-1 w-full text-sm">
+                  <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
+                    <tr><th className="px-3 py-2 text-left">Pemasok</th><th className="px-3 py-2 text-right">Total masuk</th><th className="px-3 py-2 text-left">Terakhir masuk</th><th className="px-3 py-2 text-left">Invoice</th><th className="px-3 py-2 text-right">Harga beli terakhir</th></tr>
+                  </thead>
+                  <tbody>
+                    {suppliers.map((s, index) => (
+                      <tr key={s.supplierId} className="border-t border-line align-top">
+                        <td className="px-3 py-2 font-semibold">{s.supplierName}{index === 0 ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Terbaru</span> : null}</td>
+                        <td className="px-3 py-2 text-right">{qtyText(s.totalQtyDasar)}<span className="block text-[11px] text-muted">{s.receiptCount}x penerimaan</span></td>
+                        <td className="whitespace-nowrap px-3 py-2">{dateOnly(s.lastAt)}</td>
+                        <td className="px-3 py-2 font-mono text-xs font-bold">{s.lastInvoice}</td>
+                        <td className={`num px-3 py-2 text-right ${cheapest > 0 && s.lastHargaBeli === cheapest ? "font-bold text-emerald-700" : ""}`}>{rupiah(s.lastHargaBeli)}<span className="block text-[11px] font-normal text-muted">per {s.lastSatuan}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <h4 className="mt-4 text-sm font-extrabold">Riwayat penerimaan (terbaru di atas)</h4>
+              <div className="overflow-x-auto">
+                <table className="mt-1 w-full text-sm">
+                  <tbody>
+                    {data.history.map((row, index) => (
+                      <tr key={`${row.receiptId}-${index}`} className="border-t border-line">
+                        <td className="whitespace-nowrap px-3 py-2">{dateOnly(row.receivedAt)}</td>
+                        <td className="px-3 py-2 font-semibold">{row.supplierName}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{row.invoiceNo}</td>
+                        <td className="px-3 py-2 text-right">{grouped(row.qty)} {row.satuan}</td>
+                        <td className="num px-3 py-2 text-right">{rupiah(row.hargaBeli)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+          <p className="mt-3 text-xs text-muted">Data diambil dari menu Barang Masuk Pemasok. Barang yang masuk sebelum dicatat di menu itu tidak muncul di sini.</p>
+        </div>
+      </div>
+    </div>
+  );
 }

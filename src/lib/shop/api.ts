@@ -68,6 +68,13 @@ export const listPriceHistory = createServerFn({ method: "GET" })
     return run(data);
   });
 
+export const listProductSuppliers = createServerFn({ method: "GET" })
+  .validator((input: { productId: number }) => ({ productId: Number(input?.productId) }))
+  .handler(async ({ data }) => {
+    const { listProductSuppliers: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const listProducts = createServerFn({ method: "GET" })
   .validator((input: { q?: string; dupOnly?: boolean; kategori?: string | string[]; page?: number; sort?: string; sorts?: string[]; status?: string; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),

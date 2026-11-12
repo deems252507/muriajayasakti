@@ -452,6 +452,59 @@ export async function listPriceHistory(data: any) {
   }));
 }
 
+/** Asal barang: pemasok mana saja yang pernah memasok satu barang, dihitung dari catatan Barang Masuk Pemasok. */
+export async function listProductSuppliers(data: any) {
+  const me = await requireStaff();
+  if (me.role === "Kasir") throw new Error("Data pemasok hanya untuk Admin dan Owner.");
+  const db = await sql();
+  const productId = Number(data.productId);
+  if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak ditemukan.");
+  const rows = await db.query<Record<string, unknown>>(
+    `select r.id as receipt_id, r.invoice_no, r.received_at, p.id as supplier_id, p.nama as supplier_name,
+            l.qty, l.satuan, l.qty_dasar, l.harga_beli
+     from supplier_receipt_lines l
+     join supplier_receipts r on r.id = l.receipt_id
+     join partners p on p.id = r.supplier_id
+     where l.product_id = $1
+     order by r.received_at desc, r.id desc, l.id desc
+     limit 500`,
+    [productId],
+  );
+  const history = rows.map((row) => ({
+    receiptId: Number(row.receipt_id),
+    invoiceNo: String(row.invoice_no ?? ""),
+    receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : "",
+    supplierId: Number(row.supplier_id),
+    supplierName: String(row.supplier_name ?? ""),
+    qty: Number(row.qty ?? 0),
+    satuan: String(row.satuan ?? ""),
+    qtyDasar: Number(row.qty_dasar ?? 0),
+    hargaBeli: Number(row.harga_beli ?? 0),
+  }));
+  // Rekap per pemasok. Baris sudah urut terbaru dulu, jadi kemunculan pertama = penerimaan terakhir.
+  const bySupplier = new Map<number, {
+    supplierId: number; supplierName: string; totalQtyDasar: number; receipts: Set<number>;
+    lastAt: string; lastInvoice: string; lastHargaBeli: number; lastSatuan: string;
+  }>();
+  for (const row of history) {
+    const cur = bySupplier.get(row.supplierId);
+    if (!cur) {
+      bySupplier.set(row.supplierId, {
+        supplierId: row.supplierId, supplierName: row.supplierName, totalQtyDasar: row.qtyDasar, receipts: new Set([row.receiptId]),
+        lastAt: row.receivedAt, lastInvoice: row.invoiceNo, lastHargaBeli: row.hargaBeli, lastSatuan: row.satuan,
+      });
+    } else {
+      cur.totalQtyDasar += row.qtyDasar;
+      cur.receipts.add(row.receiptId);
+    }
+  }
+  const suppliers = [...bySupplier.values()].map((s) => ({
+    supplierId: s.supplierId, supplierName: s.supplierName, totalQtyDasar: s.totalQtyDasar, receiptCount: s.receipts.size,
+    lastAt: s.lastAt, lastInvoice: s.lastInvoice, lastHargaBeli: s.lastHargaBeli, lastSatuan: s.lastSatuan,
+  }));
+  return { suppliers, history: history.slice(0, 100) };
+}
+
 export async function searchProducts(data: any) {
     await requireStaff();
     const db = await sql();
