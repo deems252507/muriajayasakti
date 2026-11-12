@@ -67,6 +67,74 @@ export function openPrint(title: string, inner: string, landscape = false) {
   setTimeout(() => win.print(), 400);
 }
 
+/** Cetak bergaya modern: kop berlogo, tabel header navy, baris bergaris tipis, kotak total. */
+export function openModernPrint(title: string, inner: string, landscape = false) {
+  const win = window.open("", "_blank", "width=1100,height=800");
+  if (!win) throw new Error("Popup diblokir browser. Izinkan popup untuk mencetak.");
+  const logo = shop.logo || (typeof location !== "undefined" ? `${location.origin}/brand/logo.png` : "");
+  win.document.write(`<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  @page { size: ${landscape ? "A4 landscape" : "A4"}; margin: 12mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #1f2937; margin: 0; line-height: 1.4; }
+  .top { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 3px solid #0f2a4a; position: relative; }
+  .top::after { content: ""; position: absolute; left: 0; bottom: -6px; width: 90px; height: 3px; background: #f59e0b; }
+  .top img { width: 54px; height: 54px; object-fit: contain; border-radius: 10px; }
+  .top h1 { margin: 0; font-size: 20px; letter-spacing: .06em; color: #0f2a4a; }
+  .top p { margin: 2px 0 0; font-size: 10.5px; color: #6b7280; }
+  .doc-title { display: flex; justify-content: space-between; align-items: flex-end; margin: 20px 0 12px; }
+  .doc-title h2 { margin: 0; font-size: 22px; font-weight: 800; color: #0f2a4a; letter-spacing: -.01em; }
+  .doc-title p { margin: 2px 0 0; color: #6b7280; font-size: 11px; }
+  .cards { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .card { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
+  .card p { margin: 2px 0 0; color: #4b5563; font-size: 10.5px; }
+  .lbl { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; margin-bottom: 3px; }
+  .big { font-size: 14px; color: #111827; }
+  .meta > div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dashed #d1d5db; }
+  .meta > div:last-child { border-bottom: 0; }
+  .meta span { color: #6b7280; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stats div { border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; padding: 9px 12px; }
+  .stats span { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; }
+  .stats b { display: block; font-size: 16px; color: #0f2a4a; margin-top: 2px; }
+  table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
+  table.grid th { background: #0f2a4a; color: #fff; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 8px 9px; }
+  table.grid th:first-child { border-top-left-radius: 8px; }
+  table.grid th:last-child { border-top-right-radius: 8px; }
+  table.grid td { padding: 8px 9px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  table.grid tbody tr:nth-child(even) td { background: #fafafa; }
+  .c { text-align: center; } .r { text-align: right; white-space: nowrap; } .b { font-weight: 700; }
+  .mono { font-family: Consolas, "SFMono-Regular", Menlo, monospace; font-size: 10.5px; font-weight: 600; }
+  .muted { color: #9ca3af; }
+  .sub { display: block; margin-top: 2px; font-size: 9.5px; color: #6b7280; }
+  .chip { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: 700; vertical-align: middle; }
+  tr.grp td { background: #e8eef7 !important; color: #0f2a4a; font-size: 10.5px; padding: 7px 9px; }
+  tr.grp .dot { margin: 0 7px; color: #94a3b8; }
+  tr.sumrow td { background: #f1f5f9 !important; font-weight: 700; }
+  .bottom { display: flex; justify-content: space-between; gap: 18px; margin-top: 14px; align-items: flex-start; }
+  .notes { flex: 1; } .notes p { margin: 2px 0 0; color: #374151; }
+  .totals { width: 270px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+  .trow { display: flex; justify-content: space-between; padding: 7px 12px; }
+  .trow.grand { background: #0f2a4a; color: #fff; font-size: 14px; font-weight: 800; padding: 10px 12px; }
+  .sign { display: flex; justify-content: space-between; gap: 40px; margin-top: 44px; padding: 0 30px; }
+  .sign > div { width: 190px; text-align: center; }
+  .sign p { margin: 0; color: #4b5563; }
+  .sign i { display: block; margin-top: 52px; border-top: 1px solid #111827; }
+  .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 9px; color: #9ca3af; }
+  @media print { thead { display: table-header-group; } tr { break-inside: avoid; } .sign, .bottom { break-inside: avoid; } }
+</style></head><body>
+  <div class="top">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : ""}<div><h1>${esc(shop.nama)}</h1><p>${esc([shop.alamat, shop.telepon].filter(Boolean).join(" | "))}</p></div></div>
+  ${inner}
+  <div class="foot">Dicetak pada ${esc(new Date().toLocaleString("id-ID", { timeZone: "Asia/Makassar" }))} · ${esc(shop.nama)}</div>
+</body></html>`);
+  win.document.close();
+  // Tunggu logo selesai dimuat (maks. 1,5 detik) sebelum dialog cetak dibuka.
+  let done = false;
+  const go = () => { if (done) return; done = true; win.focus(); win.print(); };
+  win.addEventListener("load", () => setTimeout(go, 250));
+  setTimeout(go, 1500);
+}
+
 export type TaxLine = Record<string, unknown>;
 
 export function printTaxNotes(rows: TaxLine[], start: string, end: string, onlyNomor?: string) {
@@ -719,7 +787,7 @@ export function printSupplierReceiptReport(rows: Array<{
   notes?: string;
   totalQty: number;
   totalValue: number;
-  items: Array<{ nama: string; partNumber?: string; kategori?: string; qty: number; satuan: string; qtyDasar: number; hargaBeli: number }>;
+  items: Array<{ nama: string; partNumber?: string; kodePajak?: string; kategori?: string; qty: number; satuan: string; qtyDasar: number; hargaBeli: number }>;
 }>, info?: { start?: string; end?: string }) {
   if (!rows.length) throw new Error("Tidak ada data barang masuk pemasok untuk dicetak.");
   const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
@@ -728,20 +796,19 @@ export function printSupplierReceiptReport(rows: Array<{
   const totalQty = rows.reduce((sum, row) => sum + Number(row.totalQty || 0), 0);
   let no = 1;
   const body = rows.map((row) => {
-    const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID") : "-";
-    const itemRows = row.items.map((item) => `<tr><td>${no++}</td><td>${esc(item.nama)}<br><span style="font-size:9px;color:#555">${esc(item.partNumber || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td class="center">${esc(item.qty)} ${esc(item.satuan)}</td><td class="center">${esc(item.qtyDasar)}</td><td class="right">${money(item.hargaBeli)}</td><td class="right bold">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td></tr>`).join("");
-    return `<tr class="invoice-head"><td colspan="7">INVOICE ${esc(row.invoiceNo)} · ${esc(date)} · PEMASOK: ${esc(row.supplierName)}${row.notes ? ` · ${esc(row.notes)}` : ""}</td></tr>${itemRows}<tr class="invoice-total"><td colspan="4" class="right">TOTAL INVOICE</td><td class="center">${esc(row.totalQty)}</td><td></td><td class="right">${money(row.totalValue)}</td></tr>`;
+    const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "short", year: "numeric" }) : "-";
+    const itemRows = row.items.map((item) => `<tr><td class="c">${no++}</td><td class="mono">${esc(item.kodePajak || "-")}</td><td><b>${esc(item.nama)}</b><span class="sub">PN: ${esc(item.partNumber || "-")}</span></td><td>${esc(item.kategori || "-")}</td><td class="c">${esc(item.qty)} ${esc(item.satuan)}</td><td class="c">${esc(item.qtyDasar)}</td><td class="r">${money(item.hargaBeli)}</td><td class="r b">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td></tr>`).join("");
+    return `<tr class="grp"><td colspan="8"><b>${esc(row.invoiceNo)}</b><span class="dot">•</span>${esc(date)}<span class="dot">•</span>${esc(row.supplierName)}${row.notes ? `<span class="dot">•</span><i>${esc(row.notes)}</i>` : ""}</td></tr>${itemRows}<tr class="sumrow"><td colspan="5" class="r">Total invoice</td><td class="c">${esc(row.totalQty)}</td><td></td><td class="r">${money(row.totalValue)}</td></tr>`;
   }).join("");
-  openPrint(
+  openModernPrint(
     "Laporan Barang Masuk Pemasok",
-    `<h2>LAPORAN BARANG MASUK PEMASOK</h2>
-    <p style="text-align:center;margin:0 0 12px;color:#555">Periode penerimaan: ${esc(period)} · ${rows.length} invoice</p>
-    <div class="summary" style="display:flex;justify-content:space-around;border:1px solid #222;margin-bottom:12px;padding:10px;text-align:center">
-      <div><span>Total Invoice</span><strong style="display:block;font-size:15px">${rows.length}</strong></div>
-      <div><span>Total Qty Dasar</span><strong style="display:block;font-size:15px">${totalQty.toLocaleString("id-ID")}</strong></div>
-      <div><span>Total Nilai Pembelian</span><strong style="display:block;font-size:15px">${money(totalValue)}</strong></div>
+    `<div class="doc-title"><div><h2>Laporan Barang Masuk Pemasok</h2><p>Periode penerimaan: ${esc(period)}</p></div></div>
+    <div class="stats">
+      <div><span>Total Invoice</span><b>${rows.length}</b></div>
+      <div><span>Total Qty Dasar</span><b>${totalQty.toLocaleString("id-ID")}</b></div>
+      <div><span>Total Nilai Pembelian</span><b>${money(totalValue)}</b></div>
     </div>
-    <table><thead><tr><th>No</th><th>Barang</th><th>Kategori</th><th class="center">Qty</th><th class="center">Qty Dasar</th><th class="right">Harga Beli</th><th class="right">Subtotal</th></tr></thead><tbody>${body}</tbody></table>`,
+    <table class="grid"><thead><tr><th class="c" style="width:34px">No</th><th style="width:80px">Kode</th><th>Nama Barang</th><th>Kategori</th><th class="c">Qty</th><th class="c">Qty Dasar</th><th class="r">Harga Beli</th><th class="r">Subtotal</th></tr></thead><tbody>${body}</tbody></table>`,
     true,
   );
 }
@@ -792,7 +859,7 @@ export function printSalesReport(
   );
 }
 
-/** Cetak satu faktur pembelian (barang masuk dari pemasok), tampilan seperti faktur pembelian pada umumnya. */
+/** Cetak satu faktur pembelian (barang masuk dari pemasok) dengan tampilan modern. */
 export function printSupplierInvoice(
   row: {
     invoiceNo: string;
@@ -809,28 +876,35 @@ export function printSupplierInvoice(
   const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
   const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
   const lines = row.items.map((item, index) => `<tr>
-    <td class="center">${index + 1}</td>
-    <td>${esc(item.partNumber || "-")}</td>
-    <td><b>${esc(item.nama)}${item.kodePajak ? ` (${esc(item.kodePajak)})` : ""}</b>${item.merek ? ` <span style="color:#555">[${esc(item.merek)}]</span>` : ""}${item.partNumbersAlt ? `<br><span style="color:#555">PN Alt: ${esc(item.partNumbersAlt)}</span>` : ""}</td>
-    <td class="right">${Number(item.qty).toLocaleString("id-ID")} ${esc(item.satuan)}</td>
-    <td class="right">${money(item.hargaBeli)}</td>
-    <td class="right bold">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
+    <td class="c muted">${index + 1}</td>
+    <td class="mono">${esc(item.kodePajak || "-")}</td>
+    <td><b>${esc(item.nama)}</b>${item.merek ? `<span class="chip">${esc(item.merek)}</span>` : ""}<span class="sub">PN: ${esc(item.partNumber || "-")}${item.partNumbersAlt ? ` · Alt: ${esc(item.partNumbersAlt)}` : ""}</span></td>
+    <td class="r">${Number(item.qty).toLocaleString("id-ID")} ${esc(item.satuan)}</td>
+    <td class="r">${money(item.hargaBeli)}</td>
+    <td class="r b">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
   </tr>`).join("");
-  openPrint(
+  openModernPrint(
     `Faktur Pembelian ${row.invoiceNo}`,
-    `<h2>FAKTUR PEMBELIAN</h2>
-    <div class="info">
-      <div>Dari (Pemasok):<br><b style="font-size:13px">${esc(row.supplierName)}</b>${supplier?.alamat ? `<br>${esc(supplier.alamat)}` : ""}${supplier?.telp ? `<br>Telp: ${esc(supplier.telp)}` : ""}</div>
-      <div style="text-align:right">No. Invoice: <b>${esc(row.invoiceNo)}</b><br>Tanggal: <b>${esc(date)}</b>${row.createdBy ? `<br>Dicatat oleh: ${esc(row.createdBy)}` : ""}</div>
+    `<div class="doc-title"><div><h2>Faktur Pembelian</h2><p>No. ${esc(row.invoiceNo)}</p></div></div>
+    <div class="cards">
+      <div class="card"><span class="lbl">Dari (Pemasok)</span><b class="big">${esc(row.supplierName)}</b>${supplier?.alamat ? `<p>${esc(supplier.alamat)}</p>` : ""}${supplier?.telp ? `<p>Telp: ${esc(supplier.telp)}</p>` : ""}</div>
+      <div class="card meta">
+        <div><span>No. Invoice</span><b class="mono">${esc(row.invoiceNo)}</b></div>
+        <div><span>Tanggal</span><b>${esc(date)}</b></div>
+        ${row.createdBy ? `<div><span>Dicatat oleh</span><b>${esc(row.createdBy)}</b></div>` : ""}
+      </div>
     </div>
-    <table>
-      <thead><tr><th class="center" style="width:28px">No</th><th>Kode / Part Number</th><th>Nama Barang</th><th class="right">Kts</th><th class="right">@Harga</th><th class="right">Total Harga</th></tr></thead>
+    <table class="grid">
+      <thead><tr><th class="c" style="width:30px">No</th><th style="width:86px">Kode</th><th>Nama Barang</th><th class="r" style="width:80px">Kts</th><th class="r" style="width:96px">@Harga</th><th class="r" style="width:110px">Total Harga</th></tr></thead>
       <tbody>${lines}</tbody>
     </table>
-    <div style="display:flex;justify-content:space-between;gap:16px;margin-top:10px">
-      <div style="flex:1"><b>Keterangan</b><br>${esc(row.notes || "-")}</div>
-      <div class="sum" style="width:260px"><div><span>Total Qty</span><span>${Number(row.totalQty || 0).toLocaleString("id-ID")}</span></div><div class="total" style="color:#111"><span>Total</span><span>${money(row.totalValue)}</span></div></div>
+    <div class="bottom">
+      <div class="notes"><span class="lbl">Keterangan</span><p>${esc(row.notes || "-")}</p></div>
+      <div class="totals">
+        <div class="trow"><span>Total Qty</span><span>${Number(row.totalQty || 0).toLocaleString("id-ID")}</span></div>
+        <div class="trow grand"><span>Total</span><span>${money(row.totalValue)}</span></div>
+      </div>
     </div>
-    <div style="margin-top:40px">Bagian Pembelian,<br><br><br>______________________</div>`,
+    <div class="sign"><div><p>Bagian Pembelian,</p><i></i></div><div><p>Disetujui,</p><i></i></div></div>`,
   );
 }

@@ -36,12 +36,13 @@ function isAltUnit(product: Product, satuan: string) { return hasAlt(product) &&
 function masterJual(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaJualAlt : product.hargaJual; }
 function masterBeli(product: Product, satuan: string) { return isAltUnit(product, satuan) ? product.hargaBeli * product.isiSatuanAlt : product.hargaBeli; }
 
-/** Identitas barang selengkapnya: nama, merek, kode pajak (kalau ada), part number, part number alt, kategori. */
+/** Identitas barang: nama, merek, Kode (kode pajak/barang), part number, part number alt, kategori. */
 function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kategori, hidePn }: { nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; kategori?: string; hidePn?: boolean }) {
   return (
     <div className="leading-snug">
-      <b className="text-sm">{nama}{kodePajak ? ` (${kodePajak})` : ""}</b>
+      <b className="text-sm">{nama}</b>
       {merek ? <span className="ml-2 inline-block rounded bg-blue-100 px-1.5 py-px align-middle text-[11px] font-bold text-blue-800">{merek}</span> : null}
+      {kodePajak ? <span className="ml-1.5 inline-block rounded bg-slate-100 px-1.5 py-px align-middle font-mono text-[11px] font-bold text-slate-700">Kode {kodePajak}</span> : null}
       {hidePn ? null : <span className="mt-0.5 block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{partNumber || "-"}</span></span>}
       {partNumbersAlt ? <span className="block text-xs text-slate-600">PN Alt: <span className="font-mono">{partNumbersAlt}</span></span> : null}
       {kategori ? <span className="block text-[11px] text-muted">{kategori}</span> : null}
@@ -87,14 +88,14 @@ function FakturModal({ row, supplier, canEdit, onClose, onEdit }: { row: Supplie
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-                  <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Kode / PN</th><th className="px-2 py-2 text-left">Nama Barang</th><th className="px-2 py-2 text-right">Kts</th><th className="px-2 py-2 text-right">@Harga</th><th className="px-2 py-2 text-right">Total Harga</th></tr>
+                  <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Kode</th><th className="px-2 py-2 text-left">Nama Barang</th><th className="px-2 py-2 text-right">Kts</th><th className="px-2 py-2 text-right">@Harga</th><th className="px-2 py-2 text-right">Total Harga</th></tr>
                 </thead>
                 <tbody>
                   {row.items.map((item, index) => (
                     <tr key={`${item.productId}-${index}`} className="align-top">
                       <td className="px-2 py-2 text-muted">{index + 1}</td>
-                      <td className="px-2 py-2 font-mono text-xs font-semibold">{item.partNumber || "-"}</td>
-                      <td className="px-2 py-2"><ProductInfo nama={item.nama} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kodePajak={item.kodePajak} kategori={item.kategori} hidePn /></td>
+                      <td className="px-2 py-2 font-mono text-xs font-semibold">{item.kodePajak || "-"}</td>
+                      <td className="px-2 py-2"><ProductInfo nama={item.nama} partNumber={item.partNumber} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kategori={item.kategori} /></td>
                       <td className="px-2 py-2 text-right font-semibold">{grouped(item.qty)} {item.satuan}</td>
                       <td className="num px-2 py-2 text-right">{rupiah(item.hargaBeli)}</td>
                       <td className="num px-2 py-2 text-right font-semibold">{rupiah(item.hargaBeli * item.qty)}</td>
@@ -367,10 +368,10 @@ function PemasokPage() {
       <Panel className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
+            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Item</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan={9} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
               <tr
                 key={row.id}
@@ -382,7 +383,16 @@ function PemasokPage() {
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
                 <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}</td>
-                <td className="px-2 py-3"><div className="space-y-1">{row.items.map((item, index) => <div key={`${row.id}-${item.productId}-${index}`}><ProductInfo nama={item.nama} partNumber={item.partNumber} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kodePajak={item.kodePajak} /></div>)}</div></td>
+                <td className="max-w-[360px] px-2 py-3">
+                  {row.items[0] ? (
+                    <div className="leading-snug">
+                      <p className="truncate text-sm font-bold" title={row.items.map((i) => i.nama).join("\n")}>{row.items[0].nama}</p>
+                      <p className="truncate text-xs text-slate-600">{row.items[0].kodePajak ? <>Kode <span className="font-mono font-semibold">{row.items[0].kodePajak}</span> · </> : null}PN: <span className="font-mono">{row.items[0].partNumber || "-"}</span></p>
+                      {row.items.length > 1 ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} barang lainnya</span> : null}
+                    </div>
+                  ) : "-"}
+                </td>
+                <td className="px-2 py-3 text-center text-xs font-semibold text-slate-600">{row.items.length}</td>
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
@@ -454,8 +464,8 @@ function PemasokPage() {
                         onMouseEnter={() => setActiveHit(index)}
                         onClick={() => addProduct(product)}
                       >
-                        <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} />{product.kodePajak ? ` (${product.kodePajak})` : ""}</p>
-                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
+                        <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} /></p>
+                        <p className="mt-0.5 text-xs text-muted">{product.kodePajak ? <>Kode: {product.kodePajak} · </> : null}PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
                       </button>
                     ))}
                   </div>
