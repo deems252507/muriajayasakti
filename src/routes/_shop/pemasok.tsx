@@ -102,6 +102,8 @@ function PemasokPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const canEdit = me.role === "Admin";
+  // Owner boleh membuka dan melihat detail penerimaan, tetapi tidak bisa mengubah (server juga menolak).
+  const readOnly = me.role === "Owner";
 
   function load(nextPage = page) {
     void listSupplierReceipts({ data: { q, supplierId: supplierId ? Number(supplierId) : 0, start, end, page: nextPage } })
@@ -242,7 +244,6 @@ function PemasokPage() {
     setJustAdded({ id: product.id, n: Date.now() });
   }
 
-  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   if (me.role === "Kasir") return <Panel><p>Halaman Barang Masuk Pemasok hanya untuk Admin.</p></Panel>;
 
   const comments = useComments("masuk", rows.map((r) => r.id));
@@ -289,7 +290,13 @@ function PemasokPage() {
           <tbody>
             {rows.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
-              <tr key={row.id} {...comments.row(row.id, `Barang masuk ${row.invoiceNo} · ${row.supplierName}`)} className="border-t border-line align-top">
+              <tr
+                key={row.id}
+                {...comments.row(row.id, `Barang masuk ${row.invoiceNo} · ${row.supplierName}`)}
+                className="cursor-pointer border-t border-line align-top"
+                title={canEdit ? "Klik baris untuk melihat detail / mengubah" : "Klik baris untuk melihat detail"}
+                onClick={() => { if (!window.getSelection()?.toString()) openEdit(row); }}
+              >
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
                 <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}</td>
@@ -297,7 +304,7 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                <td className="px-2 py-3 whitespace-nowrap"><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
+                <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
               </tr>
             ))}
           </tbody>
@@ -313,13 +320,14 @@ function PemasokPage() {
           <div className="mx-auto flex h-full max-h-[96vh] w-full max-w-[1500px] flex-col rounded-2xl bg-panel shadow-2xl">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
               <div>
-                <h3 className="text-xl font-extrabold">{editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3>
-                <p className="text-sm text-muted">{editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p>
+                <h3 className="text-xl font-extrabold">{readOnly ? "Detail Barang Masuk Pemasok" : editingId ? "Ubah Barang Masuk Pemasok" : "Penerimaan Barang dari Pemasok"}</h3>
+                <p className="text-sm text-muted">{readOnly ? "Hanya untuk dilihat. Akun Owner tidak dapat mengubah penerimaan." : editingId ? "Stok lama dikembalikan, lalu stok baru ditambahkan sesuai form ini." : "Simpan penerimaan untuk menambah stok secara otomatis."}</p>
               </div>
               <button className="h-11 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => { setOpen(false); setEditingId(null); }}>Tutup</button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Field label="Pemasok *"><SupplierPicker suppliers={suppliers} value={formSupplierId} onChange={setFormSupplierId} placeholder="Ketik nama pemasok" /></Field>
                 <Field label="Nomor Invoice *"><input className={inputClass} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Contoh: INV-SUP-00125" /></Field>
@@ -461,6 +469,7 @@ function PemasokPage() {
                   </div>
                 </section>
               </div>
+              </fieldset>
             </div>
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -469,14 +478,14 @@ function PemasokPage() {
                 <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
               </div>
               <div className="flex justify-end gap-2">
-                <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>Batal</button>
-                <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
+                <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>{readOnly ? "Tutup" : "Batal"}</button>
+                {!readOnly ? <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
                   const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli, hargaJual: item.hargaJual })) };
                   const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
                   void run
                     .then(() => { toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: editingId ? "Stok disesuaikan." : "Stok barang bertambah." }); setOpen(false); resetForm(); setPage(1); load(1); })
                     .catch((error: Error) => toast.error(error.message));
-                }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton>
+                }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton> : null}
               </div>
             </div>
           </div>
