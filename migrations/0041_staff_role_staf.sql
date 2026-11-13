@@ -18,10 +18,14 @@ alter table staff add constraint staff_role_check check (role in ('Owner', 'Admi
 -- 2) Izin kelola akun. Default tidak boleh.
 alter table staff add column if not exists can_manage_staff boolean not null default false;
 
--- Admin 1 = Rizky (akun Admin yang username atau namanya memuat "rizky").
+-- Admin 1 = Rizky (akun Admin yang username atau namanya memuat "rizky"): boleh kelola akun.
 update staff set can_manage_staff = true
   where role = 'Admin' and (lower(username) like '%rizky%' or lower(name) like '%rizky%');
--- Kalau akun Rizky tidak ditemukan, semua Admin yang sudah ada tetap boleh (supaya tidak ada yang terkunci);
--- Admin 1 bisa mencabutnya untuk Admin 2 lewat Pengaturan > Edit Akun.
+-- Admin 2 = Gilang (username atau nama memuat "gilang"): tidak boleh kelola akun.
+update staff set can_manage_staff = false
+  where role = 'Admin' and (lower(username) like '%gilang%' or lower(name) like '%gilang%');
+-- Kalau akun Rizky tidak ditemukan, Admin lain (selain Gilang) tetap boleh supaya tidak ada yang terkunci;
+-- cek di Pengaturan > Manajemen Semua Akun, label "Admin 1" harus ada di akun Rizky.
 update staff set can_manage_staff = true
-  where role = 'Admin' and not exists (select 1 from staff where can_manage_staff);
+  where role = 'Admin' and not exists (select 1 from staff where can_manage_staff)
+    and not (lower(username) like '%gilang%' or lower(name) like '%gilang%');

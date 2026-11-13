@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
 import { Barcode, Download, Eye, History, Pencil, Plus, RotateCcw, Trash2, Truck, Upload, X } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { SortPicker, hideCategoryHeaders, DEFAULT_SORTS } from "@/components/shop/sort-picker";
@@ -645,7 +645,7 @@ function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => v
   const dus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
   const dusQty = dus ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
   const sisa = dus ? item.stok % item.isiSatuanAlt : 0;
-  const rows: Array<[string, React.ReactNode]> = [
+  const rows: Array<[string, ReactNode]> = [
     ["Kode barang", item.kode || "-"],
     ["Part number", item.partNumber || "-"],
     ["Part number lain", item.partNumbersAlt || "-"],
@@ -654,7 +654,7 @@ function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => v
     ["Satuan", item.satuan || "-"],
     ["Stok minimum", `${item.stokMin} ${item.satuan}`],
     ["Harga jual", `${rupiah(item.hargaJual)} / ${item.satuan}`],
-    ...(dus ? ([[`Isi 1 ${item.satuanAlt}`, `${item.isiSatuanAlt} ${item.satuan}`], [`Harga jual 1 ${item.satuanAlt}`, rupiah(item.hargaJualAlt)]] as Array<[string, React.ReactNode]>) : []),
+    ...(dus ? ([[`Isi 1 ${item.satuanAlt}`, `${item.isiSatuanAlt} ${item.satuan}`], [`Harga jual 1 ${item.satuanAlt}`, rupiah(item.hargaJualAlt)]] as Array<[string, ReactNode]>) : []),
     ["Status pajak", item.pajakStatus === "Pajak" ? `Pajak${item.kodePajak ? ` · ${item.kodePajak}` : ""}` : "Non Pajak"],
     ["Keterangan", item.keterangan || "-"],
   ];

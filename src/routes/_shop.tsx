@@ -3,7 +3,7 @@ import { Shell } from "@/components/shop/shell";
 import { getMe } from "@/lib/shop/api";
 
 export const Route = createFileRoute("/_shop")({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async ({ location }: { location: { pathname: string } }) => {
     const me = await getMe();
     if (!me) throw redirect({ to: "/" });
     // Staf (pengecek barang) hanya boleh Daftar Sparepart dan Chat Staff.

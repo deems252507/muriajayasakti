@@ -993,7 +993,17 @@ export async function publicShop() {
   const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string }>(
     `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo from shop_profile where id = 1`,
   );
-  return profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" };
+  // Nama Admin 1 (Admin aktif yang dicentang boleh kelola akun): tujuan "Lupa password?" di halaman login.
+  // Hanya nama tampilan, tanpa username.
+  let admin1: string[] = [];
+  try {
+    const rows = await db.query<{ name: string }>(
+      `select name from staff where role = 'Admin' and can_manage_staff and status = 'Aktif' order by name`,
+    );
+    admin1 = rows.map((row) => String(row.name ?? "").trim()).filter(Boolean);
+  } catch { /* kolom belum ada atau gagal baca: login tetap harus bisa tampil */ }
+  const base = profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" };
+  return { ...base, admin1 };
 }
 
 

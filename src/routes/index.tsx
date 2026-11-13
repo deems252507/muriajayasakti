@@ -27,6 +27,7 @@ function LoginPage() {
   const [caps, setCaps] = useState(false);
   const [remember, setRemember] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const [admin1, setAdmin1] = useState<string[]>([]);
   const busy = phase !== "idle";
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
   const [brand, setBrand] = useState({ nama: "MURIA JAYA SAKTI", tagline: "Integrated Business System", logo: "/brand/logo.png" });
@@ -77,6 +78,7 @@ function LoginPage() {
       if (!shop?.nama) return;
       setBrand({ nama: shop.nama, tagline: shop.tagline || "Integrated Business System", logo: shop.logo || "/brand/logo.png" });
       document.title = shop.nama;
+      setAdmin1(Array.isArray(shop.admin1) ? shop.admin1 : []);
     }).catch(() => undefined);
   }, []);
 
@@ -208,7 +210,7 @@ function LoginPage() {
             <p style={{ "--d": "0.08s" } as CSSProperties} className="lg-item mt-2 text-sm text-muted">Gunakan akun Anda untuk mengakses sistem manajemen operasional {brand.nama}.</p>
             <p style={{ "--d": "0.16s" } as CSSProperties} className="lg-item mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-accent">
               <span className="size-1.5 rounded-full bg-accent" />
-              Akses terverifikasi · Owner, Admin & Kasir
+              Akses terverifikasi · Owner, Admin, Kasir & Staf
             </p>
             <label style={{ "--d": "0.24s" } as CSSProperties} className="lg-item lg-field mt-6 block text-xs font-semibold tracking-wide text-slate-500 uppercase">
               <span className="lg-lbl">Username</span>
@@ -238,7 +240,7 @@ function LoginPage() {
             </div>
             <div className="lg-collapse" data-open={forgot}>
               <div>
-                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-slate-600">Hubungi <b>Owner</b> toko untuk mereset password Anda. Setelah direset, Anda bisa langsung masuk dengan password baru.</p>
+                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-slate-600">Hubungi <b>Admin 1{admin1.length ? ` (${admin1.join(", ")})` : ""}</b> untuk mereset password Anda. Setelah direset, Anda bisa langsung masuk dengan password baru.</p>
               </div>
             </div>
             <div style={{ "--d": "0.48s" } as CSSProperties} className={`lg-item ${shake ? "lg-shake" : ""}`}>
