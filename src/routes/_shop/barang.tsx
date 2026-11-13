@@ -45,6 +45,18 @@ function BarangPage() {
   const isStaf = me.role === "Staf";
   const [detail, setDetail] = useState<Product | null>(null);
   const [q, setQ] = usePersistedState("barang:q", "");
+  // Staf langsung masuk ke halaman ini (bukan Dashboard), jadi notifikasi "Staf masuk · nama" ditampilkan di sini.
+  useEffect(() => {
+    try {
+      const notice = sessionStorage.getItem("mjs-notice");
+      if (notice) {
+        sessionStorage.removeItem("mjs-notice");
+        toast.success(notice);
+      }
+    } catch {
+      /* abaikan */
+    }
+  }, []);
   useEffect(() => {
     const saved = sessionStorage.getItem("mjs-find");
     if (!saved) return;

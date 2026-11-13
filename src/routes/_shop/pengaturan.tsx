@@ -24,7 +24,8 @@ function SettingsPage() {
   const router = useRouter();
   const [pajak, setPajak] = useState<PajakRow[]>([]);
   const [kategoriBarang, setKategoriBarang] = useState<string[]>([]);
-  const [newPajak, setNewPajak] = useState({ jenis: "", persentase: "" });
+  const [newPajak, setNewPajak] = useState({ jenis: [] as string[], persentase: "" });
+  const [jenisQ, setJenisQ] = useState("");
   const [pajakBusy, setPajakBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -82,11 +83,23 @@ function SettingsPage() {
   }
 
   function tambahPajak() {
+    const daftar = newPajak.jenis;
+    if (daftar.length === 0) return;
     setPajakBusy(true);
-    void addPajak({ data: newPajak })
-      .then(() => { toast.success("Jenis pajak ditambahkan", { description: `${newPajak.jenis.trim()} (${newPajak.persentase}%)` }); setNewPajak({ jenis: "", persentase: "" }); load(); })
-      .catch((err: Error) => toast.error(err.message))
-      .finally(() => setPajakBusy(false));
+    void (async () => {
+      const gagal: string[] = [];
+      let berhasil = 0;
+      for (const jenis of daftar) {
+        try { await addPajak({ data: { jenis, persentase: newPajak.persentase } }); berhasil += 1; }
+        catch (err) { gagal.push(`${jenis}: ${(err as Error).message}`); }
+      }
+      if (berhasil > 0) toast.success(berhasil === 1 ? "Jenis pajak ditambahkan" : `${berhasil} jenis pajak ditambahkan`, { description: `${daftar.filter((j) => !gagal.some((g) => g.startsWith(`${j}:`))).join(", ")} (${newPajak.persentase}%)` });
+      if (gagal.length > 0) toast.error("Sebagian gagal ditambahkan", { description: gagal.join(" | ") });
+      setNewPajak({ jenis: gagal.length ? daftar.filter((j) => gagal.some((g) => g.startsWith(`${j}:`))) : [], persentase: gagal.length ? newPajak.persentase : "" });
+      setJenisQ("");
+      load();
+      setPajakBusy(false);
+    })();
   }
 
   async function hapusPajak(item: PajakRow) {
@@ -158,29 +171,93 @@ function SettingsPage() {
           ))}
         </div>
         {me.role !== "Kasir" ? <PrimaryButton className="mt-3" disabled={pajakBusy} onClick={simpanPajak}>Simpan Master Pajak</PrimaryButton> : null}
-        {me.role !== "Kasir" ? (
+        {(me.role !== "Kasir" || kategoriTanpaJenis.length > 0) ? (
           <form className="mt-4 rounded-xl border border-line p-3" onSubmit={(e) => { e.preventDefault(); tambahPajak(); }}>
-            <p className="text-sm font-bold">Tambah jenis pajak baru</p>
-            <p className="text-xs text-muted">Untuk kategori barang baru. Tulis nama sesuai kategori di Daftar Sparepart, contoh: Ban.</p>
+            <p className="text-sm font-bold">{me.role !== "Kasir" ? "Tambah jenis pajak baru" : "Kategori yang memakai \"Lainnya\""}</p>
+            <p className="text-xs text-muted">Kategori di bawah ini belum punya persentase sendiri sehingga memakai "Lainnya" ({lainnyaPersen}%).{me.role !== "Kasir" ? " Pilih satu atau beberapa kategori, isi persen, lalu Tambah." : ""}</p>
             <div className="mt-2 flex flex-wrap items-end gap-2">
-              <div className="min-w-[160px] flex-1"><Field label="Nama jenis"><input className={inputClass} value={newPajak.jenis} maxLength={40} onChange={(e) => setNewPajak({ ...newPajak, jenis: e.target.value })} /></Field></div>
-              <div className="w-28"><Field label="Persen (%)"><input className={`${inputClass} text-right`} inputMode="decimal" value={newPajak.persentase} onChange={(e) => setNewPajak({ ...newPajak, persentase: e.target.value.replace(/[^0-9.,]/g, "") })} /></Field></div>
-              <PrimaryButton type="submit" disabled={pajakBusy || !newPajak.jenis.trim() || !newPajak.persentase}><Plus className="size-4" />Tambah</PrimaryButton>
+              <div className="min-w-[220px] flex-1">
+                <Field label={me.role !== "Kasir" ? "Nama jenis (kategori)" : "Daftar kategori"}>
+                  <details className="relative" id="jenis-pajak-dropdown">
+                    <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
+                      <span className="truncate">
+                        {me.role === "Kasir"
+                          ? `${kategoriTanpaJenis.length} kategori memakai "Lainnya"`
+                          : newPajak.jenis.length === 0
+                            ? `Pilih kategori (${kategoriTanpaJenis.length} memakai "Lainnya")`
+                            : newPajak.jenis.length <= 2 ? newPajak.jenis.join(", ") : `${newPajak.jenis.length} kategori dipilih`}
+                      </span>
+                      <span className="shrink-0 text-slate-600">▾</span>
+                    </summary>
+                    <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
+                      <div className="space-y-2 border-b border-line bg-white p-3">
+                        <input
+                          className="h-10 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-blue-500"
+                          placeholder="Cari nama kategori..."
+                          value={jenisQ}
+                          maxLength={40}
+                          onChange={(e) => setJenisQ(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                        />
+                        {me.role !== "Kasir" && newPajak.jenis.length > 0 ? (
+                          <button type="button" className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-danger hover:bg-red-100" onClick={() => setNewPajak((prev) => ({ ...prev, jenis: [] }))}>Hapus pilihan</button>
+                        ) : null}
+                      </div>
+                      {me.role !== "Kasir" && newPajak.jenis.length > 0 ? (
+                        <div className="border-b border-line bg-blue-50/60 px-3 py-2">
+                          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">Dipilih ({newPajak.jenis.length})</p>
+                          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                            {newPajak.jenis.map((item) => (
+                              <button key={`sel-${item}`} type="button" title="Klik untuk batal pilih" className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700" onClick={() => setNewPajak((prev) => ({ ...prev, jenis: prev.jenis.filter((v) => v !== item) }))}>
+                                {item} <span className="opacity-80">×</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="max-h-52 space-y-0.5 overflow-y-auto p-2">
+                        {(() => {
+                          const qq = jenisQ.trim().toLowerCase();
+                          const filtered = qq ? kategoriTanpaJenis.filter((item) => item.toLowerCase().includes(qq)) : kategoriTanpaJenis;
+                          const dipilih = new Set(newPajak.jenis.map((v) => v.toLowerCase()));
+                          const ordered = [...filtered.filter((i) => dipilih.has(i.toLowerCase())), ...filtered.filter((i) => !dipilih.has(i.toLowerCase()))];
+                          const bisaPakaiKetikan = me.role !== "Kasir" && qq !== "" && !kategoriBarang.some((k) => k.toLowerCase() === qq) && !pajak.some((p) => p.jenis.trim().toLowerCase() === qq) && !dipilih.has(qq);
+                          return (
+                            <>
+                              {bisaPakaiKetikan ? (
+                                <button type="button" className="w-full rounded-lg px-2 py-2 text-left text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={() => { setNewPajak((prev) => ({ ...prev, jenis: [...prev.jenis, jenisQ.trim()] })); setJenisQ(""); }}>+ Pakai nama "{jenisQ.trim()}"</button>
+                              ) : null}
+                              {ordered.length === 0 && !bisaPakaiKetikan ? <p className="px-2 py-4 text-center text-xs text-slate-600">Tidak ada kategori cocok</p> : null}
+                              {ordered.map((item) => {
+                                const checked = dipilih.has(item.toLowerCase());
+                                return me.role !== "Kasir" ? (
+                                  <label key={item} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50 ${checked ? "bg-blue-50 font-semibold text-blue-800" : ""}`}>
+                                    <input type="checkbox" checked={checked} onChange={(e) => setNewPajak((prev) => ({ ...prev, jenis: e.target.checked ? [...prev.jenis, item] : prev.jenis.filter((v) => v.toLowerCase() !== item.toLowerCase()) }))} />
+                                    <span>{item}</span>
+                                  </label>
+                                ) : <p key={item} className="px-2 py-2 text-sm">{item}</p>;
+                              })}
+                            </>
+                          );
+                        })()}
+                      </div>
+                      <div className="border-t border-line bg-slate-50 p-3">
+                        <button type="button" className="h-10 w-full rounded-lg bg-slate-800 text-sm font-bold text-white hover:bg-slate-900" onClick={() => { const el = document.getElementById("jenis-pajak-dropdown") as HTMLDetailsElement | null; if (el) el.open = false; setJenisQ(""); }}>
+                          {me.role !== "Kasir" ? `OK — Pilih (${newPajak.jenis.length})` : "Tutup"}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                </Field>
+              </div>
+              {me.role !== "Kasir" ? (
+                <>
+                  <div className="w-28"><Field label="Persen (%)"><input className={`${inputClass} text-right`} inputMode="decimal" value={newPajak.persentase} onChange={(e) => setNewPajak({ ...newPajak, persentase: e.target.value.replace(/[^0-9.,]/g, "") })} /></Field></div>
+                  <PrimaryButton type="submit" disabled={pajakBusy || newPajak.jenis.length === 0 || !newPajak.persentase}><Plus className="size-4" />Tambah</PrimaryButton>
+                </>
+              ) : null}
             </div>
           </form>
-        ) : null}
-        {kategoriTanpaJenis.length > 0 ? (
-          <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <p className="font-bold">Kategori barang ini memakai persentase "Lainnya" ({lainnyaPersen}%):</p>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {kategoriTanpaJenis.map((kategori) => (
-                me.role !== "Kasir"
-                  ? <button key={kategori} type="button" className="rounded-full bg-white px-2.5 py-1 font-semibold ring-1 ring-amber-300 hover:bg-amber-100" onClick={() => setNewPajak((prev) => ({ ...prev, jenis: kategori }))}>{kategori}</button>
-                  : <span key={kategori} className="rounded-full bg-white px-2.5 py-1 font-semibold ring-1 ring-amber-300">{kategori}</span>
-              ))}
-            </div>
-            {me.role !== "Kasir" ? <p className="mt-1">Klik nama kategori untuk mengisinya ke form tambah di atas.</p> : null}
-          </div>
         ) : null}
       </Panel>
       <Panel>
