@@ -2267,8 +2267,9 @@ export async function saveStaff(data: any) {
 
 
 export async function updateOwnProfile(data: any) {
-  const me = await requireStaff();
-  assertManageStaff(me);
+  // Staf, Admin (semua), dan Owner boleh mengganti nama dan foto akunnya sendiri. Password tetap hanya lewat Admin 1.
+  const me = await requireStaffAny();
+  if (me.role === "Kasir") throw new Error("Akun Kasir tidak dapat mengubah nama atau foto sendiri. Minta Admin 1.");
   const name = String(data.name ?? "").trim();
   if (!name) throw new Error("Nama wajib diisi.");
   const photo = cleanPhoto(data.photo);

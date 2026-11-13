@@ -111,14 +111,14 @@ function SettingsPage() {
       .finally(() => setPajakBusy(false));
   }
 
-  if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
-  const isStaf = me.role === "Staf";
+  // Hanya Admin 1 yang melihat pengaturan sistem dan password. Akun lain (Staf, Admin lain, Owner) hanya mengubah nama dan foto akunnya.
+  const akunSaja = !me.canManageStaff;
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Panel>
-        <h2 className="text-lg font-extrabold">{isStaf ? "Akun Saya" : "Pengaturan Sistem & Data"}</h2>
+        <h2 className="text-lg font-extrabold">{akunSaja ? "Akun Saya" : "Pengaturan Sistem & Data"}</h2>
       </Panel>
-      {me.role !== "Kasir" && !isStaf ? (
+      {me.role !== "Kasir" && !akunSaja ? (
         <Panel>
           <h2 className="font-extrabold">Identitas Toko</h2>
           <p className="mt-1 text-xs text-muted">Nama, alamat, nomor, dan logo ini dipakai di menu, halaman masuk, struk/cetakan, ikon tab browser (favicon), ikon notifikasi, dan nama aplikasi. Ikon yang sudah terpasang di layar utama HP baru berganti setelah aplikasi dipasang ulang.</p>
@@ -150,7 +150,7 @@ function SettingsPage() {
           </form>
         </Panel>
       ) : null}
-      {!isStaf ? (<>
+      {!akunSaja ? (<>
       <Panel>
         <h2 className="font-extrabold">Master Persentase Pajak Internal</h2>
         <p className="mt-1 text-xs text-muted">Nama jenis dicocokkan dengan Kategori barang (jenis "Oli" juga berlaku untuk kategori "Oli Mesin"). Kategori yang tidak punya jenis sendiri memakai "Lainnya". Perubahan berlaku untuk transaksi berikutnya; nota lama tidak berubah.</p>
@@ -285,8 +285,8 @@ function SettingsPage() {
       </>) : null}
       <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
-        <p className="text-xs text-muted">Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login.</p>
-        {me.mustChange ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Password akun ini masih bawaan. Ganti di bagian "Ubah Password" di bawah.</p> : null}
+        <p className="text-xs text-muted">{akunSaja ? "Ubah nama dan foto akun Anda. Password diatur oleh Admin 1." : "Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login."}</p>
+        {me.mustChange && !akunSaja ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Password akun ini masih bawaan. Ganti di bagian "Ubah Password" di bawah.</p> : null}
         <div className="mt-3 flex items-center gap-3">
           {ownPhoto ? <img src={ownPhoto} alt="" className="size-16 rounded-full object-cover ring-1 ring-line" /> : <span className="grid size-16 place-items-center rounded-full bg-blue-100 text-lg font-bold text-accent">{ownName.slice(0, 1).toUpperCase()}</span>}
           <label className="cursor-pointer text-xs font-bold text-accent">
@@ -309,7 +309,7 @@ function SettingsPage() {
           <PrimaryButton type="submit">Simpan Nama dan Foto</PrimaryButton>
         </form>
       </Panel>
-      <Panel id="ubah-password">
+      {!akunSaja ? <Panel id="ubah-password">
         <h2 className="font-extrabold">Ubah Password</h2>
         <p className="text-xs text-muted">Untuk akun yang sedang masuk ({me.name} · {me.username}). Halaman Pengaturan hanya untuk Admin 1. Akun lain minta ganti password ke Admin 1 lewat Manajemen Semua Akun.</p>
         <form className="mt-3 space-y-2" onSubmit={(e) => {
@@ -329,7 +329,7 @@ function SettingsPage() {
           <label className="flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} />Tampilkan password</label>
           <PrimaryButton type="submit" disabled={pwBusy}>{pwBusy ? "Menyimpan..." : "Ubah Password Saya"}</PrimaryButton>
         </form>
-      </Panel>
+      </Panel> : null}
       {me.canManageStaff ? (
         <Panel>
           <div className="flex items-center justify-between gap-3">

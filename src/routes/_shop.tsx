@@ -9,10 +9,10 @@ export const Route = createFileRoute("/_shop")({
     // Staf (pengecek barang) hanya boleh Daftar Sparepart dan Chat Staff.
     if (me.role === "Staf") {
       const path = location.pathname.replace(/\/+$/, "") || "/";
-      if (!["/barang", "/chat"].includes(path)) throw redirect({ to: "/barang" });
+      if (!["/barang", "/chat", "/pengaturan"].includes(path)) throw redirect({ to: "/barang" });
     }
-    // Pengaturan (termasuk password) hanya untuk Admin 1.
-    if (!me.canManageStaff && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {
+    // Pengaturan sistem dan password hanya untuk Admin 1. Staf, Admin lain, dan Owner hanya mendapat halaman Nama dan Foto Akun. Kasir tidak.
+    if (me.role === "Kasir" && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {
       throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
     }
     return { me };
