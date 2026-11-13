@@ -66,7 +66,7 @@ function classify(row: Row): Item {
   let title = head;
   let isLogin = false;
 
-  if (/^(Admin|Owner|Kasir) masuk$/.test(raw)) { cat = "akses"; title = "Masuk ke aplikasi"; isLogin = true; }
+  if (/^(Admin|Owner|Kasir|Staf) masuk$/.test(raw)) { cat = "akses"; title = "Masuk ke aplikasi"; isLogin = true; }
   else if (/^Login gagal/.test(raw)) cat = "akses";
   else if (/pemasok/i.test(raw)) cat = "pemasok";
   else if (/^(Nota|Retur|Pelunasan|Ubah nota|Edit struk|Edit bon|Hapus retur|Hapus nota)/.test(raw)) cat = "transaksi";

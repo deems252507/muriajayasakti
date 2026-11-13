@@ -22,6 +22,7 @@ export const roleStyle: Record<string, string> = {
   Owner: "bg-purple-100 text-purple-800",
   Admin: "bg-blue-100 text-blue-800",
   Kasir: "bg-emerald-100 text-emerald-800",
+  Staf: "bg-amber-100 text-amber-800",
 };
 
 export function Avatar({ c, size = "size-10" }: { c: { name: string; photo: string }; size?: string }) {

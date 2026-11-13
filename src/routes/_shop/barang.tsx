@@ -1,7 +1,7 @@
 import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { StockTable } from "@/components/shop/stock-table";
-import { Barcode, Download, History, Pencil, Plus, RotateCcw, Trash2, Truck, Upload } from "lucide-react";
+import { Barcode, Download, Eye, History, Pencil, Plus, RotateCcw, Trash2, Truck, Upload, X } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
@@ -11,6 +11,7 @@ import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell
 import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
+import { stockLevel } from "@/components/shop/stock-table";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
 
@@ -40,6 +41,9 @@ function BarangPage() {
   const me = Route.useRouteContext().me;
   const navigate = useNavigate();
   const canEdit = me.role === "Admin";
+  // Staf (pengecek barang): hanya melihat daftar; klik baris / tombol Detail membuka rincian tanpa bisa mengubah apa pun.
+  const isStaf = me.role === "Staf";
+  const [detail, setDetail] = useState<Product | null>(null);
   const [q, setQ] = usePersistedState("barang:q", "");
   useEffect(() => {
     const saved = sessionStorage.getItem("mjs-find");
@@ -148,7 +152,7 @@ function BarangPage() {
                 />
               </>
             ) : null}
-            <ExpandButton
+            {!isStaf ? <ExpandButton
               size="md"
               label="Export CSV"
               icon={<Download />}
@@ -163,7 +167,7 @@ function BarangPage() {
                   URL.revokeObjectURL(url);
                 }).catch((error: Error) => toast.error(error.message));
               }}
-            />
+            /> : null}
           </ExpandGroup>
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:justify-end">
             <input className={inputClass} placeholder="Cari nama, part, atau kategori (oli)" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
@@ -291,10 +295,10 @@ function BarangPage() {
             Saat impor, timpa stok dengan angka STOK di file
           </label>
         ) : null}
-        <p className="mt-2 text-xs text-slate-600">
+        {canEdit ? <p className="mt-2 text-xs text-slate-600">
           File Google Sheet: kolom KODE SPAREPART, NAMA SPAREPART, JENIS BARANG, STOK, HARGA.
           Contoh nama `101486 / ACTUATOR IDLE SPEED AVANZA, XENIA - DAIHATSU (G)` dibaca sebagai kode pajak 101486, nama barang, merek DAIHATSU (G). Part number tetap 89690-BZ010-001. Kode SP- untuk barcode dibuat otomatis.
-        </p>
+        </p> : null}
       </Panel>
       <Panel className="overflow-x-auto">
         {loadError ? <p className="mb-3 text-sm text-danger">{loadError}</p> : null}
@@ -304,8 +308,12 @@ function BarangPage() {
           items={data?.items ?? []}
           q={q}
           groupByPart={hideCategoryHeaders(sorts, dupOnly)}
-          onOpen={(item) => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
-          actions={(item) => (
+          onOpen={(item) => { if (isStaf) { setDetail(item); return; } setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
+          actions={(item) => isStaf ? (
+            <ExpandGroup>
+              <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} />
+            </ExpandGroup>
+          ) : (
             <ExpandGroup>
               <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
               <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
@@ -402,6 +410,7 @@ function BarangPage() {
           </form>
         </div>
       ) : null}
+      {detail ? <ProductDetailModal item={detail} onClose={() => setDetail(null)} /> : null}
       {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} onGoInvoice={(inv) => { setOrigin(null); void navigate({ to: "/pemasok", search: { inv } }); }} /> : null}
       {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir"} onClose={() => setHistory(null)} /> : null}
     </div>
@@ -623,6 +632,58 @@ function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data
             </>
           ) : null}
           <p className="mt-3 text-xs text-muted">Data diambil dari menu Barang Masuk Pemasok. Barang yang masuk sebelum dicatat di menu itu tidak muncul di sini.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/** Rincian satu barang, hanya baca. Dipakai akun Staf; harga beli sengaja tidak ditampilkan. */
+function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => void }) {
+  const level = stockLevel(item);
+  const dus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
+  const dusQty = dus ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
+  const sisa = dus ? item.stok % item.isiSatuanAlt : 0;
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Kode barang", item.kode || "-"],
+    ["Part number", item.partNumber || "-"],
+    ["Part number lain", item.partNumbersAlt || "-"],
+    ["Kategori", item.kategori || "-"],
+    ["Merek", item.merek || "-"],
+    ["Satuan", item.satuan || "-"],
+    ["Stok minimum", `${item.stokMin} ${item.satuan}`],
+    ["Harga jual", `${rupiah(item.hargaJual)} / ${item.satuan}`],
+    ...(dus ? ([[`Isi 1 ${item.satuanAlt}`, `${item.isiSatuanAlt} ${item.satuan}`], [`Harga jual 1 ${item.satuanAlt}`, rupiah(item.hargaJualAlt)]] as Array<[string, React.ReactNode]>) : []),
+    ["Status pajak", item.pajakStatus === "Pajak" ? `Pajak${item.kodePajak ? ` · ${item.kodePajak}` : ""}` : "Non Pajak"],
+    ["Keterangan", item.keterangan || "-"],
+  ];
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-end bg-ink/40 p-0 sm:place-items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-panel p-4 sm:max-w-lg sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold leading-snug">{item.nama}</h2>
+            {item.merek ? <span className="mt-1 inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">{item.merek}</span> : null}
+          </div>
+          <button type="button" className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-white" onClick={onClose} aria-label="Tutup"><X className="size-4" /></button>
+        </div>
+        <div className="mt-3 rounded-xl border border-line bg-white p-3 text-center">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Stok saat ini</p>
+          <p className={`num text-3xl font-extrabold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</p>
+          {dus ? <p className="text-xs font-medium text-blue-700">= {dusQty} {item.satuanAlt}{sisa ? ` + ${sisa} ${item.satuan}` : ""}</p> : null}
+          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${level === "HABIS" ? "bg-red-100 text-red-700" : level === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{level === "MENIPIS" ? "KRITIS" : level}</span>
+        </div>
+        <dl className="mt-3 divide-y divide-line text-sm">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex justify-between gap-4 py-2">
+              <dt className="text-slate-600">{label}</dt>
+              <dd className="break-words text-right font-semibold">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="h-11 rounded-xl border border-line bg-white px-4 text-sm font-semibold" onClick={onClose}>Tutup</button>
         </div>
       </div>
     </div>

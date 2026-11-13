@@ -1,4 +1,4 @@
-export type Role = "Owner" | "Admin" | "Kasir";
+export type Role = "Owner" | "Admin" | "Kasir" | "Staf";
 
 export type Staff = {
   username: string;
@@ -8,6 +8,8 @@ export type Staff = {
   status: string;
   photo: string;
   mustChange?: boolean;
+  /** Hanya Admin tertentu (Admin 1) yang boleh menambah dan mengatur akun lain. */
+  canManageStaff?: boolean;
 };
 
 export type Product = {

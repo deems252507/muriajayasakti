@@ -508,7 +508,8 @@ export const listStaff = createServerFn({ method: "GET" })
   });
 
 export const saveStaff = createServerFn({ method: "POST" })
-  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string; photo?: string }) => ({
+  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string; photo?: string; canManageStaff?: boolean }) => ({
+    canManageStaff: Boolean(input?.canManageStaff),
     username: String(input?.username ?? ""),
     name: String(input?.name ?? ""),
     role: String(input?.role ?? "Kasir"),

@@ -103,6 +103,12 @@ const OWNER = [
   },
 ] as const;
 
+// Staf = karyawan pengecek barang: hanya melihat Daftar Sparepart dan chat.
+const STAF = [
+  { label: "Barang", items: [{ to: "/barang", label: "Daftar Sparepart", icon: Package }] },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
+] as const;
+
 const KASIR = [
   { label: "Utama", items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
   {
@@ -362,7 +368,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       document.title = baseTitle;
     };
   }, []);
-  const groups = me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
+  const groups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
   useEffect(() => {

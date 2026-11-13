@@ -344,7 +344,7 @@ function FileCard({ file, mine, disabled }: { file: { id: number; name: string; 
 }
 
 function ShareCard({ share, mine, role, disabled }: { share: { kind: string; ref: string; title: string; sub: string }; mine: boolean; role: string; disabled: boolean }) {
-  const canOpen = share.kind === "barang" ? role === "Admin" || role === "Owner" : true;
+  const canOpen = share.kind === "barang" ? role === "Admin" || role === "Owner" || role === "Staf" : share.kind === "transaksi" ? role !== "Staf" : true;
   return (
     <button
       type="button"

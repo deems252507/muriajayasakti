@@ -9,7 +9,7 @@ const APP_VERSION = "1.0";
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     const me = await getMe();
-    if (me) throw redirect({ to: "/dashboard" });
+    if (me) throw redirect({ to: me.role === "Staf" ? "/barang" : "/dashboard" });
   },
   component: LoginPage,
 });
@@ -174,7 +174,7 @@ function LoginPage() {
             // Minimal 0,4 detik supaya animasi loading sempat terlihat walau server cepat.
             void Promise.all([login({ data: { username, password } }), sleep(400)])
               .then(async ([me]) => {
-                const role = me?.role === "Owner" ? "Owner" : me?.role === "Kasir" ? "Kasir" : "Admin";
+                const role = me?.role === "Owner" ? "Owner" : me?.role === "Kasir" ? "Kasir" : me?.role === "Staf" ? "Staf" : "Admin";
                 sessionStorage.setItem("mjs-notice", `${role} masuk${me?.name ? ` · ${me.name}` : ""}`);
                 try {
                   if (remember) {
@@ -191,7 +191,7 @@ function LoginPage() {
                 await sleep(500);
                 setLeaving(true);
                 await sleep(300);
-                await navigate({ to: "/dashboard" });
+                await navigate({ to: me?.role === "Staf" ? "/barang" : "/dashboard" });
               })
               .catch((err: Error) => {
                 setPhase("idle");

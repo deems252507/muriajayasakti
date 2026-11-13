@@ -10,7 +10,7 @@ import type { Bank, Pajak, Staff } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/pengaturan")({ component: SettingsPage });
 
-const emptyAccount = { username: "", name: "", role: "Kasir", shift: "", password: "", status: "Aktif", photo: "", existing: false };
+const emptyAccount = { username: "", name: "", role: "Kasir", shift: "", password: "", status: "Aktif", photo: "", existing: false, canManageStaff: false };
 
 function SettingsPage() {
   const me = Route.useRouteContext().me;
@@ -37,17 +37,18 @@ function SettingsPage() {
         setShopProfile(res.profile);
       }
     });
-    if (me.role === "Admin") void listStaff().then(setStaff);
+    if (me.canManageStaff) void listStaff().then(setStaff);
   }
   useEffect(() => { load(); }, []);
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
+  const isStaf = me.role === "Staf";
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <Panel>
-        <h2 className="text-lg font-extrabold">Pengaturan Sistem & Data</h2>
+        <h2 className="text-lg font-extrabold">{isStaf ? "Akun Saya" : "Pengaturan Sistem & Data"}</h2>
       </Panel>
-      {me.role !== "Kasir" ? (
+      {me.role !== "Kasir" && !isStaf ? (
         <Panel>
           <h2 className="font-extrabold">Identitas Toko</h2>
           <p className="mt-1 text-xs text-muted">Nama, alamat, nomor, dan logo ini dipakai di menu, halaman masuk, dan struk.</p>
@@ -79,6 +80,7 @@ function SettingsPage() {
           </form>
         </Panel>
       ) : null}
+      {!isStaf ? (<>
       <Panel>
         <h2 className="font-extrabold">Master Persentase Pajak Internal</h2>
         <div className="mt-3 space-y-2">
@@ -113,6 +115,7 @@ function SettingsPage() {
           </table>
         </div>
       </Panel>
+      </>) : null}
       <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
         <p className="text-xs text-muted">Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login.</p>
@@ -139,7 +142,7 @@ function SettingsPage() {
           <PrimaryButton type="submit">Simpan Nama dan Foto</PrimaryButton>
         </form>
       </Panel>
-      {me.role !== "Kasir" ? (
+      {me.canManageStaff ? (
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">Manajemen Semua Akun</h2>
@@ -159,10 +162,10 @@ function SettingsPage() {
                       </div>
                     </td>
                     <td>{item.username}</td>
-                    <td>{item.role}</td>
+                    <td>{item.role}{item.canManageStaff ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">Admin 1</span> : null}</td>
                     <td>{item.shift || "-"}</td>
                     <td>{item.status}</td>
-                    <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true }); setAccountOpen(true); }} /></ExpandGroup></td>
+                    <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true, canManageStaff: Boolean(item.canManageStaff) }); setAccountOpen(true); }} /></ExpandGroup></td>
                   </tr>
                 ))}
               </tbody>
@@ -190,7 +193,7 @@ function SettingsPage() {
           </form>
         </div>
       ) : null}
-      {accountOpen && me.role !== "Kasir" ? (
+      {accountOpen && me.canManageStaff ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4">
           <form className="my-6 w-full max-w-lg rounded-2xl bg-panel p-4" onSubmit={(e) => {
             e.preventDefault();
@@ -218,16 +221,25 @@ function SettingsPage() {
             <Field label="Username"><input className={inputClass} value={account.username} disabled={account.existing} onChange={(e) => setAccount({ ...account, username: e.target.value })} /></Field>
             <Field label="Role">
               <select className={inputClass} value={account.role} onChange={(e) => setAccount({ ...account, role: e.target.value })}>
-                <option>Admin</option><option>Owner</option><option>Kasir</option>
+                <option>Admin</option><option>Owner</option><option>Kasir</option><option value="Staf">Staf (pengecek barang)</option>
               </select>
             </Field>
-            <Field label="Shift">
-              <select className={inputClass} value={account.shift} onChange={(e) => setAccount({ ...account, shift: e.target.value })}>
-                <option value="">Tidak ada shift</option>
-                <option>Kasir Pagi</option>
-                <option>Kasir Siang</option>
-              </select>
-            </Field>
+            {account.role === "Kasir" ? (
+              <Field label="Shift">
+                <select className={inputClass} value={account.shift} onChange={(e) => setAccount({ ...account, shift: e.target.value })}>
+                  <option value="">Tidak ada shift</option>
+                  <option>Kasir Pagi</option>
+                  <option>Kasir Siang</option>
+                </select>
+              </Field>
+            ) : null}
+            {account.role === "Staf" ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Staf hanya bisa melihat Daftar Sparepart (tanpa harga beli, hanya tombol Detail) dan memakai Chat Staff.</p> : null}
+            {account.role === "Admin" ? (
+              <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={account.canManageStaff} onChange={(e) => setAccount({ ...account, canManageStaff: e.target.checked })} />
+                <span><b>Admin 1</b> — boleh menambah dan mengatur akun lain<span className="block text-xs text-muted">Kosongkan untuk Admin 2: semua fitur Admin sama, kecuali kelola akun.</span></span>
+              </label>
+            ) : null}
             <Field label="Status Akun">
               <select className={inputClass} value={account.status} onChange={(e) => setAccount({ ...account, status: e.target.value })}>
                 <option>Aktif</option><option>Nonaktif</option>

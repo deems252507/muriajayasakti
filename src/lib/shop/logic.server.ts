@@ -134,7 +134,7 @@ async function readStaff(): Promise<Staff | null> {
   if (!token) return null;
   const db = await sql();
   const rows = await db.query<StaffRow>(
-    `select s.username, s.role, s.name, s.shift, s.status, s.photo, s.password_hash
+    `select s.username, s.role, s.name, s.shift, s.status, s.photo, s.password_hash, s.can_manage_staff
      from sessions e
      join staff s on s.username = e.username
      where e.token = $1 and e.expires_at > now() and s.status = 'Aktif'`,
@@ -150,10 +150,23 @@ async function readStaff(): Promise<Staff | null> {
     status: row.status,
     photo: String(row.photo ?? ""),
     mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
+    canManageStaff: row.role === "Admin" && Boolean((row as unknown as { can_manage_staff?: boolean }).can_manage_staff),
   };
 }
 
+/**
+ * Aman secara bawaan: akun Staf (pengecek barang) DITOLAK di semua fungsi yang memakai requireStaff().
+ * Hanya fungsi yang memang boleh dipakai Staf (daftar sparepart, chat, profil sendiri) memakai requireStaffAny().
+ */
 async function requireStaff() {
+  const me = await readStaff();
+  if (!me) throw new Error("Sesi habis. Masuk lagi.");
+  if (me.role === "Staf") throw new Error("Akun Staf hanya dapat melihat Daftar Sparepart dan memakai Chat Staff.");
+  return me;
+}
+
+/** Semua role boleh, termasuk Staf. */
+async function requireStaffAny() {
   const me = await readStaff();
   if (!me) throw new Error("Sesi habis. Masuk lagi.");
   return me;
@@ -161,6 +174,11 @@ async function requireStaff() {
 
 function assertAdmin(me: Staff) {
   if (me.role !== "Admin") throw new Error("Hanya Admin yang dapat mengubah data ini. Owner hanya melihat laporan.");
+}
+
+/** Menambah / mengubah akun: hanya Admin yang diberi izin kelola akun (Admin 1). */
+function assertManageStaff(me: Staff) {
+  if (me.role !== "Admin" || !me.canManageStaff) throw new Error("Hanya Admin 1 yang dapat menambah atau mengatur akun.");
 }
 
 function assertNotOwner(me: Staff) {
@@ -185,7 +203,7 @@ export async function login(data: any) {
     await ensureStaff();
     const db = await sql();
     const rows = await db.query<StaffRow>(
-      `select username, password_hash, role, name, shift, status, photo from staff where lower(username) = lower($1)`,
+      `select username, password_hash, role, name, shift, status, photo, can_manage_staff from staff where lower(username) = lower($1)`,
       [data.username],
     );
     const row = rows[0];
@@ -228,6 +246,7 @@ export async function login(data: any) {
       status: row.status,
       photo: String(row.photo ?? ""),
       mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
+      canManageStaff: row.role === "Admin" && Boolean((row as unknown as { can_manage_staff?: boolean }).can_manage_staff),
     };
     return me;
   }
@@ -539,7 +558,7 @@ export async function searchProducts(data: any) {
 
 
 export async function listProducts(data: any) {
-    await requireStaff();
+    const me = await requireStaffAny();
     const db = await sql();
     const where: string[] = [];
     const params: unknown[] = [];
@@ -617,7 +636,11 @@ export async function listProducts(data: any) {
       page: data.page,
       perPage,
       categories: cats.map((row) => row.kategori),
-      items: rows.map((row) => mapProduct(row as Record<string, unknown>)),
+      // Staf (pengecek barang) tidak boleh melihat harga beli.
+      items: rows.map((row) => {
+        const item = mapProduct(row as Record<string, unknown>);
+        return me.role === "Staf" ? { ...item, hargaBeli: 0 } : item;
+      }),
     };
   }
 
@@ -913,12 +936,12 @@ export async function deletePartner(data: any) {
 
 
 export async function listMasters() {
-  await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
-  const banks = await db.query(
+  const banks: Array<Record<string, unknown>> = me.role === "Staf" ? [] : await db.query(
     `select id, nama, rekening, atas_nama, aktif, keterangan from master_bank order by id`,
   );
-  const pajak = await db.query(`select id, jenis, persentase, aktif from master_pajak order by id`);
+  const pajak: Array<Record<string, unknown>> = me.role === "Staf" ? [] : await db.query(`select id, jenis, persentase, aktif from master_pajak order by id`);
   const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string }>(
     `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo from shop_profile where id = 1`,
   );
@@ -2003,7 +2026,7 @@ export async function listAudit(data: any): Promise<any> {
       params.push(`%${data.q}%`);
       conds.push(`(action ilike $${params.length} or username ilike $${params.length} or name ilike $${params.length})`);
     }
-    if (data.noLogin) conds.push(`action !~ '^(Admin|Owner|Kasir) masuk$'`);
+    if (data.noLogin) conds.push(`action !~ '^(Admin|Owner|Kasir|Staf) masuk$'`);
     const where = conds.length ? conds.join(" and ") : "true";
     return db.query(`select * from audit_log where ${where} order by ts desc limit 1000`, params);
   }
@@ -2012,10 +2035,10 @@ export async function listAudit(data: any): Promise<any> {
 
 export async function listStaff() {
   const me = await requireStaff();
-  assertAdmin(me);
+  assertManageStaff(me);
   const db = await sql();
-  const rows = await db.query<Staff & { password_hash: string }>(
-    `select username, role, name, shift, status, photo, password_hash from staff order by username`,
+  const rows = await db.query<Staff & { password_hash: string; can_manage_staff: boolean }>(
+    `select username, role, name, shift, status, photo, password_hash, can_manage_staff from staff order by username`,
   );
   return rows.map((row) => ({
     username: row.username,
@@ -2025,6 +2048,7 @@ export async function listStaff() {
     status: row.status,
     photo: String(row.photo ?? ""),
     mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
+    canManageStaff: row.role === "Admin" && Boolean(row.can_manage_staff),
   }));
 }
 
@@ -2032,16 +2056,18 @@ export async function listStaff() {
 
 export async function saveStaff(data: any) {
     const me = await requireStaff();
-    assertAdmin(me);
+    assertManageStaff(me);
     const username = data.username.trim().toLowerCase();
     if (!username || !data.name?.trim()) throw new Error("Username dan nama wajib diisi.");
     const status = data.status === "Nonaktif" ? "Nonaktif" : "Aktif";
     if (username === me.username && status === "Nonaktif") {
       throw new Error("Akun yang sedang digunakan tidak dapat dinonaktifkan.");
     }
-    const role: Role = data.role === "Owner" || data.role === "Admin" ? data.role : "Kasir";
+    const role: Role = data.role === "Owner" || data.role === "Admin" || data.role === "Staf" ? data.role : "Kasir";
+    // Izin kelola akun hanya berlaku untuk role Admin.
+    const canManage = role === "Admin" && Boolean(data.canManageStaff);
     const db = await sql();
-    const existing = await db.query<{ role: string; status: string }>(`select role, status from staff where username = $1`, [username]);
+    const existing = await db.query<{ role: string; status: string; can_manage_staff: boolean }>(`select role, status, can_manage_staff from staff where username = $1`, [username]);
     if (existing.length && existing[0].role === "Owner" && (role !== "Owner" || status !== "Aktif")) {
       const [left] = await db.query<{ n: number }>(
         `select count(*)::int as n from staff where role = 'Owner' and status = 'Aktif' and username <> $1`,
@@ -2049,28 +2075,40 @@ export async function saveStaff(data: any) {
       );
       if (Number(left?.n ?? 0) === 0) throw new Error("Harus tetap ada satu akun Owner yang aktif.");
     }
+    // Jangan sampai tidak ada lagi akun yang boleh mengatur akun.
+    const wasManager = existing.length > 0 && existing[0].role === "Admin" && Boolean(existing[0].can_manage_staff) && existing[0].status === "Aktif";
+    const stillManager = canManage && status === "Aktif";
+    if (wasManager && !stillManager) {
+      const [left] = await db.query<{ n: number }>(
+        `select count(*)::int as n from staff where role = 'Admin' and can_manage_staff and status = 'Aktif' and username <> $1`,
+        [username],
+      );
+      if (Number(left?.n ?? 0) === 0) throw new Error("Harus tetap ada satu Admin aktif yang boleh mengatur akun.");
+    }
     const photo = cleanPhoto(data.photo);
+    const shift = role === "Kasir" ? String(data.shift ?? "") : "";
     if (existing.length) {
       if (data.password) {
         await db.query(
-          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7 where username=$1`,
-          [username, data.name.trim(), role, data.shift ?? "", status, hashPassword(data.password), photo],
+          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7, can_manage_staff=$8 where username=$1`,
+          [username, data.name.trim(), role, shift, status, hashPassword(data.password), photo, canManage],
         );
       } else {
-        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6 where username=$1`, [
+        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6, can_manage_staff=$7 where username=$1`, [
           username,
           data.name.trim(),
           role,
-          data.shift ?? "",
+          shift,
           status,
           photo,
+          canManage,
         ]);
       }
     } else {
       if (!data.password) throw new Error("Password wajib untuk akun baru.");
       await db.query(
-        `insert into staff (username, password_hash, role, name, shift, status, photo) values ($1,$2,$3,$4,$5,$6,$7)`,
-        [username, hashPassword(data.password), role, data.name.trim(), data.shift ?? "", status, photo],
+        `insert into staff (username, password_hash, role, name, shift, status, photo, can_manage_staff) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [username, hashPassword(data.password), role, data.name.trim(), shift, status, photo, canManage],
       );
     }
     await audit(me, `Simpan akun ${username}`);
@@ -2080,7 +2118,7 @@ export async function saveStaff(data: any) {
 
 
 export async function updateOwnProfile(data: any) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const name = String(data.name ?? "").trim();
   if (!name) throw new Error("Nama wajib diisi.");
   const photo = cleanPhoto(data.photo);
@@ -2091,7 +2129,7 @@ export async function updateOwnProfile(data: any) {
 }
 
 export async function changeOwnPassword(data: any) {
-    const me = await requireStaff();
+    const me = await requireStaffAny();
     if (!data.next || data.next.length < 4) throw new Error("Password baru minimal 4 karakter.");
     const db = await sql();
     const [row] = await db.query<{ password_hash: string }>(
@@ -2140,7 +2178,7 @@ export async function exportProducts() {
 
 /** Daftar staff aktif (selain saya) beserta pesan terakhir dan jumlah belum dibaca. */
 export async function chatContacts() {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo,
@@ -2162,7 +2200,7 @@ export async function chatContacts() {
               and not exists (select 1 from mjs_chat_hidden h where h.kind = 'dm' and h.message_id = m.id and h.username = $1)) as unread
      from staff s
      where s.status = 'Aktif' and s.username <> $1
-     order by last_at desc nulls last, case s.role when 'Owner' then 0 when 'Admin' then 1 else 2 end, s.name`,
+     order by last_at desc nulls last, case s.role when 'Owner' then 0 when 'Admin' then 1 when 'Kasir' then 2 else 3 end, s.name`,
     [me.username],
   );
   return rows.map((row) => ({
@@ -2184,7 +2222,7 @@ export async function chatContacts() {
 
 /** Catat bahwa saya sedang aktif, lalu kembalikan daftar semua staff aktif beserta "terakhir aktif" (detik lalu, dihitung jam server). */
 export async function presenceBeat() {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await db.query(
     `update staff set last_seen_at = now() where username = $1 and (last_seen_at is null or last_seen_at < now() - interval '10 seconds')`,
@@ -2194,7 +2232,7 @@ export async function presenceBeat() {
     `select username, name, role, photo, extract(epoch from (now() - last_seen_at))::int as seen_ago
      from staff where status = 'Aktif'`,
   );
-  const rank: Record<string, number> = { Owner: 0, Admin: 1, Kasir: 2 };
+  const rank: Record<string, number> = { Owner: 0, Admin: 1, Kasir: 2, Staf: 3 };
   return rows
     .map((row) => ({
       username: String(row.username),
@@ -2259,7 +2297,7 @@ export async function chatUnread() {
 
 /** Percakapan dengan satu staff (200 pesan terakhir). Pesan masuk otomatis ditandai terbaca. */
 export async function chatMessages(data: { with: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const other = String(data.with ?? "");
   if (!other || other === me.username) throw new Error("Pilih staff lawan bicara.");
@@ -2286,7 +2324,7 @@ export async function chatMessages(data: { with: string }) {
 }
 
 export async function chatSend(data: { to: string; body: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const to = String(data.to ?? "");
   const body = String(data.body ?? "").trim();
@@ -2343,7 +2381,7 @@ function cleanGroupFields(data: { nama?: string; deskripsi?: string }) {
 }
 
 export async function groupList() {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(
     `select g.id, g.nama, g.deskripsi,
@@ -2371,14 +2409,14 @@ export async function groupList() {
 }
 
 export async function groupInfo(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.id, me);
   const [group] = await db.query<Record<string, unknown>>(`select id, nama, deskripsi, created_by from chat_groups where id = $1`, [data.id]);
   if (!group) throw new Error("Grup tidak ditemukan.");
   const members = await db.query<Record<string, unknown>>(
     `select s.username, s.name, s.role, s.photo from chat_group_members gm join staff s on s.username = gm.username
-     where gm.group_id = $1 order by case s.role when 'Owner' then 0 when 'Admin' then 1 else 2 end, s.name`,
+     where gm.group_id = $1 order by case s.role when 'Owner' then 0 when 'Admin' then 1 when 'Kasir' then 2 else 3 end, s.name`,
     [data.id],
   );
   return {
@@ -2392,7 +2430,7 @@ export async function groupInfo(data: { id: number }) {
 }
 
 export async function groupCreate(data: { nama: string; deskripsi?: string; members: string[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   assertManager(me);
   const db = await sql();
   const { nama, deskripsi } = cleanGroupFields(data);
@@ -2407,7 +2445,7 @@ export async function groupCreate(data: { nama: string; deskripsi?: string; memb
 }
 
 export async function groupUpdate(data: { id: number; nama: string; deskripsi?: string; members: string[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   assertManager(me);
   const db = await sql();
   await requireMember(db, data.id, me);
@@ -2419,7 +2457,7 @@ export async function groupUpdate(data: { id: number; nama: string; deskripsi?: 
 }
 
 export async function groupDelete(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   assertManager(me);
   const db = await sql();
   await requireMember(db, data.id, me);
@@ -2431,7 +2469,7 @@ export async function groupDelete(data: { id: number }) {
 }
 
 export async function groupMessages(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.id, me);
   const rows = await db.query<Record<string, unknown>>(
@@ -2457,7 +2495,7 @@ export async function groupMessages(data: { id: number }) {
 }
 
 export async function groupSend(data: { id: number; body: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.id, me);
   const body = String(data.body ?? "").trim();
@@ -2471,7 +2509,7 @@ export async function groupSend(data: { id: number; body: string }) {
 }
 
 export async function noteList(data: { groupId: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.groupId, me);
   const rows = await db.query<Record<string, unknown>>(
@@ -2495,7 +2533,7 @@ export async function noteList(data: { groupId: number }) {
 }
 
 export async function noteSave(data: { groupId: number; id?: number | null; judul: string; isi: string; pinned?: boolean }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.groupId, me);
   const judul = String(data.judul ?? "").trim().slice(0, 120);
@@ -2519,7 +2557,7 @@ export async function noteSave(data: { groupId: number; id?: number | null; judu
 }
 
 export async function noteDelete(data: { groupId: number; id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await requireMember(db, data.groupId, me);
   const rows = await db.query<{ created_by: string | null }>(`select created_by from chat_group_notes where id = $1 and group_id = $2`, [data.id, data.groupId]);
@@ -2534,7 +2572,7 @@ export async function noteDelete(data: { groupId: number; id: number }) {
 
 /** Hapus pesan pribadi milik sendiri (isi pesan hilang untuk kedua pihak). */
 export async function chatDeleteMessage(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const rows = await db.query(
     `update chat_messages set deleted_at = now() where id = $1 and sender = $2 and deleted_at is null returning id`,
@@ -2546,7 +2584,7 @@ export async function chatDeleteMessage(data: { id: number }) {
 
 /** Hapus pesan grup: pengirim boleh menghapus pesannya sendiri; Admin/Owner anggota grup boleh menghapus pesan siapa saja. */
 export async function groupDeleteMessage(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const [msg] = await db.query<{ group_id: number; sender: string; deleted_at: string | null }>(
     `select group_id, sender, deleted_at from chat_group_messages where id = $1`,
@@ -2564,7 +2602,7 @@ export async function groupDeleteMessage(data: { id: number }) {
 
 /** Hapus beberapa pesan pribadi milik sendiri sekaligus. */
 export async function chatDeleteMessages(data: { ids: number[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
   if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
@@ -2582,7 +2620,7 @@ export async function chatDeleteMessages(data: { ids: number[] }) {
 
 /** Hapus beberapa pesan grup sekaligus (aturan hak sama dengan hapus satu pesan). */
 export async function groupDeleteMessages(data: { ids: number[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
   if (!ids.length) throw new Error("Pilih pesan yang mau dihapus.");
@@ -2604,7 +2642,7 @@ export async function groupDeleteMessages(data: { ids: number[] }) {
 
 /** Hapus seluruh percakapan pribadi dengan satu staff (hilang untuk kedua pihak). */
 export async function chatClear(data: { with: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   await assertChatAdmin(me);
   const db = await sql();
   const other = String(data.with ?? "");
@@ -2625,7 +2663,7 @@ function assertChatAdmin(me: Staff) {
 
 /** "Hapus untuk saya": sembunyikan pesan terpilih hanya dari tampilan saya. Boleh untuk pesan siapa pun di percakapan saya. */
 export async function chatHideMessages(data: { kind: string; ids: number[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const kind = asChatKind(data.kind);
   const ids = [...new Set((data.ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 1000);
@@ -2645,7 +2683,7 @@ export async function chatHideMessages(data: { kind: string; ids: number[] }) {
 
 /** "Kosongkan chat": sembunyikan semua pesan satu percakapan hanya untuk saya. */
 export async function chatHideAll(data: { kind: string; target: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   const table = chatTable(scope.kind);
@@ -2661,7 +2699,7 @@ export async function chatHideAll(data: { kind: string; target: string }) {
 
 /** Hapus semua pesan chat di satu grup (catatan grup tidak ikut terhapus). Khusus Admin/Owner anggota grup. */
 export async function groupClearMessages(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   assertManager(me);
   const db = await sql();
   await requireMember(db, data.id, me);
@@ -2717,7 +2755,7 @@ function chatThreadWhere(scope: ChatScope, me: Staff, alias: string) {
 
 /** Isi percakapan: pesan (dengan balasan, lampiran, reaksi), pesan tersemat, dan status baca anggota grup. */
 export async function chatThread(data: { kind: string; target: string; limit?: number; since?: number | null }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   const table = chatTable(scope.kind);
@@ -2880,7 +2918,7 @@ function chatTypingKey(scope: ChatScope) {
 
 /** Tandai saya sedang mengetik (on) atau berhenti (off) di percakapan ini. */
 export async function chatTyping(data: { kind: string; target: string; on: boolean }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   if (data.on) {
@@ -2960,7 +2998,7 @@ export async function chatPost(data: {
   file?: unknown;
   share?: { type?: unknown; ref?: unknown } | null;
 }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   if (scope.kind === "dm") {
@@ -2970,6 +3008,10 @@ export async function chatPost(data: {
   const caption = String(data.body ?? "").trim();
   if (caption.length > 2000) throw new Error("Pesan terlalu panjang (maksimal 2000 huruf).");
   const file = parseChatFile(data.file);
+  // Staf (pengecek barang) hanya boleh membagikan barang, bukan data transaksi.
+  if (me.role === "Staf" && data.share && String((data.share as { type?: unknown }).type ?? "") !== "barang") {
+    throw new Error("Akun Staf hanya dapat membagikan data barang.");
+  }
   const share = await buildChatShare(db, data.share);
   if (!caption && !file && !share) throw new Error("Pesan kosong.");
   const body = caption || autoBodyFor(file, share?.title ?? "");
@@ -3016,7 +3058,7 @@ export async function chatPost(data: {
 
 /** Ubah isi pesan sendiri (untuk pesan dengan foto/file, yang diubah adalah keterangannya). */
 export async function chatEdit(data: { kind: string; id: number; body: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const kind = asChatKind(data.kind);
   const table = chatTable(kind);
@@ -3053,7 +3095,7 @@ async function chatMessageAccess(db: ChatDb, me: Staff, kind: ChatKind, id: numb
 
 /** Beri atau cabut reaksi emoji (satu reaksi per orang per pesan; emoji yang sama = cabut). */
 export async function chatReact(data: { kind: string; id: number; emoji: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const kind = asChatKind(data.kind);
   const id = Number(data.id);
@@ -3078,7 +3120,7 @@ export async function chatReact(data: { kind: string; id: number; emoji: string 
 
 /** Sematkan atau lepas sematan pesan (maksimal 5 per percakapan). */
 export async function chatPin(data: { kind: string; id: number; pinned: boolean }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const kind = asChatKind(data.kind);
   const id = Number(data.id);
@@ -3102,7 +3144,7 @@ export async function chatPin(data: { kind: string; id: number; pinned: boolean 
 
 /** Isi foto/file. Hanya bisa dibuka oleh peserta percakapan yang pesannya belum dihapus. */
 export async function chatFileGet(data: { id: number }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const [f] = await db.query<Record<string, unknown>>(
     `select f.name, f.mime, f.size, f.data from mjs_chat_files f
@@ -3119,7 +3161,7 @@ export async function chatFileGet(data: { id: number }) {
 
 /** Cari kata di dalam satu percakapan (isi pesan, nama file, data toko yang dibagikan). */
 export async function chatSearch(data: { kind: string; target: string; q: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   const q = String(data.q ?? "").trim().slice(0, 80);
@@ -3145,7 +3187,8 @@ export async function chatSearch(data: { kind: string; target: string; q: string
 
 /** Cari barang atau transaksi untuk dibagikan ke chat. */
 export async function chatShareFind(data: { type: string; q: string }) {
-  await requireStaff();
+  const me = await requireStaffAny();
+  if (me.role === "Staf" && data.type === "transaksi") return [];
   const db = await sql();
   const tokens = String(data.q ?? "").trim().toLowerCase().slice(0, 80).split(/\s+/).filter(Boolean).slice(0, 4);
   const params: unknown[] = [];
@@ -3222,14 +3265,14 @@ async function ensureVapid(db: ChatDb): Promise<{ pub: string; priv: string }> {
 }
 
 export async function pushPublicKey() {
-  await requireStaff();
+  await requireStaffAny();
   const db = await sql();
   const keys = await ensureVapid(db);
   return { key: keys.pub };
 }
 
 export async function pushSubscribe(data: { endpoint: string; p256dh: string; auth: string; userAgent?: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const endpoint = String(data.endpoint ?? "");
   const p256dh = String(data.p256dh ?? "");
@@ -3244,7 +3287,7 @@ export async function pushSubscribe(data: { endpoint: string; p256dh: string; au
 }
 
 export async function pushUnsubscribe(data: { endpoint: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   await db.query(`delete from mjs_push_subscriptions where endpoint = $1 and username = $2`, [String(data.endpoint ?? ""), me.username]);
   return { ok: true };
@@ -3312,7 +3355,7 @@ async function notifyChatPush(db: ChatDb, me: Staff, scope: ChatScope, body: str
 
 /** Semua foto yang pernah dikirim di satu percakapan (terbaru dulu), untuk tab Foto. */
 export async function chatPhotos(data: { kind: string; target: string }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
   const db = await sql();
   const scope = await chatScope(db, me, data.kind, data.target);
   const table = chatTable(scope.kind);
@@ -3363,7 +3406,8 @@ function commentTarget(data: { kind: unknown; ref: unknown }) {
 
 /** Ringkasan per baris untuk tanda warna di daftar: jumlah komentar dan jumlah tag untuk saya yang belum dibuka. */
 export async function itemCommentSummary(data: { kind: string; refs: string[] }) {
-  const me = await requireStaff();
+  const me = await requireStaffAny();
+  if (me.role === "Staf") return [] as { ref: string; count: number; tagged: number }[];
   const db = await sql();
   const kind = String(data.kind ?? "");
   const refs = (Array.isArray(data.refs) ? data.refs : []).map((r) => String(r).slice(0, 80)).filter(Boolean).slice(0, 400);
