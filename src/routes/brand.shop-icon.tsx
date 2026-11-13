@@ -8,9 +8,11 @@ export const Route = createFileRoute("/brand/shop-icon")({
   server: {
     handlers: {
       GET: async ({ request }: { request: Request }) => {
+        let badge = false;
         try {
           const { shopIconImage } = await import("@/lib/shop/logic.server");
-          const image = await shopIconImage();
+          badge = new URL(request.url).searchParams.get("badge") === "1";
+          const image = await shopIconImage(badge ? "badge" : "icon");
           if (image) {
             const etag = `"${image.version}"`;
             const headers = { etag, "cache-control": "no-cache" };
@@ -20,7 +22,7 @@ export const Route = createFileRoute("/brand/shop-icon")({
         } catch {
           /* gagal baca logo: pakai ikon bawaan di bawah, jangan sampai tab/ikon kosong */
         }
-        return new Response(null, { status: 302, headers: { location: "/brand/icon-192.png", "cache-control": "no-cache" } });
+        return new Response(null, { status: 302, headers: { location: badge ? "/brand/badge.png" : "/brand/icon-192.png", "cache-control": "no-cache" } });
       },
     },
   },

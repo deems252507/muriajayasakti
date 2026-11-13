@@ -72,7 +72,7 @@ export async function showLocalNotification(title: string, body: string, target:
     const reg = pushSupported() ? await navigator.serviceWorker.getRegistration("/") : undefined;
     if (reg) {
       if (await reg.pushManager.getSubscription()) return;
-      await reg.showNotification(title, { body, tag: "mjs-chat", icon: "/brand/shop-icon", actions: [{ action: "open", title: "Buka" }, { action: "reply", title: "Balas" }], data: { target } } as NotificationOptions);
+      await reg.showNotification(title, { body, tag: "mjs-chat", icon: "/brand/shop-icon", badge: "/brand/shop-icon?badge=1", actions: [{ action: "open", title: "Buka" }, { action: "reply", title: "Balas" }], data: { target } } as NotificationOptions);
       return;
     }
   } catch { /* lanjut ke cara biasa */ }

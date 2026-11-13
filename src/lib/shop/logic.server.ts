@@ -1067,12 +1067,14 @@ export async function saveShopProfile(data: any) {
 }
 
 /** Gambar ikon aplikasi untuk favicon / layar utama / notifikasi. null = pakai berkas bawaan. */
-export async function shopIconImage() {
+export async function shopIconImage(kind: "icon" | "badge" = "icon") {
   const db = await sql();
   const [row] = await db.query<{ logo: string; icon: string }>(
     `select coalesce(logo, '') as logo, coalesce(icon, '') as icon from shop_profile where id = 1`,
   );
-  const source = String(row?.icon || row?.logo || "");
+  // Badge kecil di bar status Android hanya memakai bentuk (transparansi) gambar, jadi pakai logo transparan,
+  // bukan ikon berlatar putih (yang akan tampil sebagai kotak putih polos).
+  const source = String(kind === "badge" ? row?.logo || "" : row?.icon || row?.logo || "");
   const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(source);
   if (!match) return null;
   return { type: match[1], bytes: Buffer.from(match[2], "base64"), version: brandVersion(source) };

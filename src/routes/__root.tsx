@@ -32,11 +32,11 @@ export const Route = createRootRoute({
       { name: "apple-mobile-web-app-status-bar-style", content: "black" },
     ],
     links: [
-      { rel: "icon", href: "/brand/shop-icon" },
-      { rel: "shortcut icon", href: "/brand/shop-icon" },
+      { rel: "icon", href: "/brand/shop-icon", type: "image/png" },
+      { rel: "shortcut icon", href: "/brand/shop-icon", type: "image/png" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/brand/manifest" },
-      { rel: "apple-touch-icon", href: "/brand/shop-icon" },
+      { rel: "apple-touch-icon", href: "/brand/shop-icon", sizes: "180x180" },
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",

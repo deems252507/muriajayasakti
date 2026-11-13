@@ -38,7 +38,7 @@ self.addEventListener("push", (event) => {
         tag,
         renotify: true,
         icon: "/brand/shop-icon",
-        badge: "/brand/shop-icon",
+        badge: "/brand/shop-icon?badge=1",
         // Komentar: satu getar pendek. Pola 3 getar cepat terasa seperti detak jantung di Android.
         vibrate: data.soft ? [220] : data.mention ? [200, 80, 200, 80, 200] : [120, 60, 120],
         requireInteraction: Boolean(data.mention) && !data.soft,

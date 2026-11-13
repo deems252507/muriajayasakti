@@ -26,7 +26,7 @@ export const Route = createFileRoute("/brand/manifest")({
         }
         const body = {
           name: nama,
-          short_name: nama.length > 14 ? nama.slice(0, 14).trim() : nama,
+          short_name: nama, // jangan dipotong: iPhone memakainya sebagai nama di layar utama
           id: "/",
           start_url: "/",
           scope: "/",
