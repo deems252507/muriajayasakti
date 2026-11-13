@@ -494,7 +494,8 @@ export async function getDashboard() {
 
 
 export async function listPriceHistory(data: any) {
-  const me = await requireStaff();
+  // Staf juga boleh melihat riwayat harga jual; harga beli tetap disembunyikan untuk Staf dan Kasir.
+  const me = await requireStaffAny();
   const db = await sql();
   const productId = Number(data.productId);
   if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak ditemukan.");
@@ -504,7 +505,7 @@ export async function listPriceHistory(data: any) {
      order by tanggal desc, id desc limit 200`,
     [productId],
   );
-  const showBeli = me.role !== "Kasir";
+  const showBeli = me.role !== "Kasir" && me.role !== "Staf";
   return rows.map((row) => ({
     tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
     hargaBeli: showBeli ? Number(row.harga_beli ?? 0) : 0,

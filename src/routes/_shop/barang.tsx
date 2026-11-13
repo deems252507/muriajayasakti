@@ -324,6 +324,7 @@ function BarangPage() {
           actions={(item) => isStaf ? (
             <ExpandGroup>
               <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} />
+              <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
             </ExpandGroup>
           ) : (
             <ExpandGroup>
@@ -424,7 +425,7 @@ function BarangPage() {
       ) : null}
       {detail ? <ProductDetailModal item={detail} onClose={() => setDetail(null)} /> : null}
       {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} onGoInvoice={(inv) => { setOrigin(null); void navigate({ to: "/pemasok", search: { inv } }); }} /> : null}
-      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir"} onClose={() => setHistory(null)} /> : null}
+      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir" && !isStaf} onClose={() => setHistory(null)} /> : null}
     </div>
   );
 }
