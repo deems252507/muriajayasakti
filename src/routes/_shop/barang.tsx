@@ -425,12 +425,12 @@ function BarangPage() {
       ) : null}
       {detail ? <ProductDetailModal item={detail} onClose={() => setDetail(null)} /> : null}
       {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} onGoInvoice={(inv) => { setOrigin(null); void navigate({ to: "/pemasok", search: { inv } }); }} /> : null}
-      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir" && !isStaf} onClose={() => setHistory(null)} /> : null}
+      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir" && !isStaf} showSumber={me.role !== "Kasir"} onGoInvoice={me.role !== "Kasir" && !isStaf ? (inv) => { setHistory(null); void navigate({ to: "/pemasok", search: { inv } }); } : undefined} onClose={() => setHistory(null)} /> : null}
     </div>
   );
 }
 
-type PriceRow = { tanggal: string; hargaBeli: number; hargaJual: number; hargaJualAlt: number; awal: boolean };
+type PriceRow = { tanggal: string; hargaBeli: number; hargaJual: number; hargaJualAlt: number; awal: boolean; sumber?: { tipe: "pemasok" | "manual"; invoiceNo: string; supplierName: string } | null };
 
 function dateOnly(iso: string) {
   const d = new Date(iso);
@@ -455,7 +455,7 @@ function MiniPager({ page, pages, from, to, total, noun, onPage }: { page: numbe
   );
 }
 
-function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; onClose: () => void }) {
+function PriceHistoryModal({ item, rows, showBeli, showSumber, onGoInvoice, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; showSumber: boolean; onGoInvoice?: (invoiceNo: string) => void; onClose: () => void }) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil((rows?.length ?? 0) / PRICE_HISTORY_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -479,7 +479,7 @@ function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; r
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>
             <h3 className="text-lg font-extrabold">Riwayat Harga</h3>
@@ -493,13 +493,30 @@ function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; r
           {rows && rows.length ? (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-                <tr><th className="px-3 py-2 text-left">Tanggal</th>{cols.map((col) => <th key={col.key} className="px-3 py-2 text-right">{col.label}</th>)}</tr>
+                <tr><th className="px-3 py-2 text-left">Tanggal</th>{cols.map((col) => <th key={col.key} className="px-3 py-2 text-right">{col.label}</th>)}{showSumber ? <th className="px-3 py-2 text-left">Sumber</th> : null}</tr>
               </thead>
               <tbody>
                 {rows.slice(pageStart, pageStart + PRICE_HISTORY_PAGE_SIZE).map((row, i) => { const index = pageStart + i; return (
                   <tr key={`${row.tanggal}-${index}`} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-3 py-2 font-semibold">{dateOnly(row.tanggal)}{row.awal ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">Harga awal</span> : null}</td>
                     {cols.map((col) => cell(row, rows[index + 1], col.key))}
+                    {showSumber ? (
+                      <td className="px-3 py-2 text-xs">
+                        {row.sumber?.tipe === "pemasok" ? (
+                          onGoInvoice ? (
+                            <button type="button" className="text-left" title="Buka invoice penerimaan ini" onClick={() => onGoInvoice(row.sumber!.invoiceNo)}>
+                              <span className="block font-semibold underline decoration-dotted underline-offset-2">{row.sumber.supplierName}</span>
+                              <span className="block font-mono font-bold text-accent underline">{row.sumber.invoiceNo}</span>
+                            </button>
+                          ) : (
+                            <>
+                              <span className="block font-semibold">{row.sumber.supplierName}</span>
+                              <span className="block font-mono font-bold">{row.sumber.invoiceNo}</span>
+                            </>
+                          )
+                        ) : row.sumber?.tipe === "manual" ? <span className="text-muted">Perubahan manual</span> : <span className="text-muted">-</span>}
+                      </td>
+                    ) : null}
                   </tr>
                 ); })}
               </tbody>

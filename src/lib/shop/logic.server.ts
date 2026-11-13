@@ -500,13 +500,31 @@ export async function listPriceHistory(data: any) {
   const productId = Number(data.productId);
   if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak ditemukan.");
   const rows = await db.query<Record<string, unknown>>(
-    `select tanggal, harga_beli, harga_jual, harga_jual_alt, awal
-     from product_price_history where product_id = $1
-     order by tanggal desc, id desc limit 200`,
+    // Sumber perubahan: kalau harga berubah dalam transaksi penerimaan pemasok yang sama (waktu pencatatan sama persis
+    // dengan waktu penerimaan dibuat), tampilkan pemasok dan invoice-nya. Selain itu dianggap perubahan manual (Ubah barang / impor).
+    `select h.tanggal, h.harga_beli, h.harga_jual, h.harga_jual_alt, h.awal,
+            s.receipt_id, s.invoice_no, s.supplier_name
+     from product_price_history h
+     left join lateral (
+       select r.id as receipt_id, r.invoice_no, p.nama as supplier_name
+       from supplier_receipts r
+       join supplier_receipt_lines l on l.receipt_id = r.id and l.product_id = h.product_id
+       join partners p on p.id = r.supplier_id
+       where r.created_at = h.tanggal
+       order by r.id desc
+       limit 1
+     ) s on not h.awal
+     where h.product_id = $1
+     order by h.tanggal desc, h.id desc limit 200`,
     [productId],
   );
   const showBeli = me.role !== "Kasir" && me.role !== "Staf";
+  // Data pemasok tidak untuk Kasir. Staf hanya melihat nama pemasok dan nomor invoice sebagai teks.
+  const showSumber = me.role !== "Kasir";
   return rows.map((row) => ({
+    sumber: !showSumber || row.awal ? null : row.receipt_id
+      ? { tipe: "pemasok" as const, invoiceNo: String(row.invoice_no ?? ""), supplierName: String(row.supplier_name ?? "") }
+      : { tipe: "manual" as const, invoiceNo: "", supplierName: "" },
     tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
     hargaBeli: showBeli ? Number(row.harga_beli ?? 0) : 0,
     hargaJual: Number(row.harga_jual ?? 0),
