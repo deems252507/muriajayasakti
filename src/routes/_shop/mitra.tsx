@@ -10,7 +10,14 @@ import { CommentButton, useCommentFinder, useComments } from "@/components/shop/
 import { deletePartner, listPartners, savePartner } from "@/lib/shop/api";
 import type { Partner } from "@/lib/shop/types";
 
-export const Route = createFileRoute("/_shop/mitra")({ component: MitraPage });
+export const Route = createFileRoute("/_shop/mitra")({
+  // ?tab=Supplier&q=NAMA: dibuka dari Riwayat Harga, langsung menyaring ke pemasok itu.
+  validateSearch: (search: Record<string, unknown>): { q?: string; tab?: "Pelanggan" | "Supplier" } => ({
+    q: typeof search.q === "string" && search.q.trim() ? search.q.trim() : undefined,
+    tab: search.tab === "Supplier" || search.tab === "Pelanggan" ? search.tab : undefined,
+  }),
+  component: MitraPage,
+});
 
 type Tipe = "Pelanggan" | "Supplier";
 const emptyForm = (tipe: Tipe) => ({ id: null as number | null, nama: "", tipe: tipe as string, telp: "", alamat: "" });
@@ -23,6 +30,8 @@ function MitraPage() {
   const [q, setQ] = usePersistedState("mitra:q", "");
   const [form, setForm] = useState(emptyForm("Pelanggan"));
   const [open, setOpen] = useState(false);
+  const { q: qParam, tab: tabParam } = Route.useSearch();
+  useEffect(() => { if (qParam) { if (tabParam) setTab(tabParam); setQ(qParam); } }, [qParam, tabParam, setTab, setQ]);
 
   function load() { void listPartners().then(setRows).catch((err: Error) => toast.error(err.message)); }
   useEffect(() => { load(); }, []);

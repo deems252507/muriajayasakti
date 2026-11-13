@@ -425,12 +425,12 @@ function BarangPage() {
       ) : null}
       {detail ? <ProductDetailModal item={detail} onClose={() => setDetail(null)} /> : null}
       {origin ? <OriginModal item={origin.item} data={origin.data} onClose={() => setOrigin(null)} onGoInvoice={(inv) => { setOrigin(null); void navigate({ to: "/pemasok", search: { inv } }); }} /> : null}
-      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir" && !isStaf} showSumber={me.role !== "Kasir"} onGoInvoice={me.role !== "Kasir" && !isStaf ? (inv) => { setHistory(null); void navigate({ to: "/pemasok", search: { inv } }); } : undefined} onClose={() => setHistory(null)} /> : null}
+      {history ? <PriceHistoryModal item={history.item} rows={history.rows} showBeli={me.role !== "Kasir" && !isStaf} showSumber={me.role !== "Kasir"} onGoInvoice={me.role === "Admin" ? (inv) => { setHistory(null); void navigate({ to: "/pemasok", search: { inv } }); } : undefined} onGoSupplier={me.role === "Admin" ? (nama) => { setHistory(null); void navigate({ to: "/mitra", search: { q: nama, tab: "Supplier" } }); } : undefined} onClose={() => setHistory(null)} /> : null}
     </div>
   );
 }
 
-type PriceRow = { tanggal: string; hargaBeli: number; hargaJual: number; hargaJualAlt: number; awal: boolean; sumber?: { tipe: "pemasok" | "manual"; invoiceNo: string; supplierName: string } | null };
+type PriceRow = { tanggal: string; hargaBeli: number; hargaJual: number; hargaJualAlt: number; awal: boolean; sumber?: { tipe: "pemasok" | "manual"; invoiceNo: string; supplierName: string; supplierId: number | null; diubah: boolean; tersedia: boolean } | null };
 
 function dateOnly(iso: string) {
   const d = new Date(iso);
@@ -455,7 +455,7 @@ function MiniPager({ page, pages, from, to, total, noun, onPage }: { page: numbe
   );
 }
 
-function PriceHistoryModal({ item, rows, showBeli, showSumber, onGoInvoice, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; showSumber: boolean; onGoInvoice?: (invoiceNo: string) => void; onClose: () => void }) {
+function PriceHistoryModal({ item, rows, showBeli, showSumber, onGoInvoice, onGoSupplier, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; showSumber: boolean; onGoInvoice?: (invoiceNo: string) => void; onGoSupplier?: (supplierName: string) => void; onClose: () => void }) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil((rows?.length ?? 0) / PRICE_HISTORY_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -503,17 +503,16 @@ function PriceHistoryModal({ item, rows, showBeli, showSumber, onGoInvoice, onCl
                     {showSumber ? (
                       <td className="px-3 py-2 text-xs">
                         {row.sumber?.tipe === "pemasok" ? (
-                          onGoInvoice ? (
-                            <button type="button" className="text-left" title="Buka invoice penerimaan ini" onClick={() => onGoInvoice(row.sumber!.invoiceNo)}>
-                              <span className="block font-semibold underline decoration-dotted underline-offset-2">{row.sumber.supplierName}</span>
-                              <span className="block font-mono font-bold text-accent underline">{row.sumber.invoiceNo}</span>
-                            </button>
-                          ) : (
-                            <>
-                              <span className="block font-semibold">{row.sumber.supplierName}</span>
-                              <span className="block font-mono font-bold">{row.sumber.invoiceNo}</span>
-                            </>
-                          )
+                          <>
+                            <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted">{row.sumber.diubah ? "Ubah barang masuk" : "Barang masuk"}</span>
+                            {onGoSupplier && row.sumber.tersedia ? (
+                              <button type="button" className="block text-left font-semibold underline decoration-dotted underline-offset-2" title="Buka data pemasok" onClick={() => onGoSupplier(row.sumber!.supplierName)}>{row.sumber.supplierName}</button>
+                            ) : <span className="block font-semibold">{row.sumber.supplierName}</span>}
+                            {onGoInvoice && row.sumber.tersedia ? (
+                              <button type="button" className="block text-left font-mono font-bold text-accent underline" title="Buka invoice penerimaan ini" onClick={() => onGoInvoice(row.sumber!.invoiceNo)}>{row.sumber.invoiceNo}</button>
+                            ) : <span className="block font-mono font-bold">{row.sumber.invoiceNo}</span>}
+                            {!row.sumber.tersedia ? <span className="block text-[10px] text-muted">(penerimaan sudah dihapus)</span> : null}
+                          </>
                         ) : row.sumber?.tipe === "manual" ? <span className="text-muted">Perubahan manual</span> : <span className="text-muted">-</span>}
                       </td>
                     ) : null}

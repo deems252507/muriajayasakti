@@ -500,20 +500,14 @@ export async function listPriceHistory(data: any) {
   const productId = Number(data.productId);
   if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak ditemukan.");
   const rows = await db.query<Record<string, unknown>>(
-    // Sumber perubahan: kalau harga berubah dalam transaksi penerimaan pemasok yang sama (waktu pencatatan sama persis
-    // dengan waktu penerimaan dibuat), tampilkan pemasok dan invoice-nya. Selain itu dianggap perubahan manual (Ubah barang / impor).
-    `select h.tanggal, h.harga_beli, h.harga_jual, h.harga_jual_alt, h.awal,
-            s.receipt_id, s.invoice_no, s.supplier_name
+    // Sumber perubahan dicatat trigger lewat receipt_id (penerimaan pemasok baru maupun hasil "Ubah").
+    // Nama pemasok & invoice terkini diambil dari penerimaan; kalau penerimaan sudah dihapus, pakai salinan saat itu.
+    `select h.tanggal, h.harga_beli, h.harga_jual, h.harga_jual_alt, h.awal, h.receipt_edit,
+            h.receipt_id, coalesce(r.invoice_no, h.receipt_invoice) as invoice_no,
+            coalesce(p.nama, h.receipt_supplier) as supplier_name, r.supplier_id
      from product_price_history h
-     left join lateral (
-       select r.id as receipt_id, r.invoice_no, p.nama as supplier_name
-       from supplier_receipts r
-       join supplier_receipt_lines l on l.receipt_id = r.id and l.product_id = h.product_id
-       join partners p on p.id = r.supplier_id
-       where r.created_at = h.tanggal
-       order by r.id desc
-       limit 1
-     ) s on not h.awal
+     left join supplier_receipts r on r.id = h.receipt_id
+     left join partners p on p.id = r.supplier_id
      where h.product_id = $1
      order by h.tanggal desc, h.id desc limit 200`,
     [productId],
@@ -522,9 +516,17 @@ export async function listPriceHistory(data: any) {
   // Data pemasok tidak untuk Kasir. Staf hanya melihat nama pemasok dan nomor invoice sebagai teks.
   const showSumber = me.role !== "Kasir";
   return rows.map((row) => ({
-    sumber: !showSumber || row.awal ? null : row.receipt_id
-      ? { tipe: "pemasok" as const, invoiceNo: String(row.invoice_no ?? ""), supplierName: String(row.supplier_name ?? "") }
-      : { tipe: "manual" as const, invoiceNo: "", supplierName: "" },
+    sumber: !showSumber || row.awal ? null : row.invoice_no
+      ? {
+          tipe: "pemasok" as const,
+          invoiceNo: String(row.invoice_no ?? ""),
+          supplierName: String(row.supplier_name ?? ""),
+          supplierId: row.supplier_id == null ? null : Number(row.supplier_id),
+          diubah: Boolean(row.receipt_edit),
+          // Penerimaan sudah dihapus: tampilkan teks saja, tanpa link.
+          tersedia: row.receipt_id != null,
+        }
+      : { tipe: "manual" as const, invoiceNo: "", supplierName: "", supplierId: null, diubah: false, tersedia: false },
     tanggal: row.tanggal ? new Date(String(row.tanggal)).toISOString() : "",
     hargaBeli: showBeli ? Number(row.harga_beli ?? 0) : 0,
     hargaJual: Number(row.harga_jual ?? 0),
