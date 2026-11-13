@@ -240,7 +240,7 @@ function LoginPage() {
             </div>
             <div className="lg-collapse" data-open={forgot}>
               <div>
-                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-slate-600">Hubungi <b>Admin 1{admin1.length ? ` (${admin1.join(", ")})` : ""}</b> untuk mereset password Anda. Setelah direset, Anda bisa langsung masuk dengan password baru.</p>
+                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-slate-600">Hubungi <b>Admin{admin1.length ? ` ${admin1.join(", ")}` : ""}</b> untuk mereset password Anda. Setelah direset, Anda bisa langsung masuk dengan password baru.</p>
               </div>
             </div>
             <div style={{ "--d": "0.48s" } as CSSProperties} className={`lg-item ${shake ? "lg-shake" : ""}`}>
