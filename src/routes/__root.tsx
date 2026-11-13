@@ -2,11 +2,11 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { ConfirmHost } from "@/lib/confirm";
+import { getSiteOrigin } from "@/lib/shop/site-origin";
 import appCss from "../styles.css?url";
 
 /**
- * Platform menyisipkan manifest dan apple-touch-icon bawaan di akhir <head>. Buang keduanya di browser
- * supaya yang dipakai hanya ikon dan nama toko (ikut berganti saat logo diganti di Pengaturan).
+ * Pastikan hanya ada satu manifest dan satu apple-touch-icon: milik toko (ikut berganti saat logo diganti di Pengaturan).
  */
 function BrandLinks() {
   useEffect(() => {
@@ -21,7 +21,14 @@ function BrandLinks() {
 }
 
 export const Route = createRootRoute({
-  head: () => ({
+  loader: async () => {
+    try {
+      return { origin: await getSiteOrigin() };
+    } catch {
+      return { origin: "" };
+    }
+  },
+  head: ({ loaderData }) => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, interactive-widget=resizes-content" },
@@ -30,6 +37,20 @@ export const Route = createRootRoute({
       { name: "description", content: "Muria Jaya Sakti - Integrated Business System" },
       { name: "apple-mobile-web-app-title", content: "Muria Jaya Sakti" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black" },
+      // Kartu preview saat link dibagikan (WhatsApp, dll.): memakai gambar logo toko.
+      { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "Muria Jaya Sakti" },
+      { property: "og:title", content: "Muria Jaya Sakti" },
+      { property: "og:description", content: "Muria Jaya Sakti - Integrated Business System" },
+      ...(loaderData?.origin
+        ? [
+            { property: "og:image", content: `${loaderData.origin}/brand/og.jpg` },
+            { property: "og:image:width", content: "1200" },
+            { property: "og:image:height", content: "630" },
+            { name: "twitter:card", content: "summary_large_image" },
+            { name: "twitter:image", content: `${loaderData.origin}/brand/og.jpg` },
+          ]
+        : []),
     ],
     links: [
       { rel: "icon", href: "/brand/shop-icon", type: "image/png" },

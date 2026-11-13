@@ -817,6 +817,22 @@ export function Conversation(props: {
     }
   }, [thread]);
 
+  // Seperti WhatsApp: saat keyboard HP muncul/hilang, tinggi daftar pesan berubah. Kalau pengguna sedang di bagian
+  // paling bawah, tetap tempelkan ke bawah supaya pesan terbaru langsung di atas kolom ketik (tidak terdorong naik).
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastHeight = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const height = el.clientHeight;
+      if (height === lastHeight) return;
+      lastHeight = height;
+      if (nearBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   function onScroll() {
     const el = listRef.current;
     if (!el) return;
