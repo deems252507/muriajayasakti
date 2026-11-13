@@ -439,7 +439,27 @@ function dateOnly(iso: string) {
 }
 
 /** Riwayat harga satu barang: tanggal dan harga setelah perubahan, terbaru di atas. */
+const PRICE_HISTORY_PAGE_SIZE = 10;
+
+/** Kontrol halaman kecil untuk popup (Sebelumnya / Hal x dari y / Berikutnya). */
+function MiniPager({ page, pages, from, to, total, noun, onPage }: { page: number; pages: number; from: number; to: number; total: number; noun: string; onPage: (page: number) => void }) {
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+      <span className="text-slate-600">{from}–{to} dari {total} {noun}</span>
+      <div className="flex items-center gap-2">
+        <button type="button" className="h-10 rounded-lg border border-line px-3 disabled:opacity-50" disabled={page <= 1} onClick={() => onPage(page - 1)}>Sebelumnya</button>
+        <span className="grid place-items-center text-sm">Hal {page} / {pages}</span>
+        <button type="button" className="h-10 rounded-lg border border-line px-3 disabled:opacity-50" disabled={page >= pages} onClick={() => onPage(page + 1)}>Berikutnya</button>
+      </div>
+    </div>
+  );
+}
+
 function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; rows: PriceRow[] | null; showBeli: boolean; onClose: () => void }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil((rows?.length ?? 0) / PRICE_HISTORY_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PRICE_HISTORY_PAGE_SIZE;
   const hasDus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
   type Key = "hargaJual" | "hargaJualAlt" | "hargaBeli";
   const cols: Array<{ key: Key; label: string }> = [
@@ -476,14 +496,24 @@ function PriceHistoryModal({ item, rows, showBeli, onClose }: { item: Product; r
                 <tr><th className="px-3 py-2 text-left">Tanggal</th>{cols.map((col) => <th key={col.key} className="px-3 py-2 text-right">{col.label}</th>)}</tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
+                {rows.slice(pageStart, pageStart + PRICE_HISTORY_PAGE_SIZE).map((row, i) => { const index = pageStart + i; return (
                   <tr key={`${row.tanggal}-${index}`} className="border-t border-line align-top">
                     <td className="whitespace-nowrap px-3 py-2 font-semibold">{dateOnly(row.tanggal)}{row.awal ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">Harga awal</span> : null}</td>
                     {cols.map((col) => cell(row, rows[index + 1], col.key))}
                   </tr>
-                ))}
+                ); })}
               </tbody>
             </table>
+          ) : null}
+          {rows && rows.length > PRICE_HISTORY_PAGE_SIZE ? (
+            <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+              <span className="text-slate-600">{pageStart + 1}–{Math.min(pageStart + PRICE_HISTORY_PAGE_SIZE, rows.length)} dari {rows.length} perubahan</span>
+              <div className="flex items-center gap-2">
+                <button type="button" className="h-10 rounded-lg border border-line px-3 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Sebelumnya</button>
+                <span className="grid place-items-center text-sm">Hal {currentPage} / {totalPages}</span>
+                <button type="button" className="h-10 rounded-lg border border-line px-3 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Berikutnya</button>
+              </div>
+            </div>
           ) : null}
           <p className="mt-3 text-xs text-muted">Riwayat tercatat otomatis sejak fitur ini dipasang. Angka tebal berarti harga itu berubah dibanding sebelumnya.</p>
         </div>
@@ -573,10 +603,17 @@ type OriginData = {
 /** Asal barang: pemasok mana saja yang pernah memasok barang ini (dari catatan Barang Masuk Pemasok). */
 function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data: OriginData | null; onClose: () => void; onGoInvoice?: (invoiceNo: string) => void }) {
   const suppliers = data?.suppliers ?? [];
-  // Tampil 5 terbaru dulu; sisanya dimuat per 5 lewat tombol supaya popup tidak penuh.
+  // Dibagi per halaman (5 baris) supaya popup tidak penuh.
   const PAGE = 5;
-  const [showSup, setShowSup] = useState(PAGE);
-  const [showHist, setShowHist] = useState(PAGE);
+  const [supPage, setSupPage] = useState(1);
+  const [histPage, setHistPage] = useState(1);
+  const supPages = Math.max(1, Math.ceil(suppliers.length / PAGE));
+  const supCur = Math.min(supPage, supPages);
+  const supStart = (supCur - 1) * PAGE;
+  const histRows = data?.history ?? [];
+  const histPages = Math.max(1, Math.ceil(histRows.length / PAGE));
+  const histCur = Math.min(histPage, histPages);
+  const histStart = (histCur - 1) * PAGE;
   const prices = suppliers.map((s) => s.lastHargaBeli).filter((n) => n > 0);
   const cheapest = suppliers.length > 1 && prices.length ? Math.min(...prices) : 0;
   const hasDus = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
@@ -612,7 +649,7 @@ function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data
                     <tr><th className="px-3 py-2 text-left">Pemasok</th><th className="px-3 py-2 text-right">Total masuk</th><th className="px-3 py-2 text-left">Terakhir masuk</th><th className="px-3 py-2 text-left">Invoice</th><th className="px-3 py-2 text-right">Harga beli terakhir</th></tr>
                   </thead>
                   <tbody>
-                    {suppliers.slice(0, showSup).map((s, index) => (
+                    {suppliers.slice(supStart, supStart + PAGE).map((s, i) => { const index = supStart + i; return (
                       <tr key={s.supplierId} className={`border-t border-line align-top ${onGoInvoice ? "cursor-pointer" : ""}`} title={onGoInvoice ? "Klik untuk membuka invoice terakhir dari pemasok ini" : undefined} onClick={onGoInvoice ? () => onGoInvoice(s.lastInvoice) : undefined}>
                         <td className={`px-3 py-2 font-semibold ${onGoInvoice ? "underline decoration-dotted underline-offset-2" : ""}`}>{s.supplierName}{index === 0 ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Terbaru</span> : null}</td>
                         <td className="px-3 py-2 text-right">{qtyText(s.totalQtyDasar)}<span className="block text-[11px] text-muted">{s.receiptCount}x penerimaan</span></td>
@@ -620,16 +657,16 @@ function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data
                         <td className={`px-3 py-2 font-mono text-xs font-bold ${onGoInvoice ? "text-accent underline" : ""}`}>{s.lastInvoice}</td>
                         <td className={`num px-3 py-2 text-right ${cheapest > 0 && s.lastHargaBeli === cheapest ? "font-bold text-emerald-700" : ""}`}>{rupiah(s.lastHargaBeli)}<span className="block text-[11px] font-normal text-muted">per {s.lastSatuan}</span></td>
                       </tr>
-                    ))}
+                    ); })}
                   </tbody>
                 </table>
-                {suppliers.length > showSup ? <button type="button" className="mt-2 h-9 w-full rounded-lg border border-line text-sm font-semibold hover:bg-slate-50" onClick={() => setShowSup((n) => n + PAGE)}>Tampilkan pemasok lainnya ({suppliers.length - showSup} lagi)</button> : null}
+                {suppliers.length > PAGE ? <MiniPager page={supCur} pages={supPages} from={supStart + 1} to={Math.min(supStart + PAGE, suppliers.length)} total={suppliers.length} noun="pemasok" onPage={setSupPage} /> : null}
               </div>
               <h4 className="mt-4 text-sm font-extrabold">Riwayat penerimaan (terbaru di atas)</h4>
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full text-sm">
                   <tbody>
-                    {data.history.slice(0, showHist).map((row, index) => (
+                    {data.history.slice(histStart, histStart + PAGE).map((row, i) => { const index = histStart + i; return (
                       <tr key={`${row.receiptId}-${index}`} className={`border-t border-line ${onGoInvoice ? "cursor-pointer" : ""}`} title={onGoInvoice ? "Klik untuk membuka invoice ini" : undefined} onClick={onGoInvoice ? () => onGoInvoice(row.invoiceNo) : undefined}>
                         <td className="whitespace-nowrap px-3 py-2">{dateOnly(row.receivedAt)}</td>
                         <td className="px-3 py-2 font-semibold">{row.supplierName}</td>
@@ -637,10 +674,10 @@ function OriginModal({ item, data, onClose, onGoInvoice }: { item: Product; data
                         <td className="px-3 py-2 text-right">{grouped(row.qty)} {row.satuan}</td>
                         <td className="num px-3 py-2 text-right">{rupiah(row.hargaBeli)}</td>
                       </tr>
-                    ))}
+                    ); })}
                   </tbody>
                 </table>
-                {data.history.length > showHist ? <button type="button" className="mt-2 h-9 w-full rounded-lg border border-line text-sm font-semibold hover:bg-slate-50" onClick={() => setShowHist((n) => n + PAGE)}>Tampilkan yang lebih lama ({data.history.length - showHist} lagi)</button> : null}
+                {histRows.length > PAGE ? <MiniPager page={histCur} pages={histPages} from={histStart + 1} to={Math.min(histStart + PAGE, histRows.length)} total={histRows.length} noun="penerimaan" onPage={setHistPage} /> : null}
               </div>
             </>
           ) : null}
