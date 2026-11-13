@@ -97,10 +97,15 @@ function BarangPage() {
       .catch((e: Error) => { toast.error(e.message); setOrigin(null); });
   }
 
+  // Nilai cari/filter dipulihkan dari sessionStorage setelah render pertama, jadi ada dua permintaan beruntun
+  // (pertama dengan filter kosong, kedua dengan filter pulihan). Hanya jawaban permintaan TERBARU yang dipakai,
+  // supaya jawaban lambat yang tanpa filter tidak menimpa hasil yang sudah tersaring.
+  const loadSeq = useRef(0);
   function load(next = page) {
+    const seq = ++loadSeq.current;
     void listProducts({ data: { q, dupOnly, page: next, sorts, kategori } })
-      .then((res) => { setLoadError(""); setData(res); })
-      .catch((error: Error) => setLoadError(error.message || "Gagal memuat daftar barang."));
+      .then((res) => { if (seq !== loadSeq.current) return; setLoadError(""); setData(res); })
+      .catch((error: Error) => { if (seq !== loadSeq.current) return; setLoadError(error.message || "Gagal memuat daftar barang."); });
   }
   useEffect(() => {
     load(page);
