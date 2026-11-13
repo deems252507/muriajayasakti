@@ -1,25 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Plus } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/lib/confirm";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { changeOwnPassword, listMasters, listStaff, saveBank, savePajak, saveShopProfile, saveStaff, updateOwnProfile } from "@/lib/shop/api";
+import { addPajak, changeOwnPassword, deletePajak, listKategoriBarang, listMasters, listStaff, revealPassword, saveBank, savePajak, saveShopProfile, saveStaff, updateOwnProfile } from "@/lib/shop/api";
 import { setShopProfile } from "@/lib/shop/print";
-import type { Bank, Pajak, Staff } from "@/lib/shop/types";
+import type { Bank, Staff } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/pengaturan")({ component: SettingsPage });
+
+type PajakRow = { id: number; jenis: string; persentase: string; aktif: boolean };
+
+function isLainnya(jenis: string) {
+  return jenis.trim().toLowerCase() === "lainnya";
+}
 
 const emptyAccount = { username: "", name: "", role: "Kasir", shift: "", password: "", status: "Aktif", photo: "", existing: false, canManageStaff: false };
 
 function SettingsPage() {
   const me = Route.useRouteContext().me;
-  const [pajak, setPajak] = useState<Pajak[]>([]);
+  const router = useRouter();
+  const [pajak, setPajak] = useState<PajakRow[]>([]);
+  const [kategoriBarang, setKategoriBarang] = useState<string[]>([]);
+  const [newPajak, setNewPajak] = useState({ jenis: "", persentase: "" });
+  const [pajakBusy, setPajakBusy] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  // Password akun yang sedang ditampilkan (Admin 1). null = belum tersimpan; hilang saat halaman dimuat ulang.
+  const [shownPw, setShownPw] = useState<Record<string, string | null>>({});
   const [banks, setBanks] = useState<Bank[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [bankOpen, setBankOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [shop, setShop] = useState({ nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" });
+  const [shop, setShop] = useState({ nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "", icon: "" });
   const [bank, setBank] = useState({ id: 0, nama: "", rekening: "", atasNama: "", aktif: true, keterangan: "" });
   const [account, setAccount] = useState(emptyAccount);
   const [current, setCurrent] = useState("");
@@ -30,16 +45,58 @@ function SettingsPage() {
 
   function load() {
     void listMasters().then((res) => {
-      setPajak(res.pajak);
+      setPajak(res.pajak.map((item) => ({ id: item.id, jenis: item.jenis, persentase: String(item.persentase), aktif: item.aktif })));
       setBanks(res.banks);
       if (res.profile) {
-        setShop(res.profile);
+        setShop({ ...res.profile, icon: res.profile.icon ?? "" });
         setShopProfile(res.profile);
       }
-    });
+    }).catch((err: Error) => toast.error(err.message));
+    if (me.role !== "Staf") void listKategoriBarang().then(setKategoriBarang).catch(() => undefined);
     if (me.canManageStaff) void listStaff().then(setStaff);
   }
   useEffect(() => { load(); }, []);
+
+  const lainnyaPersen = pajak.find((item) => isLainnya(item.jenis))?.persentase ?? "11";
+  const kategoriTanpaJenis = useMemo(() => {
+    const names = pajak.filter((item) => item.aktif && !isLainnya(item.jenis) && item.jenis.trim()).map((item) => item.jenis.trim().toLowerCase());
+    return kategoriBarang.filter((kategori) => !names.some((name) => kategori.toLowerCase().includes(name)));
+  }, [pajak, kategoriBarang]);
+
+  function togglePassword(username: string) {
+    if (username in shownPw) {
+      setShownPw((prev) => { const copy = { ...prev }; delete copy[username]; return copy; });
+      return;
+    }
+    void revealPassword({ data: { username } })
+      .then((res) => setShownPw((prev) => ({ ...prev, [username]: res.password })))
+      .catch((err: Error) => toast.error(err.message));
+  }
+
+  function simpanPajak() {
+    setPajakBusy(true);
+    void savePajak({ data: { items: pajak.map((item) => ({ id: item.id, persentase: item.persentase, aktif: item.aktif })) } })
+      .then(() => { toast.success("Master pajak berhasil disimpan", { description: "Berlaku untuk transaksi berikutnya. Nota lama tidak berubah." }); load(); })
+      .catch((err: Error) => toast.error(err.message))
+      .finally(() => setPajakBusy(false));
+  }
+
+  function tambahPajak() {
+    setPajakBusy(true);
+    void addPajak({ data: newPajak })
+      .then(() => { toast.success("Jenis pajak ditambahkan", { description: `${newPajak.jenis.trim()} (${newPajak.persentase}%)` }); setNewPajak({ jenis: "", persentase: "" }); load(); })
+      .catch((err: Error) => toast.error(err.message))
+      .finally(() => setPajakBusy(false));
+  }
+
+  async function hapusPajak(item: PajakRow) {
+    if (!(await confirmDialog(`Hapus jenis pajak "${item.jenis}"? Barang dengan kategori ini akan memakai persentase "Lainnya". Nota lama tidak berubah.`, { title: "Hapus jenis pajak?", danger: true }))) return;
+    setPajakBusy(true);
+    void deletePajak({ data: { id: item.id } })
+      .then(() => { toast.success("Jenis pajak dihapus", { description: item.jenis }); load(); })
+      .catch((err: Error) => toast.error(err.message))
+      .finally(() => setPajakBusy(false));
+  }
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   const isStaf = me.role === "Staf";
@@ -51,12 +108,12 @@ function SettingsPage() {
       {me.role !== "Kasir" && !isStaf ? (
         <Panel>
           <h2 className="font-extrabold">Identitas Toko</h2>
-          <p className="mt-1 text-xs text-muted">Nama, alamat, nomor, dan logo ini dipakai di menu, halaman masuk, dan struk.</p>
+          <p className="mt-1 text-xs text-muted">Nama, alamat, nomor, dan logo ini dipakai di menu, halaman masuk, struk/cetakan, ikon tab browser (favicon), ikon notifikasi, dan nama aplikasi. Ikon yang sudah terpasang di layar utama HP baru berganti setelah aplikasi dipasang ulang.</p>
           <form className="mt-3 space-y-2" onSubmit={(e) => {
             e.preventDefault();
             void saveShopProfile({ data: shop }).then(() => {
               setShopProfile(shop);
-              toast.success("Identitas toko berhasil disimpan", { description: "Dipakai di menu, halaman masuk, dan struk." });
+              toast.success("Identitas toko berhasil disimpan", { description: "Logo, ikon tab browser, halaman masuk, menu, struk, dan notifikasi sudah memakai identitas baru." });
             }).catch((err: Error) => toast.error(err.message));
           }}>
             <div className="flex items-center gap-3">
@@ -67,10 +124,10 @@ function SettingsPage() {
                   const file = e.target.files?.[0];
                   e.target.value = "";
                   if (!file) return;
-                  void shrinkLogo(file).then((logo) => setShop((prev) => ({ ...prev, logo }))).catch((err: Error) => toast.error(err.message));
+                  void makeBrandImages(file).then(({ logo, icon }) => setShop((prev) => ({ ...prev, logo, icon }))).catch((err: Error) => toast.error(err.message));
                 }} />
               </label>
-              {shop.logo ? <button type="button" className="text-xs text-danger" onClick={() => setShop({ ...shop, logo: "" })}>Pakai logo bawaan</button> : null}
+              {shop.logo ? <button type="button" className="text-xs text-danger" onClick={() => setShop({ ...shop, logo: "", icon: "" })}>Pakai logo bawaan</button> : null}
             </div>
             <Field label="Nama toko"><input className={inputClass} value={shop.nama} onChange={(e) => setShop({ ...shop, nama: e.target.value })} /></Field>
             <Field label="Alamat"><input className={inputClass} value={shop.alamat} onChange={(e) => setShop({ ...shop, alamat: e.target.value })} /></Field>
@@ -83,15 +140,48 @@ function SettingsPage() {
       {!isStaf ? (<>
       <Panel>
         <h2 className="font-extrabold">Master Persentase Pajak Internal</h2>
+        <p className="mt-1 text-xs text-muted">Nama jenis dicocokkan dengan Kategori barang (jenis "Oli" juga berlaku untuk kategori "Oli Mesin"). Kategori yang tidak punya jenis sendiri memakai "Lainnya". Perubahan berlaku untuk transaksi berikutnya; nota lama tidak berubah.</p>
         <div className="mt-3 space-y-2">
           {pajak.map((item) => (
-            <label key={item.id} className="flex items-center justify-between gap-3 text-sm">
-              <span>{item.jenis}</span>
-              <input className="num h-11 w-24 rounded-lg border border-line px-2 text-right" value={item.persentase} onChange={(e) => setPajak((prev) => prev.map((row) => row.id === item.id ? { ...row, persentase: Number(e.target.value) } : row))} />
-            </label>
+            <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
+              <span className={item.aktif ? "" : "text-muted line-through"}>{item.jenis}{!item.aktif ? <span className="ml-2 text-[10px] font-bold no-underline">Nonaktif</span> : null}</span>
+              <span className="flex items-center gap-2">
+                {me.role !== "Kasir" && !isLainnya(item.jenis) ? (
+                  <>
+                    <label className="flex items-center gap-1 text-[11px] text-muted"><input type="checkbox" checked={item.aktif} onChange={(e) => setPajak((prev) => prev.map((row) => row.id === item.id ? { ...row, aktif: e.target.checked } : row))} />Aktif</label>
+                    <button type="button" className="grid size-9 place-items-center rounded-lg text-danger hover:bg-red-50" aria-label={`Hapus ${item.jenis}`} onClick={() => void hapusPajak(item)}><Trash2 className="size-4" /></button>
+                  </>
+                ) : null}
+                <input className="num h-11 w-24 rounded-lg border border-line px-2 text-right" inputMode="decimal" aria-label={`Persentase ${item.jenis}`} readOnly={me.role === "Kasir"} value={item.persentase} onChange={(e) => setPajak((prev) => prev.map((row) => row.id === item.id ? { ...row, persentase: e.target.value.replace(/[^0-9.,]/g, "") } : row))} />
+              </span>
+            </div>
           ))}
         </div>
-        {me.role !== "Kasir" ? <PrimaryButton className="mt-3" onClick={() => void savePajak({ data: { items: pajak.map((item) => ({ id: item.id, persentase: Number(item.persentase) })) } }).then(() => toast.success("Master pajak berhasil disimpan"))}>Simpan Master Pajak</PrimaryButton> : null}
+        {me.role !== "Kasir" ? <PrimaryButton className="mt-3" disabled={pajakBusy} onClick={simpanPajak}>Simpan Master Pajak</PrimaryButton> : null}
+        {me.role !== "Kasir" ? (
+          <form className="mt-4 rounded-xl border border-line p-3" onSubmit={(e) => { e.preventDefault(); tambahPajak(); }}>
+            <p className="text-sm font-bold">Tambah jenis pajak baru</p>
+            <p className="text-xs text-muted">Untuk kategori barang baru. Tulis nama sesuai kategori di Daftar Sparepart, contoh: Ban.</p>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <div className="min-w-[160px] flex-1"><Field label="Nama jenis"><input className={inputClass} value={newPajak.jenis} maxLength={40} onChange={(e) => setNewPajak({ ...newPajak, jenis: e.target.value })} /></Field></div>
+              <div className="w-28"><Field label="Persen (%)"><input className={`${inputClass} text-right`} inputMode="decimal" value={newPajak.persentase} onChange={(e) => setNewPajak({ ...newPajak, persentase: e.target.value.replace(/[^0-9.,]/g, "") })} /></Field></div>
+              <PrimaryButton type="submit" disabled={pajakBusy || !newPajak.jenis.trim() || !newPajak.persentase}><Plus className="size-4" />Tambah</PrimaryButton>
+            </div>
+          </form>
+        ) : null}
+        {kategoriTanpaJenis.length > 0 ? (
+          <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <p className="font-bold">Kategori barang ini memakai persentase "Lainnya" ({lainnyaPersen}%):</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {kategoriTanpaJenis.map((kategori) => (
+                me.role !== "Kasir"
+                  ? <button key={kategori} type="button" className="rounded-full bg-white px-2.5 py-1 font-semibold ring-1 ring-amber-300 hover:bg-amber-100" onClick={() => setNewPajak((prev) => ({ ...prev, jenis: kategori }))}>{kategori}</button>
+                  : <span key={kategori} className="rounded-full bg-white px-2.5 py-1 font-semibold ring-1 ring-amber-300">{kategori}</span>
+              ))}
+            </div>
+            {me.role !== "Kasir" ? <p className="mt-1">Klik nama kategori untuk mengisinya ke form tambah di atas.</p> : null}
+          </div>
+        ) : null}
       </Panel>
       <Panel>
         <div className="flex items-center justify-between">
@@ -119,7 +209,7 @@ function SettingsPage() {
       <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
         <p className="text-xs text-muted">Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login.</p>
-        {me.mustChange ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Password akun ini masih bawaan. Ganti di bagian bawah halaman ini.</p> : null}
+        {me.mustChange ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Password akun ini masih bawaan. Ganti di bagian "Ubah Password" di bawah.</p> : null}
         <div className="mt-3 flex items-center gap-3">
           {ownPhoto ? <img src={ownPhoto} alt="" className="size-16 rounded-full object-cover ring-1 ring-line" /> : <span className="grid size-16 place-items-center rounded-full bg-blue-100 text-lg font-bold text-accent">{ownName.slice(0, 1).toUpperCase()}</span>}
           <label className="cursor-pointer text-xs font-bold text-accent">
@@ -142,16 +232,37 @@ function SettingsPage() {
           <PrimaryButton type="submit">Simpan Nama dan Foto</PrimaryButton>
         </form>
       </Panel>
+      <Panel id="ubah-password">
+        <h2 className="font-extrabold">Ubah Password</h2>
+        <p className="text-xs text-muted">Untuk akun yang sedang masuk ({me.name} · {me.username}). Halaman Pengaturan hanya untuk Admin 1. Akun lain minta ganti password ke Admin 1 lewat Manajemen Semua Akun.</p>
+        <form className="mt-3 space-y-2" onSubmit={(e) => {
+          e.preventDefault();
+          if (!current) { toast.error("Isi password saat ini."); return; }
+          if (next.length < 4) { toast.error("Password baru minimal 4 karakter."); return; }
+          if (next !== confirm) { toast.error("Konfirmasi password tidak sama."); return; }
+          setPwBusy(true);
+          void changeOwnPassword({ data: { current, next } })
+            .then(() => { toast.success("Password berhasil diganti"); setCurrent(""); setNext(""); setConfirm(""); void router.invalidate(); })
+            .catch((err: Error) => toast.error(err.message))
+            .finally(() => setPwBusy(false));
+        }}>
+          <Field label="Password Saat Ini"><input className={inputClass} type={showPw ? "text" : "password"} autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
+          <Field label="Password Baru"><input className={inputClass} type={showPw ? "text" : "password"} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
+          <Field label="Konfirmasi Password"><input className={inputClass} type={showPw ? "text" : "password"} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+          <label className="flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} />Tampilkan password</label>
+          <PrimaryButton type="submit" disabled={pwBusy}>{pwBusy ? "Menyimpan..." : "Ubah Password Saya"}</PrimaryButton>
+        </form>
+      </Panel>
       {me.canManageStaff ? (
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-extrabold">Manajemen Semua Akun</h2>
             <ExpandGroup align="end"><ExpandButton variant="primary" icon={<Plus />} label="Akun baru" onClick={() => { setAccount(emptyAccount); setAccountOpen(true); }} /></ExpandGroup>
           </div>
-          <p className="text-xs text-muted">Ubah nama, foto, dan password. Password baru tidak akan tertulis di halaman login.</p>
+          <p className="text-xs text-muted">Ubah nama, foto, dan password. Klik ikon mata untuk melihat password akun; password akun lama baru bisa dilihat setelah diatur ulang sekali lewat Edit Akun. Password tidak tertulis di halaman login.</p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-[11px] text-muted uppercase"><tr><th className="py-2">Nama</th><th>Username</th><th>Role</th><th>Shift</th><th>Status</th><th></th></tr></thead>
+              <thead className="text-[11px] text-muted uppercase"><tr><th className="py-2">Nama</th><th>Username</th><th>Role</th><th>Shift</th><th>Status</th><th>Password</th><th></th></tr></thead>
               <tbody>
                 {staff.map((item) => (
                   <tr key={item.username} className="border-t border-line">
@@ -165,6 +276,12 @@ function SettingsPage() {
                     <td>{item.role}{item.canManageStaff ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">Admin 1</span> : null}</td>
                     <td>{item.shift || "-"}</td>
                     <td>{item.status}</td>
+                    <td className="whitespace-nowrap">
+                      {item.username in shownPw ? (
+                        shownPw[item.username] ? <span className="mr-2 rounded bg-slate-100 px-2 py-1 font-mono text-xs">{shownPw[item.username]}</span> : <span className="mr-2 text-[11px] text-amber-700">Belum tersimpan, atur ulang lewat Edit Akun</span>
+                      ) : null}
+                      <button type="button" className="inline-grid size-8 place-items-center rounded-lg text-accent hover:bg-blue-50" aria-label={item.username in shownPw ? `Sembunyikan password ${item.username}` : `Lihat password ${item.username}`} title={item.username in shownPw ? "Sembunyikan password" : "Lihat password"} onClick={() => togglePassword(item.username)}>{item.username in shownPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                    </td>
                     <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true, canManageStaff: Boolean(item.canManageStaff) }); setAccountOpen(true); }} /></ExpandGroup></td>
                   </tr>
                 ))}
@@ -254,49 +371,57 @@ function SettingsPage() {
           </form>
         </div>
       ) : null}
-      <Panel>
-        <h2 className="font-extrabold">Ubah Password</h2>
-        <p className="text-xs text-muted">Untuk akun yang sedang masuk ({me.name} · {me.username}). Password tidak ditampilkan di halaman login.</p>
-        <form className="mt-3 space-y-2" onSubmit={(e) => {
-          e.preventDefault();
-          if (next !== confirm) {
-            toast.error("Konfirmasi password tidak sama.");
-            return;
-          }
-          void changeOwnPassword({ data: { current, next } }).then(() => { toast.success("Password berhasil diganti"); setCurrent(""); setNext(""); setConfirm(""); }).catch((err: Error) => toast.error(err.message));
-        }}>
-          <Field label="Password Saat Ini"><input className={inputClass} type="password" value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
-          <Field label="Password Baru"><input className={inputClass} type="password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
-          <Field label="Konfirmasi Password"><input className={inputClass} type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
-          <PrimaryButton type="submit">Ubah Password Saya</PrimaryButton>
-        </form>
-      </Panel>
     </div>
   );
 }
 
-function shrinkLogo(file: File) {
-  return new Promise<string>((resolve, reject) => {
+/** Logo dibuat persegi (transparan) untuk tampilan aplikasi, dan ikon persegi berlatar putih untuk favicon / layar utama HP / notifikasi. */
+function makeBrandImages(file: File) {
+  return new Promise<{ logo: string; icon: string }>((resolve, reject) => {
     const image = new Image();
     const url = URL.createObjectURL(file);
     image.onload = () => {
-      const max = 256;
-      const scale = Math.min(max / image.width, max / image.height, 1);
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.width * scale));
-      canvas.height = Math.max(1, Math.round(image.height * scale));
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Logo tidak bisa diproses"));
+      URL.revokeObjectURL(url);
+      if (!image.width || !image.height) {
+        reject(new Error("Format gambar tidak didukung. Pakai PNG atau JPG."));
         return;
       }
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/png"));
+      function draw(size: number, solid: boolean, fill: number) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return "";
+        if (solid) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, size, size);
+        }
+        const box = size * fill;
+        const scale = Math.min(box / image.width, box / image.height);
+        const width = Math.max(1, image.width * scale);
+        const height = Math.max(1, image.height * scale);
+        ctx.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+        return canvas.toDataURL("image/png");
+      }
+      let logo = "";
+      for (const size of [256, 192, 128]) {
+        logo = draw(size, false, 1);
+        if (logo && logo.length <= 400000) break;
+      }
+      let icon = "";
+      for (const size of [512, 256, 192]) {
+        icon = draw(size, true, 0.86);
+        if (icon && icon.length <= 400000) break;
+      }
+      if (!logo || !icon || logo.length > 400000 || icon.length > 400000) {
+        reject(new Error("Logo terlalu besar atau rumit. Pilih gambar logo yang lebih sederhana."));
+        return;
+      }
+      resolve({ logo, icon });
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Logo tidak bisa dibaca"));
+      reject(new Error("Logo tidak bisa dibaca. Pakai PNG atau JPG."));
     };
     image.src = url;
   });

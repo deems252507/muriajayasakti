@@ -4,18 +4,49 @@ const shop = {
   telepon: "0852-4717-7445",
   tagline: "INTEGRATED BUSINESS SYSTEM",
   logo: "",
+  icon: "",
 };
 
+/** Hash singkat untuk penanda versi ikon (supaya browser mengambil ulang favicon saat logo diganti). */
+function brandHash(text: string) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** Ganti favicon, ikon layar utama, dan manifest di tab yang sedang terbuka mengikuti logo toko. */
+function refreshBrandIcons() {
+  if (typeof document === "undefined") return;
+  const href = `/brand/shop-icon?v=${brandHash(shop.icon || shop.logo || "bawaan")}`;
+  for (const rel of ["icon", "shortcut icon", "apple-touch-icon"]) {
+    const links = Array.from(document.head.querySelectorAll<HTMLLinkElement>("link[rel]")).filter((link) => link.rel.toLowerCase() === rel);
+    if (links.length === 0) {
+      const link = document.createElement("link");
+      link.rel = rel;
+      link.href = href;
+      document.head.appendChild(link);
+    } else {
+      for (const link of links) {
+        link.removeAttribute("sizes");
+        link.removeAttribute("type");
+        link.href = href;
+      }
+    }
+  }
+}
+
 export function setShopProfile(next: Partial<typeof shop>) {
-  const before = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}`;
+  const before = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}|${shop.icon}`;
   if (next.nama) shop.nama = next.nama;
   if (next.alamat != null) shop.alamat = next.alamat;
   if (next.telepon != null) shop.telepon = next.telepon;
   if (next.tagline != null) shop.tagline = next.tagline;
   if (next.logo != null) shop.logo = next.logo;
-  const after = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}`;
+  if (next.icon != null) shop.icon = next.icon;
+  const after = `${shop.nama}|${shop.alamat}|${shop.telepon}|${shop.tagline}|${shop.logo}|${shop.icon}`;
   if (before === after) return;
   if (typeof document !== "undefined") document.title = shop.nama;
+  refreshBrandIcons();
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mjs-shop", { detail: { ...shop } }));
 }
 

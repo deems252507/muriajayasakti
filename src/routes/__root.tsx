@@ -1,7 +1,24 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { ConfirmHost } from "@/lib/confirm";
 import appCss from "../styles.css?url";
+
+/**
+ * Platform menyisipkan manifest dan apple-touch-icon bawaan di akhir <head>. Buang keduanya di browser
+ * supaya yang dipakai hanya ikon dan nama toko (ikut berganti saat logo diganti di Pengaturan).
+ */
+function BrandLinks() {
+  useEffect(() => {
+    document.head.querySelectorAll('link[rel="manifest"]').forEach((link) => {
+      if (link.getAttribute("href") !== "/brand/manifest") link.remove();
+    });
+    document.head.querySelectorAll('link[rel="apple-touch-icon"]').forEach((link) => {
+      if (!(link.getAttribute("href") ?? "").startsWith("/brand/shop-icon")) link.remove();
+    });
+  }, []);
+  return null;
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,11 +32,11 @@ export const Route = createRootRoute({
       { name: "apple-mobile-web-app-status-bar-style", content: "black" },
     ],
     links: [
-      { rel: "icon", type: "image/png", sizes: "192x192", href: "/brand/icon-192.png" },
-      { rel: "shortcut icon", href: "/brand/icon-192.png" },
+      { rel: "icon", href: "/brand/shop-icon" },
+      { rel: "shortcut icon", href: "/brand/shop-icon" },
       { rel: "stylesheet", href: appCss },
-      { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/brand/apple-touch-icon.png" },
+      { rel: "manifest", href: "/brand/manifest" },
+      { rel: "apple-touch-icon", href: "/brand/shop-icon" },
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
@@ -33,6 +50,7 @@ export const Route = createRootRoute({
       </head>
       <body>
         <Outlet />
+        <BrandLinks />
         <Toaster position="top-center" richColors closeButton />
         <ConfirmHost />
         <Scripts />

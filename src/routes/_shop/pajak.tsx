@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Download, Printer, RotateCcw } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { inputClass, Panel } from "@/components/shop/shell";
-import { listTax } from "@/lib/shop/api";
+import { listMasters, listTax } from "@/lib/shop/api";
 import { PeriodPicker } from "@/components/shop/period";
 import { rupiah, todayInput, when } from "@/lib/shop/format";
 import { printTaxNotes } from "@/lib/shop/print";
@@ -18,6 +18,15 @@ function PajakPage() {
   const [jenis, setJenis] = usePersistedState("pajak:jenis", "");
   const [kategori, setKategori] = usePersistedState("pajak:kategori", "");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
+  const [jenisPajak, setJenisPajak] = useState<string[]>(["Aki Basah", "Aki Kering", "Oli", "Air Radiator", "Minyak Rem", "Lainnya"]);
+
+  // Daftar jenis mengikuti Master Persentase Pajak Internal (termasuk jenis yang ditambah sendiri di Pengaturan).
+  useEffect(() => {
+    void listMasters().then((res) => {
+      const names = res.pajak.filter((item) => item.aktif).map((item) => item.jenis);
+      if (names.length) setJenisPajak(names);
+    }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void listTax({ data: { start, end, jenis, kategori } }).then((data) => setRows(data as Array<Record<string, unknown>>));
@@ -76,7 +85,7 @@ function PajakPage() {
           </select>
           <input className={inputClass} list="jenis-pajak" placeholder="Ketik jenis, contoh Oli" value={kategori} onChange={(e) => setKategori(e.target.value)} />
           <datalist id="jenis-pajak">
-            {["Aki Basah", "Aki Kering", "Oli", "Air Radiator", "Minyak Rem", "Lainnya"].map((item) => <option key={item} value={item} />)}
+            {jenisPajak.map((item) => <option key={item} value={item} />)}
           </datalist>
         </div>
       </Panel>

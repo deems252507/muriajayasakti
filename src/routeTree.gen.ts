@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShopRouteImport } from './routes/_shop'
+import { Route as BrandShopIconRouteImport } from './routes/brand.shop-icon'
+import { Route as BrandManifestRouteImport } from './routes/brand.manifest'
 import { Route as ShopBarangRouteImport } from './routes/_shop/barang'
 import { Route as ShopBonRouteImport } from './routes/_shop/bon'
 import { Route as ShopDashboardRouteImport } from './routes/_shop/dashboard'
@@ -32,6 +34,16 @@ import { Route as ShopStokRouteImport } from './routes/_shop/stok'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandShopIconRoute = BrandShopIconRouteImport.update({
+  id: '/brand/shop-icon',
+  path: '/brand/shop-icon',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandManifestRoute = BrandManifestRouteImport.update({
+  id: '/brand/manifest',
+  path: '/brand/manifest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShopRoute = ShopRouteImport.update({
@@ -126,6 +138,8 @@ const ShopStokRoute = ShopStokRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/brand/manifest': typeof BrandManifestRoute
+  '/brand/shop-icon': typeof BrandShopIconRoute
   '/barang': typeof ShopBarangRoute
   '/bon': typeof ShopBonRoute
   '/dashboard': typeof ShopDashboardRoute
@@ -146,6 +160,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/brand/manifest': typeof BrandManifestRoute
+  '/brand/shop-icon': typeof BrandShopIconRoute
   '/barang': typeof ShopBarangRoute
   '/bon': typeof ShopBonRoute
   '/dashboard': typeof ShopDashboardRoute
@@ -167,6 +183,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/brand/manifest': typeof BrandManifestRoute
+  '/brand/shop-icon': typeof BrandShopIconRoute
   '/_shop': typeof ShopRouteWithChildren
   '/_shop/barang': typeof ShopBarangRoute
   '/_shop/bon': typeof ShopBonRoute
@@ -190,6 +208,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/brand/manifest'
+    | '/brand/shop-icon'
     | '/barang'
     | '/bon'
     | '/dashboard'
@@ -210,6 +230,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/brand/manifest'
+    | '/brand/shop-icon'
     | '/barang'
     | '/bon'
     | '/dashboard'
@@ -231,6 +253,8 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_shop'
+    | '/brand/manifest'
+    | '/brand/shop-icon'
     | '/_shop/barang'
     | '/_shop/bon'
     | '/_shop/dashboard'
@@ -253,10 +277,26 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ShopRoute: typeof ShopRouteWithChildren
+  BrandManifestRoute: typeof BrandManifestRoute
+  BrandShopIconRoute: typeof BrandShopIconRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/brand/manifest': {
+      id: '/brand/manifest'
+      path: '/brand/manifest'
+      fullPath: '/brand/manifest'
+      preLoaderRoute: typeof BrandManifestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/brand/shop-icon': {
+      id: '/brand/shop-icon'
+      path: '/brand/shop-icon'
+      fullPath: '/brand/shop-icon'
+      preLoaderRoute: typeof BrandShopIconRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -438,6 +478,8 @@ const ShopRouteWithChildren = ShopRoute._addFileChildren(ShopRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ShopRoute: ShopRouteWithChildren,
+  BrandManifestRoute: BrandManifestRoute,
+  BrandShopIconRoute: BrandShopIconRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

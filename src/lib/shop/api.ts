@@ -141,20 +141,44 @@ export const listMasters = createServerFn({ method: "GET" })
     return run();
   });
 
+export const listKategoriBarang = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { listKategoriBarang: run } = await import("./logic.server");
+    return run();
+  });
+
 export const savePajak = createServerFn({ method: "POST" })
-  .validator((input: { items: { id: number; persentase: number }[] }) => input)
+  .validator((input: { items: { id: number; persentase: number | string; aktif?: boolean }[] }) => input)
   .handler(async ({ data }) => {
     const { savePajak: run } = await import("./logic.server");
     return run(data);
   });
 
+export const addPajak = createServerFn({ method: "POST" })
+  .validator((input: { jenis: string; persentase: number | string }) => ({
+    jenis: String(input?.jenis ?? ""),
+    persentase: String(input?.persentase ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { addPajak: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const deletePajak = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { deletePajak: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const saveShopProfile = createServerFn({ method: "POST" })
-  .validator((input: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string }) => ({
+  .validator((input: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string; icon?: string }) => ({
     nama: String(input?.nama ?? ""),
     alamat: String(input?.alamat ?? ""),
     telepon: String(input?.telepon ?? ""),
     tagline: String(input?.tagline ?? ""),
     logo: String(input?.logo ?? ""),
+    icon: String(input?.icon ?? ""),
   }))
   .handler(async ({ data }) => {
     const { saveShopProfile: run } = await import("./logic.server");
@@ -520,6 +544,13 @@ export const saveStaff = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }) => {
     const { saveStaff: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const revealPassword = createServerFn({ method: "POST" })
+  .validator((input: { username: string }) => ({ username: String(input?.username ?? "") }))
+  .handler(async ({ data }) => {
+    const { revealPassword: run } = await import("./logic.server");
     return run(data);
   });
 

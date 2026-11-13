@@ -37,8 +37,8 @@ self.addEventListener("push", (event) => {
         body: count > 1 ? lines.join("\n") : bodyText,
         tag,
         renotify: true,
-        icon: "/brand/apple-touch-icon.png",
-        badge: "/brand/apple-touch-icon.png",
+        icon: "/brand/shop-icon",
+        badge: "/brand/shop-icon",
         // Komentar: satu getar pendek. Pola 3 getar cepat terasa seperti detak jantung di Android.
         vibrate: data.soft ? [220] : data.mention ? [200, 80, 200, 80, 200] : [120, 60, 120],
         requireInteraction: Boolean(data.mention) && !data.soft,

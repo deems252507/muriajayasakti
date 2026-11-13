@@ -11,6 +11,10 @@ export const Route = createFileRoute("/_shop")({
       const path = location.pathname.replace(/\/+$/, "") || "/";
       if (!["/barang", "/chat"].includes(path)) throw redirect({ to: "/barang" });
     }
+    // Pengaturan (termasuk password) hanya untuk Admin 1.
+    if (!me.canManageStaff && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {
+      throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
+    }
     return { me };
   },
   component: ShopLayout,

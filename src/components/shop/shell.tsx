@@ -368,11 +368,13 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       document.title = baseTitle;
     };
   }, []);
-  const groups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
+  const baseGroups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
+  // Pengaturan hanya terlihat oleh Admin 1 (Admin yang dicentang kelola akun).
+  const groups = (me.canManageStaff ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as typeof baseGroups;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
   useEffect(() => {
-    function apply(profile: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string }) {
+    function apply(profile: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string; icon?: string }) {
       if (!profile?.nama) return;
       setBrand(profile.nama);
       setLogo(profile.logo || "/brand/logo.png");

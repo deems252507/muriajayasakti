@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { packFromName } from "@/lib/shop/format";
 import type { Bank, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
@@ -33,6 +33,49 @@ function cleanPhoto(value: unknown) {
     throw new Error("Foto harus gambar kecil. Pilih ulang fotonya.");
   }
   return photo;
+}
+
+/**
+ * Password yang bisa dilihat Admin 1: disimpan terenkripsi AES-256-GCM (bukan teks biasa) di kolom password_enc.
+ * Kunci dari env PASSWORD_VAULT_KEY (disarankan diisi sendiri di Vercel); tanpa itu dipakai turunan DATABASE_URL.
+ */
+function vaultKey() {
+  const secret = process.env.PASSWORD_VAULT_KEY || process.env.DATABASE_URL || "muriajayasakti-local-vault";
+  return scryptSync(secret, "mjs-password-vault", 32);
+}
+
+function encryptPassword(password: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", vaultKey(), iv);
+  const data = Buffer.concat([cipher.update(password, "utf8"), cipher.final()]);
+  return `${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${data.toString("hex")}`;
+}
+
+function decryptPassword(stored: string) {
+  try {
+    const [iv, tag, data] = stored.split(":");
+    if (!iv || !tag || !data) return null;
+    const decipher = createDecipheriv("aes-256-gcm", vaultKey(), Buffer.from(iv, "hex"));
+    decipher.setAuthTag(Buffer.from(tag, "hex"));
+    return Buffer.concat([decipher.update(Buffer.from(data, "hex")), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Logo / ikon toko: hanya gambar PNG atau JPEG kecil (data URL). Kosong = pakai bawaan. */
+function cleanBrandImage(value: unknown, label: string) {
+  const image = String(value ?? "");
+  if (!image) return "";
+  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 500000) {
+    throw new Error(`${label} harus gambar PNG/JPEG yang lebih kecil. Pilih ulang gambarnya.`);
+  }
+  return image;
+}
+
+/** Tanda versi gambar supaya browser mengambil ulang favicon/ikon saat logo diganti. */
+function brandVersion(...parts: string[]) {
+  return createHash("md5").update(parts.join("|")).digest("hex").slice(0, 10);
 }
 
 const defaultPasswords: Record<string, string> = {
@@ -79,10 +122,10 @@ async function ensureStaff() {
     ];
     for (const [username, password, role, name, shift] of defaults) {
       await db.query(
-        `insert into staff (username, password_hash, role, name, shift, status)
-         values ($1, $2, $3, $4, $5, 'Aktif')
+        `insert into staff (username, password_hash, password_enc, role, name, shift, status)
+         values ($1, $2, $6, $3, $4, $5, 'Aktif')
          on conflict (username) do nothing`,
-        [username, hashPassword(password), role, name, shift],
+        [username, hashPassword(password), role, name, shift, encryptPassword(password)],
       );
     }
   }
@@ -942,8 +985,8 @@ export async function listMasters() {
     `select id, nama, rekening, atas_nama, aktif, keterangan from master_bank order by id`,
   );
   const pajak: Array<Record<string, unknown>> = me.role === "Staf" ? [] : await db.query(`select id, jenis, persentase, aktif from master_pajak order by id`);
-  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string }>(
-    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo from shop_profile where id = 1`,
+  const [profile] = await db.query<{ nama: string; alamat: string; telepon: string; tagline: string; logo: string; icon: string }>(
+    `select nama, alamat, telepon, coalesce(tagline, 'INTEGRATED BUSINESS SYSTEM') as tagline, coalesce(logo, '') as logo, coalesce(icon, '') as icon from shop_profile where id = 1`,
   );
   return {
     banks: banks.map((row) => {
@@ -966,26 +1009,61 @@ export async function listMasters() {
         aktif: Boolean(p.aktif),
       } satisfies Pajak;
     }),
-    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "" },
+    profile: profile ?? { nama: "MURIA JAYA SAKTI", alamat: "Jl. Raja Alam RT.13 No.22", telepon: "0852-4717-7445", tagline: "INTEGRATED BUSINESS SYSTEM", logo: "", icon: "" },
   };
+}
+
+/** Kategori barang yang dipakai di Daftar Sparepart: Pengaturan memakainya untuk menunjukkan kategori yang belum punya persentase pajak sendiri. */
+export async function listKategoriBarang() {
+  await requireStaff();
+  const db = await sql();
+  const rows = await db.query<{ kategori: string }>(
+    `select distinct btrim(kategori) as kategori from products where btrim(coalesce(kategori, '')) <> '' order by 1`,
+  );
+  return rows.map((row) => String(row.kategori ?? "")).filter(Boolean);
 }
 
 export async function saveShopProfile(data: any) {
   const me = await requireStaff();
-  assertAdmin(me);
+  assertManageStaff(me);
   const nama = String(data.nama ?? "").trim();
   if (!nama) throw new Error("Nama toko wajib diisi.");
-  const logo = String(data.logo ?? "");
-  if (logo.length > 500000) throw new Error("Logo terlalu besar. Pilih gambar yang lebih kecil.");
+  const logo = cleanBrandImage(data.logo, "Logo");
+  // Ikon (favicon, layar utama HP, notifikasi) selalu ikut logo: logo dikosongkan = ikon ikut dikosongkan.
+  const icon = logo ? cleanBrandImage(data.icon, "Ikon") : "";
+  const alamat = String(data.alamat ?? "").trim();
+  const telepon = String(data.telepon ?? "").trim();
+  const tagline = String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM";
   const db = await sql();
   await db.query(
-    `insert into shop_profile (id, nama, alamat, telepon, tagline, logo)
-     values (1, $1, $2, $3, $4, $5)
-     on conflict (id) do update set nama = excluded.nama, alamat = excluded.alamat, telepon = excluded.telepon, tagline = excluded.tagline, logo = excluded.logo`,
-    [nama, String(data.alamat ?? "").trim(), String(data.telepon ?? "").trim(), String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM", logo],
+    `insert into shop_profile (id, nama, alamat, telepon, tagline, logo, icon)
+     values (1, $1, $2, $3, $4, $5, $6)
+     on conflict (id) do update set nama = excluded.nama, alamat = excluded.alamat, telepon = excluded.telepon, tagline = excluded.tagline, logo = excluded.logo, icon = excluded.icon`,
+    [nama, alamat, telepon, tagline, logo, icon],
   );
   await audit(me, `Ubah profil toko ${nama}`);
-  return { ok: true, nama, alamat: String(data.alamat ?? "").trim(), telepon: String(data.telepon ?? "").trim(), tagline: String(data.tagline ?? "").trim() || "INTEGRATED BUSINESS SYSTEM", logo };
+  return { ok: true, nama, alamat, telepon, tagline, logo, icon };
+}
+
+/** Gambar ikon aplikasi untuk favicon / layar utama / notifikasi. null = pakai berkas bawaan. */
+export async function shopIconImage() {
+  const db = await sql();
+  const [row] = await db.query<{ logo: string; icon: string }>(
+    `select coalesce(logo, '') as logo, coalesce(icon, '') as icon from shop_profile where id = 1`,
+  );
+  const source = String(row?.icon || row?.logo || "");
+  const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(source);
+  if (!match) return null;
+  return { type: match[1], bytes: Buffer.from(match[2], "base64"), version: brandVersion(source) };
+}
+
+/** Nama toko untuk manifest aplikasi (nama di layar utama HP). */
+export async function shopManifestInfo() {
+  const db = await sql();
+  const [row] = await db.query<{ nama: string; logo: string; icon: string }>(
+    `select nama, coalesce(logo, '') as logo, coalesce(icon, '') as icon from shop_profile where id = 1`,
+  );
+  return { nama: String(row?.nama || "MURIA JAYA SAKTI"), custom: Boolean(row?.icon || row?.logo), version: brandVersion(String(row?.icon || row?.logo || "")) };
 }
 
 export async function publicShop() {
@@ -1008,25 +1086,69 @@ export async function publicShop() {
 
 
 
+function cleanPajakJenis(value: unknown) {
+  const jenis = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!jenis) throw new Error("Nama jenis pajak wajib diisi.");
+  if (jenis.length > 40) throw new Error("Nama jenis pajak maksimal 40 huruf.");
+  return jenis;
+}
+
+function cleanPersen(value: unknown) {
+  const text = String(value ?? "").replace(",", ".").trim();
+  const persen = Number(text);
+  if (text === "" || !Number.isFinite(persen) || persen < 0 || persen > 100) throw new Error("Persentase pajak harus angka 0 sampai 100.");
+  return Math.round(persen * 100) / 100;
+}
+
 export async function savePajak(data: any) {
     const me = await requireStaff();
-    assertAdmin(me);
+    assertManageStaff(me);
     const db = await sql();
-    for (const item of data.items ?? []) {
-      await db.query(`update master_pajak set persentase = $2 where id = $1`, [
-        item.id,
-        Number(item.persentase) || 0,
-      ]);
+    const items: Array<{ id: number; persentase: unknown; aktif?: boolean }> = Array.isArray(data.items) ? data.items : [];
+    // Cek semua dulu supaya tidak ada yang tersimpan setengah-setengah kalau ada satu yang salah.
+    const clean = items.map((item) => ({ id: Number(item.id), persen: cleanPersen(item.persentase), aktif: item.aktif }));
+    for (const item of clean) {
+      const [row] = await db.query<{ jenis: string }>(`select jenis from master_pajak where id = $1`, [item.id]);
+      if (!row) throw new Error("Jenis pajak tidak ditemukan. Muat ulang halaman.");
+      const isLainnya = row.jenis.trim().toLowerCase() === "lainnya";
+      if (isLainnya && item.aktif === false) throw new Error('Jenis "Lainnya" tidak boleh dinonaktifkan.');
+      await db.query(
+        `update master_pajak set persentase = $2, aktif = coalesce($3::boolean, aktif) where id = $1`,
+        [item.id, item.persen, isLainnya ? true : typeof item.aktif === "boolean" ? item.aktif : null],
+      );
     }
     await audit(me, "Ubah master pajak");
     return { ok: true };
   }
 
+export async function addPajak(data: any) {
+    const me = await requireStaff();
+    assertManageStaff(me);
+    const jenis = cleanPajakJenis(data.jenis);
+    const persen = cleanPersen(data.persentase);
+    const db = await sql();
+    const [dup] = await db.query<{ id: number }>(`select id from master_pajak where lower(btrim(jenis)) = lower($1) limit 1`, [jenis]);
+    if (dup) throw new Error(`Jenis pajak "${jenis}" sudah ada.`);
+    await db.query(`insert into master_pajak (jenis, persentase, aktif) values ($1, $2, true)`, [jenis, persen]);
+    await audit(me, `Tambah jenis pajak ${jenis} (${persen}%)`);
+    return { ok: true };
+  }
 
+export async function deletePajak(data: any) {
+    const me = await requireStaff();
+    assertManageStaff(me);
+    const db = await sql();
+    const [row] = await db.query<{ jenis: string }>(`select jenis from master_pajak where id = $1`, [Number(data.id)]);
+    if (!row) throw new Error("Jenis pajak tidak ditemukan. Muat ulang halaman.");
+    if (row.jenis.trim().toLowerCase() === "lainnya") throw new Error('Jenis "Lainnya" tidak boleh dihapus karena dipakai untuk semua kategori lain.');
+    await db.query(`delete from master_pajak where id = $1`, [Number(data.id)]);
+    await audit(me, `Hapus jenis pajak ${row.jenis}`);
+    return { ok: true };
+  }
 
 export async function saveBank(data: any) {
     const me = await requireStaff();
-    assertAdmin(me);
+    assertManageStaff(me);
     if (!data.nama?.trim()) throw new Error("Nama bank wajib diisi.");
     const db = await sql();
     if (data.id) {
@@ -1973,8 +2095,9 @@ export async function listTax(data: any): Promise<any> {
       where.push(`kategori ilike $${params.length}`);
     }
     if (data.kategori === "Lainnya") {
+      // "Lainnya" = semua kategori yang tidak cocok dengan jenis pajak aktif lain (termasuk jenis yang ditambah sendiri).
       where.push(
-        `kategori not ilike '%Aki Basah%' and kategori not ilike '%Aki Kering%' and kategori not ilike '%Oli%' and kategori not ilike '%Air Radiator%' and kategori not ilike '%Minyak Rem%'`,
+        `not exists (select 1 from master_pajak mp where mp.aktif and lower(btrim(mp.jenis)) <> 'lainnya' and btrim(mp.jenis) <> '' and lower(coalesce(tax_lines.kategori, '')) like '%' || lower(btrim(mp.jenis)) || '%')`,
       );
     }
     const rows = await db.query(
@@ -2064,6 +2187,22 @@ export async function listStaff() {
 
 
 
+/** Lihat password sebuah akun. Hanya Admin 1; setiap pelihatan tercatat di Riwayat Aktivitas. */
+export async function revealPassword(data: any) {
+  const me = await requireStaff();
+  assertManageStaff(me);
+  const db = await sql();
+  const [row] = await db.query<{ username: string; password_hash: string; password_enc: string }>(
+    `select username, password_hash, coalesce(password_enc, '') as password_enc from staff where username = $1`,
+    [String(data.username ?? "")],
+  );
+  if (!row) throw new Error("Akun tidak ditemukan.");
+  let password = row.password_enc ? decryptPassword(row.password_enc) : null;
+  if (!password && stillDefault(row.username, String(row.password_hash ?? ""))) password = defaultPasswords[row.username] ?? null;
+  await audit(me, `Lihat password akun ${row.username}`);
+  return { password };
+}
+
 export async function saveStaff(data: any) {
     const me = await requireStaff();
     assertManageStaff(me);
@@ -2100,8 +2239,8 @@ export async function saveStaff(data: any) {
     if (existing.length) {
       if (data.password) {
         await db.query(
-          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7, can_manage_staff=$8 where username=$1`,
-          [username, data.name.trim(), role, shift, status, hashPassword(data.password), photo, canManage],
+          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7, can_manage_staff=$8, password_enc=$9 where username=$1`,
+          [username, data.name.trim(), role, shift, status, hashPassword(data.password), photo, canManage, encryptPassword(String(data.password))],
         );
       } else {
         await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6, can_manage_staff=$7 where username=$1`, [
@@ -2117,8 +2256,8 @@ export async function saveStaff(data: any) {
     } else {
       if (!data.password) throw new Error("Password wajib untuk akun baru.");
       await db.query(
-        `insert into staff (username, password_hash, role, name, shift, status, photo, can_manage_staff) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [username, hashPassword(data.password), role, data.name.trim(), shift, status, photo, canManage],
+        `insert into staff (username, password_hash, role, name, shift, status, photo, can_manage_staff, password_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [username, hashPassword(data.password), role, data.name.trim(), shift, status, photo, canManage, encryptPassword(String(data.password))],
       );
     }
     await audit(me, `Simpan akun ${username}`);
@@ -2128,7 +2267,8 @@ export async function saveStaff(data: any) {
 
 
 export async function updateOwnProfile(data: any) {
-  const me = await requireStaffAny();
+  const me = await requireStaff();
+  assertManageStaff(me);
   const name = String(data.name ?? "").trim();
   if (!name) throw new Error("Nama wajib diisi.");
   const photo = cleanPhoto(data.photo);
@@ -2139,15 +2279,22 @@ export async function updateOwnProfile(data: any) {
 }
 
 export async function changeOwnPassword(data: any) {
-    const me = await requireStaffAny();
-    if (!data.next || data.next.length < 4) throw new Error("Password baru minimal 4 karakter.");
+    // Hanya Admin 1 (Admin yang dicentang kelola akun) yang boleh mengubah password. Akun lain minta ke Admin 1.
+    const me = await requireStaff();
+    assertManageStaff(me);
+    const current = String(data?.current ?? "");
+    const next = String(data?.next ?? "");
+    if (!current) throw new Error("Isi password saat ini.");
+    if (next.length < 4) throw new Error("Password baru minimal 4 karakter.");
+    if (next === current) throw new Error("Password baru harus berbeda dari password saat ini.");
     const db = await sql();
     const [row] = await db.query<{ password_hash: string }>(
       `select password_hash from staff where username = $1`,
       [me.username],
     );
-    if (!row || !verifyPassword(data.current, row.password_hash)) throw new Error("Password sekarang salah.");
-    await db.query(`update staff set password_hash = $2 where username = $1`, [me.username, hashPassword(data.next)]);
+    if (!row || !verifyPassword(current, String(row.password_hash))) throw new Error("Password saat ini salah.");
+    await db.query(`update staff set password_hash = $2, password_enc = $3 where username = $1`, [me.username, hashPassword(next), encryptPassword(next)]);
+    await audit(me, "Ganti password akun sendiri");
     return { ok: true };
   }
 
