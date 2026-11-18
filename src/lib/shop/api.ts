@@ -588,6 +588,13 @@ export const presenceBeat = createServerFn({ method: "POST" })
     return run();
   });
 
+export const pokeStaff = createServerFn({ method: "POST" })
+  .validator((input: { username: string; message: string }) => ({ username: String(input?.username ?? ""), message: String(input?.message ?? "") }))
+  .handler(async ({ data }) => {
+    const { pokeStaff: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const chatUnread = createServerFn({ method: "GET" })
   .handler(async () => {
     const { chatUnread: run } = await import("./logic.server");

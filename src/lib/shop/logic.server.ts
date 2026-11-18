@@ -2410,9 +2410,11 @@ export async function presenceBeat() {
     [me.username],
   );
   const rows = await db.query<Record<string, unknown>>(
-    `select username, name, role, photo, extract(epoch from (now() - last_seen_at))::int as seen_ago
+    `select username, name, role, photo, extract(epoch from (now() - last_seen_at))::int as seen_ago,
+            exists (select 1 from mjs_push_subscriptions ps where ps.username = staff.username) as has_push
      from staff where status = 'Aktif'`,
   );
+  const canPoke = me.role === "Admin" || me.role === "Owner";
   const rank: Record<string, number> = { Owner: 0, Admin: 1, Kasir: 2, Staf: 3 };
   return rows
     .map((row) => ({
@@ -2421,6 +2423,8 @@ export async function presenceBeat() {
       role: String(row.role ?? ""),
       photo: String(row.photo ?? ""),
       seenAgo: row.seen_ago == null ? null : Math.max(0, Number(row.seen_ago)),
+      // Hanya Admin/Owner yang perlu tahu siapa yang bisa dicolek.
+      hasPush: canPoke && Boolean(row.has_push),
     }))
     .sort((a, b) => {
       const ao = a.seenAgo != null && a.seenAgo < 60 ? 0 : 1;
@@ -2431,6 +2435,31 @@ export async function presenceBeat() {
       if (ao === 1 && as !== bs) return as - bs;
       return (rank[a.role] ?? 3) - (rank[b.role] ?? 3) || a.name.localeCompare(b.name);
     });
+}
+
+/** Colek staf yang sedang tidak aktif lewat notifikasi HP. Hanya Admin/Owner, maksimal 1 kali per menit untuk staf yang sama. */
+export async function pokeStaff(data: { username: string; message: string }) {
+  const me = await requireStaffAny();
+  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Hanya Admin dan Owner yang dapat memanggil staf.");
+  const target = String(data.username ?? "").trim();
+  if (!target || target === me.username) throw new Error("Staf tujuan tidak valid.");
+  const db = await sql();
+  const [t] = await db.query<{ name: string }>(`select name from staff where username = $1 and status = 'Aktif'`, [target]);
+  if (!t) throw new Error("Staf tidak ditemukan.");
+  const [subs] = await db.query<{ n: number }>(`select count(*)::int as n from mjs_push_subscriptions where username = $1`, [target]);
+  if (!Number(subs?.n)) throw new Error(`${t.name} belum mengaktifkan notifikasi.`);
+  const [recent] = await db.query<{ n: number }>(
+    `select count(*)::int as n from mjs_poke_log where sender = $1 and target = $2 and created_at > now() - interval '1 minute'`,
+    [me.username, target],
+  );
+  if (Number(recent?.n)) throw new Error(`Tunggu sebentar, ${t.name} baru saja dipanggil.`);
+  const text = String(data.message ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || "Tolong buka aplikasi Muria Jaya Sakti";
+  await db.query(`insert into mjs_poke_log (sender, target) values ($1, $2)`, [me.username, target]);
+  await Promise.race([
+    sendChatPush(db, [target], { title: `${me.name} memanggil Anda`, body: text, tag: `poke-${me.username}-${Date.now()}`, target: me.username, mention: true }),
+    new Promise((resolve) => setTimeout(resolve, 4000)),
+  ]);
+  return { ok: true, name: String(t.name) };
 }
 
 /** Total pesan belum dibaca (pribadi + grup) dan pesan terbaru, untuk badge dan notifikasi. */

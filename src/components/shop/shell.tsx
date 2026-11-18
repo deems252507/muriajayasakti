@@ -5,7 +5,6 @@ import {
   ClipboardList,
   History,
   LayoutDashboard,
-  LogOut,
   Menu,
   MessageCircle,
   Package,
@@ -29,6 +28,7 @@ import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setPrintUser, setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
 import { PresenceButton } from "@/components/shop/presence";
+import { ProfileMenu } from "@/components/shop/profile-menu";
 import { LogoutDialog } from "@/components/shop/logout-dialog";
 import type { Staff } from "@/lib/shop/types";
 
@@ -449,7 +449,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                   Cetak PDF
                 </button>
               ) : null}
-              <PresenceButton meUsername={me.username} />
+              <PresenceButton meUsername={me.username} meRole={me.role} />
               <Link
                 to="/chat"
                 key={`chat-${chatBadge > 0 ? "n" : "0"}`}
@@ -464,24 +464,12 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
               <button className="grid size-10 place-items-center rounded-xl border border-line bg-white text-muted" onClick={() => window.location.reload()} aria-label="Muat ulang">
                 <RefreshCw className="size-4" />
               </button>
-              <div className="hidden items-center gap-2 text-right sm:flex">
-                <div>
-                  <p className="text-xs font-semibold text-ink">{me.name}</p>
-                  <p className="text-[11px] text-muted">{me.role}</p>
-                </div>
-                {me.photo ? (
-                  <img src={me.photo} alt="" className="size-9 rounded-full object-cover ring-1 ring-line" />
-                ) : (
-                  <span className="grid size-9 place-items-center rounded-full bg-blue-100 text-xs font-bold text-accent">{me.name.slice(0, 1).toUpperCase()}</span>
-                )}
-              </div>
-              <button
-                className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-medium text-danger"
-                onClick={() => setAskLogout(true)}
-              >
-                <LogOut className="size-4" />
-                <span className="hidden sm:inline">Keluar</span>
-              </button>
+              <ProfileMenu
+                me={me}
+                canProfile={groups.some((group) => group.items.some((item) => item.to === "/pengaturan"))}
+                canSettings={Boolean(me.canManageStaff)}
+                onLogout={() => setAskLogout(true)}
+              />
             </div>
           </div>
         </header>
