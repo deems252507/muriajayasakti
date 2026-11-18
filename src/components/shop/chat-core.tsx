@@ -96,15 +96,85 @@ export function getFile(id: number) {
   return promise;
 }
 
-async function downloadFile(id: number) {
+/* ------------------------------------------------------------------ */
+/* Unduh / simpan file                                                 */
+/* iPhone (terutama aplikasi yang dipasang di layar utama / PWA):      */
+/* - a[download] tidak menyimpan apa pun                               */
+/* - lembar Bagikan HANYA mau terbuka bila dipanggil langsung dari     */
+/*   ketukan jari. Kalau ada jeda (ambil file dulu), izin ketukan      */
+/*   hangus dan gagal. Maka file disiapkan lebih dulu (prepareFile).   */
+/* ------------------------------------------------------------------ */
+const shareCache = new Map<number, File>();
+export async function prepareFile(id: number): Promise<File> {
+  const hit = shareCache.get(id);
+  if (hit) return hit;
+  const f = await getFile(id);
+  const blob = await (await fetch(f.dataUrl)).blob();
+  const file = new File([blob], f.name, { type: blob.type || "application/octet-stream" });
+  if (shareCache.size > 20) { const old = shareCache.keys().next().value; if (old !== undefined) shareCache.delete(old); }
+  shareCache.set(id, file);
+  return file;
+}
+
+type ShareNav = Navigator & { canShare?: (d: ShareData) => boolean };
+const canShareFile = (file: File) => {
+  const n = navigator as ShareNav;
+  return typeof n.share === "function" && Boolean(n.canShare?.({ files: [file] }));
+};
+const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+async function shareFile(file: File): Promise<"ok" | "cancel" | "blocked" | "fail"> {
   try {
-    const f = await getFile(id);
+    await navigator.share({ files: [file] }); // dipanggil sinkron dari ketukan: jangan ada await sebelum baris ini
+    return "ok";
+  } catch (e) {
+    const name = (e as Error)?.name;
+    if (name === "AbortError") return "cancel";
+    if (name === "NotAllowedError") return "blocked";
+    return "fail";
+  }
+}
+
+function saveByLink(file: File) {
+  const url = URL.createObjectURL(file);
+  if (isIos()) {
+    window.open(url, "_blank");
+    toast.message(file.type.startsWith("image/") ? "Tahan lama foto, lalu pilih Simpan ke Foto" : "Tekan ikon Bagikan, lalu Simpan ke File", { duration: 8000 });
+  } else {
     const a = document.createElement("a");
-    a.href = f.dataUrl;
-    a.download = f.name;
+    a.href = url;
+    a.download = file.name;
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function downloadFile(id: number) {
+  try {
+    // Jalur cepat: file sudah siap, panggil Bagikan LANGSUNG di dalam ketukan.
+    const ready = shareCache.get(id);
+    if (ready && canShareFile(ready)) {
+      const r = await shareFile(ready);
+      if (r === "ok" || r === "cancel") return;
+      saveByLink(ready);
+      return;
+    }
+    const file = ready ?? (await prepareFile(id));
+    if (canShareFile(file)) {
+      const r = await shareFile(file);
+      if (r === "ok" || r === "cancel") return;
+      if (r === "blocked") {
+        // Izin ketukan sudah hangus (file besar / jaringan lambat): minta ketukan baru, file sudah siap.
+        toast("File siap disimpan", {
+          duration: 20_000,
+          action: { label: "Simpan", onClick: () => { void shareFile(file).then((x) => { if (x === "fail" || x === "blocked") saveByLink(file); }); } },
+        });
+        return;
+      }
+    }
+    saveByLink(file);
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "Gagal mengunduh file");
   }
@@ -388,6 +458,7 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
     setSrc("");
     setFailed(false);
     getFile(cur.id).then((f) => { if (alive) setSrc(f.dataUrl); }).catch(() => { if (alive) setFailed(true); });
+    void prepareFile(cur.id).catch(() => undefined); // siapkan file agar tombol Unduh langsung membuka Bagikan (iPhone)
     // Muat foto di kiri-kanan lebih awal supaya geser terasa cepat.
     for (const n of [items[pos - 1], items[pos + 1]]) if (n) getFile(n.id).catch(() => undefined);
     return () => { alive = false; };

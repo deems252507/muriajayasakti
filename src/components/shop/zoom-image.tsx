@@ -89,19 +89,27 @@ export function ZoomableImage({
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoomAt]);
 
-  // Cegah zoom halaman oleh browser (iOS Safari memakai gesturestart, browser lain memakai touchmove 2 jari).
+  // Cegah zoom bawaan browser. iPhone (iOS Safari) MENGABAIKAN user-scalable=no / maximum-scale, jadi satu-satunya cara
+  // yang andal: batalkan sentuhan 2 jari (touchstart/touchmove non-passive) dan event gesture* milik Safari.
+  // Dipasang di document selama foto terbuka agar cubitan di bagian mana pun layar tidak men-zoom halaman.
   useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const block = (e: Event) => e.preventDefault();
-    const blockMulti = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault(); };
-    el.addEventListener("touchmove", blockMulti, { passive: false });
-    document.addEventListener("gesturestart", block);
-    document.addEventListener("gesturechange", block);
+    const block = (e: Event) => { if (e.cancelable) e.preventDefault(); };
+    const multi = (e: TouchEvent) => {
+      const scaled = typeof (e as TouchEvent & { scale?: number }).scale === "number" && (e as TouchEvent & { scale?: number }).scale !== 1;
+      if ((e.touches.length > 1 || scaled) && e.cancelable) e.preventDefault();
+    };
+    const opt = { passive: false } as AddEventListenerOptions;
+    document.addEventListener("touchstart", multi, opt);
+    document.addEventListener("touchmove", multi, opt);
+    document.addEventListener("gesturestart", block, opt);
+    document.addEventListener("gesturechange", block, opt);
+    document.addEventListener("gestureend", block, opt);
     return () => {
-      el.removeEventListener("touchmove", blockMulti);
+      document.removeEventListener("touchstart", multi);
+      document.removeEventListener("touchmove", multi);
       document.removeEventListener("gesturestart", block);
       document.removeEventListener("gesturechange", block);
+      document.removeEventListener("gestureend", block);
     };
   }, []);
 
@@ -252,6 +260,7 @@ export function ZoomableImage({
             WebkitUserSelect: "none",
             userSelect: "none",
             WebkitTouchCallout: "none",
+            touchAction: "none",
           }}
         />
       </div>
