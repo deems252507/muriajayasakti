@@ -42,7 +42,7 @@ export function ProfileMenu({
         type="button"
         aria-label={`Menu akun ${me.name}`}
         aria-expanded={open}
-        className="flex min-h-10 items-center gap-2 rounded-xl border border-line bg-white py-1 pr-2 pl-1 hover:bg-slate-50"
+        className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-line bg-white pr-2 pl-1 hover:bg-slate-50 sm:gap-2"
         onClick={() => setOpen((v) => !v)}
       >
         <Avatar c={me} size="size-8" />
@@ -50,7 +50,7 @@ export function ProfileMenu({
           <span className="block text-xs font-semibold leading-tight text-ink">{me.name}</span>
           <span className="block text-[11px] leading-tight text-muted">{me.role}</span>
         </span>
-        <ChevronDown className={`size-4 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`size-4 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
         <div className="absolute top-12 right-0 z-40 w-[min(280px,calc(100vw-24px))] rounded-2xl border border-line bg-slate-50 p-1 shadow-xl">
