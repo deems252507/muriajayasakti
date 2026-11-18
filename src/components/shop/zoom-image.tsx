@@ -18,13 +18,16 @@ export function ZoomableImage({
   alt,
   onSwipe,
   onSwipeDown,
-  onBackdropTap,
+  onTap,
+  hideControls,
 }: {
   src: string;
   alt: string;
   onSwipe?: (dir: 1 | -1) => void;
   onSwipeDown?: () => void;
-  onBackdropTap?: () => void;
+  /** Satu ketukan (bukan ketuk dua kali): dipakai untuk menampilkan / menyembunyikan tombol & strip foto, seperti WhatsApp. */
+  onTap?: () => void;
+  hideControls?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLImageElement>(null);
@@ -134,6 +137,8 @@ export function ZoomableImage({
   const pan = useRef<{ x: number; y: number; view: View } | null>(null);
   const tap = useRef<{ x: number; y: number; t: number; moved: boolean; multi: boolean; downOnImg: boolean } | null>(null);
   const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
+  const tapTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (tapTimer.current !== null) window.clearTimeout(tapTimer.current); }, []);
 
   const mid = () => {
     const a = [...pts.current.values()];
@@ -223,12 +228,15 @@ export function ZoomableImage({
       const last = lastTap.current;
       if (last && Date.now() - last.t < 320 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30) {
         lastTap.current = null;
+        if (tapTimer.current !== null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; }
         if (viewRef.current.s > 1.05) setView({ s: 1, x: 0, y: 0 });
         else zoomAt(2.6, e.clientX, e.clientY);
         return;
       }
       lastTap.current = { x: e.clientX, y: e.clientY, t: Date.now() };
-      if (!t.downOnImg) onBackdropTap?.();
+      // Tunggu sebentar: kalau ternyata ketuk dua kali (zoom), ketukan pertama dibatalkan.
+      if (tapTimer.current !== null) window.clearTimeout(tapTimer.current);
+      tapTimer.current = window.setTimeout(() => { tapTimer.current = null; onTap?.(); }, 300);
     }
   };
 
@@ -239,7 +247,7 @@ export function ZoomableImage({
     <>
       <div
         ref={box}
-        className="absolute inset-0 flex select-none items-center justify-center overflow-hidden px-3 pb-14 pt-16"
+        className="absolute inset-0 flex select-none items-center justify-center overflow-hidden px-0 pb-28 pt-14"
         style={{ touchAction: "none", cursor: dragging ? "grabbing" : view.s > 1 ? "grab" : "zoom-in" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -265,7 +273,7 @@ export function ZoomableImage({
         />
       </div>
       <div
-        className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/55 px-2 py-1.5"
+        className={`absolute bottom-28 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/55 px-2 py-1.5 transition-opacity [@media(pointer:fine)]:flex ${hideControls ? "pointer-events-none opacity-0" : "opacity-100"}`}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >

@@ -441,10 +441,81 @@ function ShareCard({ share, mine, role, disabled }: { share: { kind: string; ref
 /* Galeri foto: geser kiri/kanan antar foto percakapan                 */
 /* ------------------------------------------------------------------ */
 
+const thumbCache = new Map<number, string>();
+/** Foto asli bisa 2,5 MB: perkecil jadi thumbnail kecil supaya strip ringan di HP. */
+function makeThumb(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      const W = 84, H = 112;
+      const c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      const g = c.getContext("2d");
+      if (!g) { reject(new Error("canvas")); return; }
+      const k = Math.max(W / im.width, H / im.height);
+      const w = im.width * k, h = im.height * k;
+      g.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+      resolve(c.toDataURL("image/jpeg", 0.6));
+    };
+    im.onerror = () => reject(new Error("img"));
+    im.src = dataUrl;
+  });
+}
+
+function Thumb({ id, name, active, onPick }: { id: number; name: string; active: boolean; onPick: () => void }) {
+  const [src, setSrc] = useState(() => thumbCache.get(id) ?? "");
+  const ref = useRef<HTMLButtonElement>(null);
+  // Thumbnail hanya dimuat saat terlihat di strip (bukan semua foto sekaligus), supaya HP tidak macet.
+  useEffect(() => {
+    if (src) return;
+    const el = ref.current;
+    if (!el) return;
+    let alive = true;
+    const load = () => { getFile(id).then((f) => makeThumb(f.dataUrl)).then((t) => { thumbCache.set(id, t); if (alive) setSrc(t); }).catch(() => undefined); };
+    if (typeof IntersectionObserver === "undefined") { load(); return () => { alive = false; }; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); load(); } }, { root: el.parentElement, rootMargin: "0px 160px" });
+    io.observe(el);
+    return () => { alive = false; io.disconnect(); };
+  }, [id, src]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-thumb="1"
+      aria-label={name}
+      onClick={(e) => { e.stopPropagation(); onPick(); }}
+      className={`h-14 shrink-0 overflow-hidden rounded-[3px] bg-white/10 transition-all duration-150 ${active ? "w-11 opacity-100 ring-2 ring-white" : "w-8 opacity-60"}`}
+    >
+      {src ? <img src={src} alt="" draggable={false} className="size-full object-cover" /> : null}
+    </button>
+  );
+}
+
+/** Strip foto kecil di bawah (seperti WhatsApp): ketuk salah satu untuk loncat ke foto itu. */
+function Filmstrip({ items, pos, onPick }: { items: Array<{ id: number; name: string }>; pos: number; onPick: (i: number) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = box.current;
+    const el = strip?.querySelector<HTMLElement>(`[data-i="${pos}"]`);
+    if (!strip || !el) return;
+    strip.scrollTo({ left: el.offsetLeft - strip.clientWidth / 2 + el.offsetWidth / 2, behavior: "smooth" });
+  }, [pos]);
+  return (
+    <div ref={box} className="flex items-center gap-1 overflow-x-auto px-[45%] py-1" style={{ touchAction: "pan-x", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+      {items.map((it, i) => (
+        <span key={it.id} data-i={i} className="shrink-0">
+          <Thumb id={it.id} name={it.name} active={i === pos} onPick={() => onPick(i)} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Lightbox({ items, startId, onClose }: { items: Array<{ id: number; name: string }>; startId: number; onClose: () => void }) {
   const [idx, setIdx] = useState(() => Math.max(0, items.findIndex((i) => i.id === startId)));
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
+  const [chrome, setChrome] = useState(true); // tombol & strip foto tampil / sembunyi (ketuk layar)
   const cur = items[Math.min(idx, items.length - 1)];
   const pos = Math.min(idx, items.length - 1);
 
@@ -492,18 +563,27 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
   const nav = "absolute top-1/2 z-10 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow disabled:opacity-30 sm:grid";
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/90" style={{ touchAction: "none", overscrollBehavior: "none" }}>
+    <div className="fixed inset-0 z-[60] bg-black/95" style={{ touchAction: "none", overscrollBehavior: "none" }}>
       {failed || !src ? <button type="button" aria-label="Tutup" className="absolute inset-0 grid place-items-center" onClick={onClose}>{failed ? <span className="text-sm text-white">Foto tidak bisa dimuat</span> : <span className="text-sm text-white/80">Memuat foto...</span>}</button> : (
-        <ZoomableImage key={cur.id} src={src} alt={cur.name} onSwipe={go} onSwipeDown={onClose} onBackdropTap={onClose} />
+        <ZoomableImage key={cur.id} src={src} alt={cur.name} onSwipe={go} onSwipeDown={onClose} onTap={() => setChrome((v) => !v)} hideControls={!chrome} />
       )}
-      <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs font-bold text-white">{pos + 1} / {items.length}</div>
-      <div className="absolute right-3 top-3 z-10 flex gap-2">
-        <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Unduh" onClick={(e) => { e.stopPropagation(); void downloadFile(cur.id); }}><Download className="size-5" /></button>
-        <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Tutup" onClick={onClose}><X className="size-5" /></button>
+      <div className={`transition-opacity duration-200 ${chrome ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+        <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs font-bold text-white">{pos + 1} / {items.length}</div>
+        <div className="absolute right-3 top-3 z-10 flex gap-2">
+          <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Unduh" onClick={(e) => { e.stopPropagation(); void downloadFile(cur.id); }}><Download className="size-5" /></button>
+          <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Tutup" onClick={onClose}><X className="size-5" /></button>
+        </div>
+        <button type="button" className={`${nav} left-3`} aria-label="Foto sebelumnya" disabled={pos <= 0} onClick={(e) => { e.stopPropagation(); go(-1); }}><ChevronLeft className="size-6" /></button>
+        <button type="button" className={`${nav} right-3`} aria-label="Foto berikutnya" disabled={pos >= items.length - 1} onClick={(e) => { e.stopPropagation(); go(1); }}><ChevronRight className="size-6" /></button>
+        {items.length > 1 ? (
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-6">
+            <Filmstrip items={items} pos={pos} onPick={(i) => setIdx(i)} />
+            <p className="pointer-events-none truncate px-16 pt-1 text-center text-[11px] text-white/70">{cur.name}</p>
+          </div>
+        ) : (
+          <p className="pointer-events-none absolute inset-x-0 bottom-3 truncate px-16 text-center text-xs text-white/70">{cur.name}</p>
+        )}
       </div>
-      <button type="button" className={`${nav} left-3`} aria-label="Foto sebelumnya" disabled={pos <= 0} onClick={(e) => { e.stopPropagation(); go(-1); }}><ChevronLeft className="size-6" /></button>
-      <button type="button" className={`${nav} right-3`} aria-label="Foto berikutnya" disabled={pos >= items.length - 1} onClick={(e) => { e.stopPropagation(); go(1); }}><ChevronRight className="size-6" /></button>
-      <p className="pointer-events-none absolute bottom-2 left-0 right-0 truncate px-16 text-center text-xs text-white/70">{cur.name}{items.length > 1 ? " · geser untuk foto lain" : ""}</p>
     </div>
   );
 }
