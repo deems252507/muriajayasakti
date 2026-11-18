@@ -73,6 +73,9 @@ function ChatPage() {
     if (!active || typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) { setFull(null); return; }
     const vv = window.visualViewport;
     const sync = () => {
+      // Saat halaman di-zoom (cubit), visualViewport mengecil: JANGAN ikut dipakai, kalau tidak kotak chat
+      // ikut mengecil/bergeser dan tampilan pecah. Biarkan ukuran terakhir; zoom hanya memperbesar tampilan.
+      if (vv && vv.scale > 1.01) return;
       setFull({ top: Math.round(vv?.offsetTop ?? 0), height: Math.round(vv?.height ?? window.innerHeight) });
       if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
     };
@@ -151,7 +154,7 @@ function ChatPage() {
             <PushToggle />
             <input className="mt-2 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent" placeholder="Cari nama staff" value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
-          <ul className="min-h-0 flex-1 overflow-y-auto" style={{ touchAction: "pan-y", overscrollBehaviorY: "contain" }}>
+          <ul className="min-h-0 flex-1 overflow-y-auto" style={{ touchAction: "pan-y pinch-zoom", overscrollBehaviorY: "contain" }}>
             <li className="flex items-center justify-between bg-slate-100 px-3 py-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Grup khusus</span>
               {canMakeGroup ? <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md bg-accent px-2 text-[11px] font-bold text-white" onClick={() => setCreating(true)}><Plus className="size-3" />Grup</button> : null}

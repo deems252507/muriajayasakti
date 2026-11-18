@@ -11,6 +11,7 @@ import {
 import { EmojiPicker } from "./emoji-picker";
 import { MarkWords } from "./shell";
 import { dayKey, dayLabel, hhmm } from "./chat-time";
+import { ZoomableImage } from "./zoom-image";
 
 type ChatKind = "dm" | "group";
 type Thread = Awaited<ReturnType<typeof chatThread>>;
@@ -374,7 +375,6 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
   const [idx, setIdx] = useState(() => Math.max(0, items.findIndex((i) => i.id === startId)));
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
-  const touch = useRef<{ x: number; y: number } | null>(null);
   const cur = items[Math.min(idx, items.length - 1)];
   const pos = Math.min(idx, items.length - 1);
 
@@ -393,6 +393,20 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
     return () => { alive = false; };
   }, [cur?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Selama foto dibuka, zoom halaman dikunci (zoom ditangani ZoomableImage) supaya layar tidak pecah.
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const prev = meta?.getAttribute("content") ?? null;
+    if (meta && prev) meta.setAttribute("content", `${prev}, maximum-scale=1, user-scalable=no`);
+    const html = document.documentElement;
+    const prevOverscroll = html.style.overscrollBehavior;
+    html.style.overscrollBehavior = "none";
+    return () => {
+      if (meta && prev !== null) meta.setAttribute("content", prev);
+      html.style.overscrollBehavior = prevOverscroll;
+    };
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -407,31 +421,18 @@ export function Lightbox({ items, startId, onClose }: { items: Array<{ id: numbe
   const nav = "absolute top-1/2 z-10 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow disabled:opacity-30 sm:grid";
 
   return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-black/90 p-4"
-      onClick={onClose}
-      onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; }}
-      onTouchEnd={(e) => {
-        const start = touch.current;
-        touch.current = null;
-        if (!start) return;
-        const t = e.changedTouches[0];
-        const dx = t.clientX - start.x;
-        const dy = t.clientY - start.y;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) go(dx < 0 ? 1 : -1);
-      }}
-    >
-      <div className="absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs font-bold text-white">{pos + 1} / {items.length}</div>
+    <div className="fixed inset-0 z-[60] bg-black/90" style={{ touchAction: "none", overscrollBehavior: "none" }}>
+      {failed || !src ? <button type="button" aria-label="Tutup" className="absolute inset-0 grid place-items-center" onClick={onClose}>{failed ? <span className="text-sm text-white">Foto tidak bisa dimuat</span> : <span className="text-sm text-white/80">Memuat foto...</span>}</button> : (
+        <ZoomableImage key={cur.id} src={src} alt={cur.name} onSwipe={go} onSwipeDown={onClose} onBackdropTap={onClose} />
+      )}
+      <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs font-bold text-white">{pos + 1} / {items.length}</div>
       <div className="absolute right-3 top-3 z-10 flex gap-2">
         <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Unduh" onClick={(e) => { e.stopPropagation(); void downloadFile(cur.id); }}><Download className="size-5" /></button>
         <button type="button" className="grid size-10 place-items-center rounded-full bg-white/90" aria-label="Tutup" onClick={onClose}><X className="size-5" /></button>
       </div>
       <button type="button" className={`${nav} left-3`} aria-label="Foto sebelumnya" disabled={pos <= 0} onClick={(e) => { e.stopPropagation(); go(-1); }}><ChevronLeft className="size-6" /></button>
       <button type="button" className={`${nav} right-3`} aria-label="Foto berikutnya" disabled={pos >= items.length - 1} onClick={(e) => { e.stopPropagation(); go(1); }}><ChevronRight className="size-6" /></button>
-      {failed ? <p className="text-sm text-white">Foto tidak bisa dimuat</p> : !src ? <p className="text-sm text-white/80">Memuat foto...</p> : (
-        <img src={src} alt={cur.name} className="max-h-[84dvh] max-w-full select-none rounded-lg object-contain" draggable={false} onClick={(e) => e.stopPropagation()} />
-      )}
-      <p className="absolute bottom-3 left-0 right-0 truncate px-16 text-center text-xs text-white/70">{cur.name}{items.length > 1 ? " · geser untuk foto lain" : ""}</p>
+      <p className="pointer-events-none absolute bottom-2 left-0 right-0 truncate px-16 text-center text-xs text-white/70">{cur.name}{items.length > 1 ? " · geser untuk foto lain" : ""}</p>
     </div>
   );
 }
@@ -1191,7 +1192,7 @@ export function Conversation(props: {
           onTouchEnd={() => { touching.current = false; lastUserScroll.current = Date.now(); }}
           onTouchCancel={() => { touching.current = false; lastUserScroll.current = Date.now(); }}
           onWheel={() => { lastUserScroll.current = Date.now(); }}
-          style={{ ...bgStyle(bg, bgOpt), touchAction: "pan-y", overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}
+          style={{ ...bgStyle(bg, bgOpt), touchAction: "pan-y pinch-zoom", overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}
           className="absolute inset-0 space-y-1 overflow-y-auto px-3 py-3"
         >
           {thread?.hasMore ? <div className="py-1 text-center"><button type="button" disabled={loadingOlder} className="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-accent shadow-sm disabled:opacity-50" onClick={loadOlder}>{loadingOlder ? "Memuat..." : "Muat pesan lebih lama"}</button></div> : null}
