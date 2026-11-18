@@ -66,6 +66,13 @@ function SectionHead({ title, count }: { title: string; count: number }) {
   );
 }
 
+/** Bagian kiri baris: tombol (aria-label supaya lepas dari gaya tombol global) atau, untuk baris sendiri, blok biasa. */
+function Main({ me, label, onClick, children }: { me: boolean; label: string; onClick: () => void; children: React.ReactNode }) {
+  const cls = "flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 text-left";
+  if (me) return <div className={cls}>{children}</div>;
+  return <button type="button" aria-label={label} className={`${cls} font-normal`} onClick={onClick}>{children}</button>;
+}
+
 function StaffRow({ p, me, online, canPoke, onOpenChat }: { p: Person; me: boolean; online: boolean; canPoke: boolean; onOpenChat: (username: string) => void }) {
   const [poking, setPoking] = useState(false);
   const [text, setText] = useState("");
@@ -90,12 +97,7 @@ function StaffRow({ p, me, online, canPoke, onOpenChat }: { p: Person; me: boole
   return (
     <li className="border-b border-line last:border-b-0">
       <div className="flex items-center gap-1 pr-3">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 text-left"
-          disabled={me}
-          onClick={() => onOpenChat(p.username)}
-        >
+        <Main me={me} label={`Chat dengan ${p.name}`} onClick={() => onOpenChat(p.username)}>
           <PresenceAvatar c={p} size="size-9" />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
@@ -104,7 +106,7 @@ function StaffRow({ p, me, online, canPoke, onOpenChat }: { p: Person; me: boole
             </span>
             <SeenLabel seenAgo={me ? 0 : p.seenAgo} className="text-xs" />
           </span>
-        </button>
+        </Main>
         {!me ? (
           <div className="flex shrink-0 items-center gap-1.5">
             <button type="button" title="Chat di aplikasi" aria-label={`Chat dengan ${p.name}`} className="grid size-9 place-items-center rounded-lg border border-line bg-white text-slate-600" onClick={() => onOpenChat(p.username)}>
@@ -129,7 +131,7 @@ function StaffRow({ p, me, online, canPoke, onOpenChat }: { p: Person; me: boole
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter") void send(); }}
           />
-          <button type="button" disabled={sending} className="h-9 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-60" onClick={() => void send()}>{sending ? "Mengirim..." : "Kirim"}</button>
+          <button type="button" aria-label="Kirim notifikasi" disabled={sending} className="h-9 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-60" onClick={() => void send()}>{sending ? "Mengirim..." : "Kirim"}</button>
         </div>
       ) : null}
     </li>
@@ -225,7 +227,7 @@ export function PresenceButton({ meUsername, meRole }: { meUsername: string; meR
             {offlineShown.map((p) => <StaffRow key={p.username} p={p} me={false} online={false} canPoke={canPoke} onOpenChat={openChat} />)}
             {!expand && offline.length > OFFLINE_LIMIT ? (
               <li className="border-t border-line">
-                <button type="button" className="w-full px-4 py-2.5 text-center text-xs font-semibold text-slate-600" onClick={() => setShowAll(true)}>Lihat semua ({offline.length})</button>
+                <button type="button" aria-label="Lihat semua staf" className="w-full px-4 py-2.5 text-center text-xs font-semibold text-slate-600" onClick={() => setShowAll(true)}>Lihat semua ({offline.length})</button>
               </li>
             ) : null}
           </ul>

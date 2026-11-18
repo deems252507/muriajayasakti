@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, CircleUser, LogOut, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, roleStyle } from "@/components/shop/chat-group";
+import { ProfileDialog } from "@/components/shop/profile-dialog";
 
 /** Menu akun di header: sentuh foto/nama, muncul kartu akun dengan Pengaturan dan Keluar (Keluar tetap memakai kotak konfirmasi yang sama). */
 export function ProfileMenu({
@@ -18,6 +19,7 @@ export function ProfileMenu({
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,10 +66,10 @@ export function ProfileMenu({
             {canProfile ? (
               <>
                 <div className="-mx-1 my-1 h-px bg-line" />
-                <Link to="/pengaturan" hash="nama-foto" className={itemClass} onClick={() => setOpen(false)}>
+                <button type="button" aria-label="Profil Saya" className={itemClass} onClick={() => { setOpen(false); setEditing(true); }}>
                   <CircleUser className="size-5 text-slate-500" />
                   Profil Saya
-                </Link>
+                </button>
                 {canSettings ? (
                   <Link to="/pengaturan" className={itemClass} onClick={() => setOpen(false)}>
                     <Settings className="size-5 text-slate-500" />
@@ -78,13 +80,14 @@ export function ProfileMenu({
             ) : null}
           </section>
           <div className="mt-1 p-1">
-            <button type="button" className={`${itemClass} text-danger hover:bg-red-50`} onClick={() => { setOpen(false); onLogout(); }}>
+            <button type="button" aria-label="Keluar" className={`${itemClass} text-danger hover:bg-red-50`} onClick={() => { setOpen(false); onLogout(); }}>
               <LogOut className="size-5" />
               Keluar
             </button>
           </div>
         </div>
       ) : null}
+      {editing ? <ProfileDialog me={me} onClose={() => setEditing(false)} /> : null}
     </div>
   );
 }

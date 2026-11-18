@@ -57,12 +57,6 @@ function SettingsPage() {
     if (me.canManageStaff) void listStaff().then(setStaff);
   }
   useEffect(() => { load(); }, []);
-  // Dari menu profil ("Profil Saya"): langsung ke bagian Nama dan Foto Akun.
-  useEffect(() => {
-    if (window.location.hash !== "#nama-foto") return;
-    const timer = window.setTimeout(() => document.getElementById("nama-foto")?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const lainnyaPersen = pajak.find((item) => isLainnya(item.jenis))?.persentase ?? "11";
   const kategoriTanpaJenis = useMemo(() => {
@@ -289,7 +283,7 @@ function SettingsPage() {
         </div>
       </Panel>
       </>) : null}
-      <Panel id="nama-foto">
+      <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
         <p className="text-xs text-muted">{akunSaja ? "Ubah nama dan foto akun Anda. Password diatur oleh Admin 1." : "Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login."}</p>
         {me.mustChange && !akunSaja ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Password akun ini masih bawaan. Ganti di bagian "Ubah Password" di bawah.</p> : null}
