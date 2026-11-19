@@ -3916,7 +3916,7 @@ export async function listOpname(data: any) {
   if (q) {
     params.push(`%${q}%`);
     const n = params.length;
-    where.push(`(nama ilike $${n} or part_number ilike $${n} or part_numbers_alt ilike $${n} or kode ilike $${n} or merek ilike $${n})`);
+    where.push(`(nama ilike $${n} or part_number ilike $${n} or part_numbers_alt ilike $${n} or kode ilike $${n} or kode_pajak ilike $${n} or merek ilike $${n})`);
   }
   const categories = cleanCategories(data.kategori).map((v) => v.toLowerCase());
   if (categories.length) {
@@ -3937,14 +3937,20 @@ export async function listOpname(data: any) {
   const status = String(data.status ?? "");
   if (status === "belum") rowWhere.push(`dicek_at is null`);
   else if (status === "sudah") rowWhere.push(`dicek_at is not null`);
-  else if (status === "selisih") rowWhere.push(`dicek_at is not null and dicek_hasil in ('kurang', 'lebih', 'habis')`);
+  else if (status === "cocok") rowWhere.push(`dicek_at is not null and dicek_hasil = 'cocok'`);
+  else if (status === "selisih") rowWhere.push(`dicek_at is not null and dicek_hasil in ('kurang', 'lebih')`);
+  else if (status === "habis") rowWhere.push(`dicek_at is not null and dicek_hasil = 'habis'`);
   const clause = rowWhere.length ? `where ${rowWhere.join(" and ")}` : "";
   const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from products ${clause}`, params);
   const page = Math.max(1, Number(data.page) || 1);
   const rows = await db.query<Record<string, unknown>>(
-    `select id, kode, nama, kategori, merek, part_number, satuan, stok, dicek_at, dicek_hasil, dicek_selisih
+    `select id, kode, nama, kategori, merek, part_number, part_numbers_alt, pajak_status, kode_pajak,
+            satuan, satuan_alt, isi_satuan_alt, stok, dicek_at, dicek_hasil, dicek_selisih,
+            (select c.id from opname_checks c
+              where c.product_id = products.id and c.batal_at is null and c.flag_at = products.dicek_at
+              order by c.id desc limit 1) as check_id
      from products ${clause}
-     order by lower(kategori) asc, lower(nama) asc, lower(part_number) asc
+     order by lower(kategori) asc, lower(nama) asc, lower(part_number) asc, id asc
      limit ${OPNAME_PAGE} offset ${(page - 1) * OPNAME_PAGE}`,
     params,
   );
@@ -3967,11 +3973,17 @@ export async function listOpname(data: any) {
       kategori: String(row.kategori ?? ""),
       merek: String(row.merek ?? ""),
       partNumber: String(row.part_number ?? ""),
-      satuan: String(row.satuan ?? "Pcs"),
+      partNumbersAlt: String(row.part_numbers_alt ?? ""),
+      pajakStatus: String(row.pajak_status ?? ""),
+      kodePajak: String(row.kode_pajak ?? ""),
+      satuan: String(row.satuan ?? "Pcs") || "Pcs",
+      satuanAlt: String(row.satuan_alt ?? ""),
+      isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
       stok: Number(row.stok ?? 0),
       dicekAt: row.dicek_at ? isoDate(row.dicek_at) : null,
       hasil: String(row.dicek_hasil ?? ""),
       selisih: Number(row.dicek_selisih ?? 0),
+      checkId: row.check_id === null || row.check_id === undefined ? null : Number(row.check_id),
     })),
   };
 }
@@ -3989,28 +4001,107 @@ export async function saveOpnameCheck(data: any) {
   const fisik = Number(data.fisik);
   if (!Number.isInteger(id) || id <= 0) throw new Error("Barang tidak valid. Muat ulang halaman.");
   if (!Number.isInteger(sistem) || !Number.isInteger(fisik) || fisik < 0 || fisik > 1000000) {
-    throw new Error("Isi stok fisik dengan angka bulat, 0 atau lebih.");
+    throw new Error("Isi stok fisik dengan angka bulat, 0 atau lebih (maksimal 1.000.000).");
   }
   const hasil = opnameHasil(sistem, fisik);
-  const updated = await db.query<{ kode: string; nama: string; kategori: string; merek: string; part_number: string }>(
-    `update products set stok = $2, dicek_at = now(), dicek_hasil = $4, dicek_selisih = $5
-     where id = $1 and stok = $3
-     returning kode, nama, kategori, merek, part_number`,
-    [id, fisik, sistem, hasil, fisik - sistem],
+  // Satu pernyataan: stok barang dan catatan riwayat berubah bersamaan (atau tidak sama sekali).
+  const saved = await db.query<{ check_id: number; nama: string; satuan: string }>(
+    `with old as (
+       select dicek_at, dicek_hasil, dicek_selisih from products where id = $1::bigint
+     ), upd as (
+       update products
+          set stok = $2::int, dicek_at = now(), dicek_hasil = $4::text, dicek_selisih = $5::int
+        where id = $1::bigint and stok = $3::int
+        returning kode, nama, kategori, merek, part_number, satuan, dicek_at
+     ), ins as (
+       insert into opname_checks (product_id, kode, nama, kategori, merek, part_number, satuan, stok_sistem, stok_fisik, hasil,
+                                  username, name, prev_dicek_at, prev_hasil, prev_selisih, flag_at)
+       select $1::bigint, upd.kode, upd.nama, upd.kategori, upd.merek, upd.part_number, upd.satuan, $3::int, $2::int, $4::text,
+              $6::text, $7::text, old.dicek_at, old.dicek_hasil, old.dicek_selisih, upd.dicek_at
+         from upd cross join old
+       returning id
+     )
+     select ins.id as check_id, upd.nama, upd.satuan from ins cross join upd`,
+    [id, fisik, sistem, hasil, fisik - sistem, me.username, me.name],
   );
-  const row = updated[0];
+  const row = saved[0];
   if (!row) {
-    const [now] = await db.query<{ stok: number }>(`select stok from products where id = $1`, [id]);
+    const [now] = await db.query<{ stok: number }>(`select stok from products where id = $1::bigint`, [id]);
     if (!now) throw new Error("Barang tidak ditemukan. Muat ulang halaman.");
     return { ok: false as const, stale: true as const, current: Number(now.stok) };
   }
-  await db.query(
-    `insert into opname_checks (product_id, kode, nama, kategori, merek, part_number, stok_sistem, stok_fisik, hasil, username, name)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [id, row.kode, row.nama, row.kategori, row.merek, row.part_number, sistem, fisik, hasil, me.username, me.name],
+  if (fisik !== sistem) await audit(me, `Stok opname ${row.nama} — stok ${sistem} → ${fisik} ${row.satuan} (${hasil})`);
+  return { ok: true as const, hasil, stok: fisik, checkId: Number(row.check_id) };
+}
+
+/**
+ * Batalkan satu pengecekan (mis. salah pencet): stok dikembalikan sebesar selisihnya,
+ * barang kembali ke status sebelum dicek, dan catatan diberi tanda Dibatalkan.
+ */
+export async function batalOpnameCheck(data: any) {
+  const me = await requireOpnameAdmin();
+  const db = await sql();
+  const id = Number(data.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Catatan tidak valid. Muat ulang halaman.");
+  const [meta] = await db.query<{ nama: string; stok_sistem: number; stok_fisik: number }>(
+    `select nama, stok_sistem, stok_fisik from opname_checks where id = $1::bigint`,
+    [id],
   );
-  if (fisik !== sistem) await audit(me, `Stok opname ${row.nama} — stok ${sistem} → ${fisik} (${hasil})`);
-  return { ok: true as const, hasil, stok: fisik };
+  const [res] = await db.query<{ r: { ok: boolean; code: string; stok?: number | null; satuan?: string } | string }>(
+    `select opname_batal($1::bigint, $2::text) as r`,
+    [id, me.username],
+  );
+  const r = typeof res?.r === "string" ? (JSON.parse(res.r) as { ok: boolean; code: string; stok?: number | null; satuan?: string }) : res?.r;
+  if (!r) throw new Error("Gagal membatalkan pengecekan.");
+  if (!r.ok) {
+    if (r.code === "tidak_ada") throw new Error("Catatan pengecekan tidak ditemukan. Muat ulang halaman.");
+    if (r.code === "sudah_batal") throw new Error("Pengecekan ini sudah dibatalkan sebelumnya.");
+    if (r.code === "stok_minus") throw new Error("Tidak bisa dibatalkan karena stok barang sekarang lebih kecil dari yang akan dikembalikan (sudah terjual?). Lakukan cek ulang.");
+    throw new Error("Gagal membatalkan pengecekan.");
+  }
+  if (meta) await audit(me, `Batalkan stok opname ${meta.nama} — stok dikembalikan (${meta.stok_fisik} → ${meta.stok_sistem})`);
+  return { ok: true as const, stok: r.stok === null || r.stok === undefined ? null : Number(r.stok), nama: meta?.nama ?? "" };
+}
+
+/** Batalkan semua pengecekan yang masih aktif dalam satu baris riwayat (tanggal + kategori + Admin). */
+export async function batalOpnameGroup(data: any) {
+  const me = await requireOpnameAdmin();
+  const db = await sql();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.tgl ?? ""))) throw new Error("Tanggal tidak valid.");
+  const rows = await db.query<{ id: number }>(
+    `select id from opname_checks
+      where ${OPNAME_DAY} = $1::date and kategori = $2 and username = $3 and batal_at is null
+      order by ts desc, id desc`,
+    [String(data.tgl), String(data.kategori ?? ""), String(data.username ?? "")],
+  );
+  let done = 0;
+  const failed: string[] = [];
+  for (const row of rows) {
+    const [res] = await db.query<{ r: { ok: boolean; code: string } | string }>(
+      `select opname_batal($1::bigint, $2::text) as r`,
+      [Number(row.id), me.username],
+    );
+    const r = typeof res?.r === "string" ? (JSON.parse(res.r) as { ok: boolean; code: string }) : res?.r;
+    if (r?.ok) done += 1;
+    else failed.push(String(row.id));
+  }
+  if (done > 0) await audit(me, `Batalkan stok opname ${data.kategori || "tanpa kategori"} tanggal ${data.tgl} — ${done} pengecekan dibatalkan`);
+  return { ok: true as const, done, failed: failed.length };
+}
+
+/** Hapus satu baris riwayat. Stok barang tidak diubah (batalkan dulu kalau stok perlu dikembalikan). */
+export async function hapusOpnameRiwayat(data: any) {
+  const me = await requireOpnameAdmin();
+  const db = await sql();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.tgl ?? ""))) throw new Error("Tanggal tidak valid.");
+  const kategori = String(data.kategori ?? "");
+  const [res] = await db.query<{ n: number }>(
+    `select opname_hapus($1::date, $2::text, $3::text) as n`,
+    [String(data.tgl), kategori, String(data.username ?? "")],
+  );
+  const n = Number(res?.n ?? 0);
+  if (n > 0) await audit(me, `Hapus riwayat stok opname ${kategori || "tanpa kategori"} tanggal ${data.tgl} — ${n} catatan`);
+  return { ok: true as const, deleted: n };
 }
 
 /** Mulai putaran baru: kosongkan tanda "sudah dicek". Catatan riwayat tidak disentuh. */
@@ -4060,11 +4151,12 @@ export async function listOpnameHistory(data: any) {
            (array_agg(stok_sistem order by ts desc) filter (where ${match}))[1] as hit_sistem,
            (array_agg(stok_fisik order by ts desc) filter (where ${match}))[1] as hit_fisik`;
   }
-  if (data.onlySelisih) having.push(`count(*) filter (where hasil <> 'cocok') > 0`);
+  if (data.onlySelisih) having.push(`count(*) filter (where hasil <> 'cocok' and batal_at is null) > 0`);
   const base = `select ${OPNAME_DAY} as tgl, kategori, username, max(name) as name,
            count(*)::int as dicek,
-           count(*) filter (where hasil <> 'cocok')::int as selisih,
-           count(*) filter (where hasil = 'habis')::int as habis,
+           count(*) filter (where batal_at is not null)::int as batal,
+           count(*) filter (where hasil <> 'cocok' and batal_at is null)::int as selisih,
+           count(*) filter (where hasil = 'habis' and batal_at is null)::int as habis,
            max(ts) as terakhir, ${hit}
          from opname_checks ${where.length ? `where ${where.join(" and ")}` : ""}
          group by 1, 2, 3 ${having.length ? `having ${having.join(" and ")}` : ""}`;
@@ -4085,6 +4177,7 @@ export async function listOpnameHistory(data: any) {
       username: String(row.username ?? ""),
       name: String(row.name ?? ""),
       dicek: Number(row.dicek ?? 0),
+      batal: Number(row.batal ?? 0),
       selisih: Number(row.selisih ?? 0),
       habis: Number(row.habis ?? 0),
       terakhir: row.terakhir ? isoDate(row.terakhir) : "",
@@ -4099,20 +4192,25 @@ export async function getOpnameDetail(data: any) {
   const db = await sql();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.tgl ?? ""))) throw new Error("Tanggal tidak valid.");
   const rows = await db.query<Record<string, unknown>>(
-    `select ts, nama, merek, part_number, stok_sistem, stok_fisik, hasil
+    `select id, ts, kode, nama, merek, part_number, satuan, stok_sistem, stok_fisik, hasil, batal_at, batal_oleh
      from opname_checks
      where ${OPNAME_DAY} = $1::date and kategori = $2 and username = $3
-     order by ts asc`,
+     order by ts asc, id asc`,
     [String(data.tgl), String(data.kategori ?? ""), String(data.username ?? "")],
   );
   return rows.map((row) => ({
+    id: Number(row.id),
     ts: isoDate(row.ts),
+    kode: String(row.kode ?? ""),
     nama: String(row.nama ?? ""),
     merek: String(row.merek ?? ""),
     partNumber: String(row.part_number ?? ""),
+    satuan: String(row.satuan ?? ""),
     sistem: Number(row.stok_sistem ?? 0),
     fisik: Number(row.stok_fisik ?? 0),
     hasil: String(row.hasil ?? ""),
+    batal: row.batal_at !== null && row.batal_at !== undefined,
+    batalOleh: String(row.batal_oleh ?? ""),
   }));
 }
 
@@ -4139,7 +4237,7 @@ async function opnameSchedule(db: Awaited<ReturnType<typeof sql>>) {
               count(*)::int as total, count(*) filter (where dicek_at is not null)::int as dicek
        from products where btrim(kategori) <> '' group by lower(btrim(kategori))
      ), lastchk as (
-       select lower(btrim(kategori)) as k, max(ts) as terakhir from opname_checks group by 1
+       select lower(btrim(kategori)) as k, max(ts) as terakhir from opname_checks where batal_at is null group by 1
      )
      select c.kategori, c.total, c.dicek, l.terakhir, s.interval_bulan as custom_interval
      from cats c
