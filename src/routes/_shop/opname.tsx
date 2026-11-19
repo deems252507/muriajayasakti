@@ -1,361 +1,356 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Check, PackageX, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ClipboardCheck, RotateCcw, Search, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { confirmDialog } from "@/lib/confirm";
-import { usePersistedState } from "@/lib/persist";
-import { inputClass, Panel } from "@/components/shop/shell";
-import { HasilBadge, Metric } from "@/components/shop/opname-ui";
+import { OpnameCek } from "@/components/shop/opname-cek";
 import { OpnameHistory } from "@/components/shop/opname-history";
-import { OpnameSettings } from "@/components/shop/opname-settings";
-import { listOpname, resetOpnameRound, saveOpnameCheck } from "@/lib/shop/api";
+import { OpnameReport } from "@/components/shop/opname-report";
+import { OpnameRows } from "@/components/shop/opname-rows";
+import { FILTER_OPTIONS, Pager, TONE, type OpnameFilterKey, type OpnameTone } from "@/components/shop/opname-ui";
+import { Panel, inputClass } from "@/components/shop/shell";
+import { usePersistedState } from "@/lib/persist";
+import { listKategoriBarang, opnameList, opnameSaveSettings, opnameSettings, opnameSummary } from "@/lib/shop/api";
+import type { OpnameItem, OpnameSummary } from "@/lib/shop/types";
 
-export const Route = createFileRoute("/_shop/opname")({ component: OpnamePage });
+type Tab = "daftar" | "riwayat" | "laporan";
 
-type Tab = "cek" | "riwayat" | "pengaturan";
-type OpnameData = Awaited<ReturnType<typeof listOpname>>;
-type Item = OpnameData["items"][number];
+const asId = (value: unknown) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
 
-/** Selisih lebih dari ini diminta konfirmasi dulu sebelum stok diubah. */
-const BIG_DIFF = 10;
+export const Route = createFileRoute("/_shop/opname")({
+  // ?cek=ID membuka halaman Cek Barang; ?tab=riwayat|laporan membuka tab itu; ?hid=ID menyaring riwayat satu barang.
+  validateSearch: (search: Record<string, unknown>): { tab?: "riwayat" | "laporan"; cek?: number; hid?: number } => ({
+    tab: search.tab === "riwayat" || search.tab === "laporan" ? search.tab : undefined,
+    cek: asId(search.cek),
+    hid: asId(search.hid),
+  }),
+  component: OpnamePage,
+});
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "cek", label: "Cek" },
-  { id: "riwayat", label: "Riwayat" },
-  { id: "pengaturan", label: "Pengaturan" },
-];
-
-const STATUS = [
-  { id: "", label: "Semua status" },
-  { id: "belum", label: "Belum dicek" },
-  { id: "sudah", label: "Sudah dicek" },
-  { id: "selisih", label: "Ada selisih" },
-];
-
-const th = "whitespace-nowrap px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-600";
-const td = "px-3 py-2.5 align-middle";
-const btnBase = "inline-flex h-9 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-3 text-sm font-semibold disabled:opacity-50";
-const btnNeutral = `${btnBase} border-line bg-white text-slate-800 hover:bg-slate-50`;
-const btnPrimary = `${btnBase} border-accent bg-accent text-white hover:opacity-90`;
+function useDebounced<T>(value: T, ms = 300) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setV(value), ms);
+    return () => window.clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
 function OpnamePage() {
-  const [tab, setTab] = usePersistedState<Tab>("opname:tab", "cek");
+  const me = Route.useRouteContext().me;
+  const { tab: tabParam, cek, hid } = Route.useSearch();
+  const navigate = useNavigate();
+  const canSave = me.role === "Admin";
+  const tab: Tab = tabParam ?? "daftar";
+
+  // Filter daftar diingat selama tab browser terbuka (juga dipakai tombol "Lanjut ke Barang Berikutnya").
+  const [q, setQ] = usePersistedState("opname:q", "");
+  const [kategori, setKategori] = usePersistedState("opname:kategori", "");
+  const [filter, setFilter] = usePersistedState<OpnameFilterKey>("opname:filter", "semua");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [summaryTick, setSummaryTick] = useState(0);
+
+  useEffect(() => {
+    void listKategoriBarang()
+      .then(setCategories)
+      .catch(() => undefined);
+  }, []);
+
+  const goList = useCallback(() => void navigate({ to: "/opname", search: {}, replace: true }), [navigate]);
+  const openCek = useCallback((id: number, replace = false) => void navigate({ to: "/opname", search: { cek: id }, replace }), [navigate]);
+  const goTab = (next: Tab) => void navigate({ to: "/opname", search: next === "daftar" ? {} : { tab: next } });
+
+  if (cek) {
+    return (
+      <OpnameCek
+        productId={cek}
+        canSave={canSave}
+        ctx={{ q: q.trim(), kategori: kategori ? [kategori] : [], filter }}
+        onBack={goList}
+        onOpen={(id) => openCek(id, true)}
+        onHistory={(id) => void navigate({ to: "/opname", search: { tab: "riwayat", hid: id } })}
+        onSaved={() => setSummaryTick((n) => n + 1)}
+      />
+    );
+  }
+
+  const tabs: Array<{ key: Tab; label: string }> = [
+    { key: "daftar", label: "Daftar Barang" },
+    { key: "riwayat", label: "Riwayat" },
+    { key: "laporan", label: "Laporan" },
+  ];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-xl text-sm text-slate-600">
-            Cek stok fisik barang. Kalau angkanya beda, stok di Daftar Sparepart langsung disesuaikan dan setiap pengecekan tercatat di Riwayat.
-          </p>
-          <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className={`h-9 rounded-lg px-4 text-sm font-semibold ${tab === t.id ? "bg-white text-slate-900 shadow-sm" : "bg-transparent text-slate-600 hover:text-slate-900"}`}
-              >
-                {t.label}
-              </button>
-            ))}
+        <div className="flex items-center gap-3">
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-blue-50 text-accent">
+            <ClipboardCheck className="size-7" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-extrabold leading-tight text-slate-900">Stok Opname</h2>
+            <p className="text-xs text-slate-600">Cek stok barang kapan saja. Status pemeriksaan setiap barang selalu tersimpan.</p>
           </div>
         </div>
+        <div role="tablist" aria-label="Menu Stok Opname" className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              aria-label={t.label}
+              onClick={() => goTab(t.key)}
+              className={`h-11 rounded-lg text-sm font-bold transition ${tab === t.key ? "bg-white text-accent shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </Panel>
-      {tab === "cek" ? <OpnameCek /> : tab === "riwayat" ? <OpnameHistory /> : <OpnameSettings />}
+
+      {tab === "daftar" ? (
+        <Daftar
+          canSave={canSave}
+          categories={categories}
+          q={q}
+          setQ={setQ}
+          kategori={kategori}
+          setKategori={setKategori}
+          filter={filter}
+          setFilter={setFilter}
+          summaryTick={summaryTick}
+          onOpen={(id) => openCek(id)}
+        />
+      ) : null}
+      {tab === "riwayat" ? (
+        <Panel>
+          <OpnameHistory
+            categories={categories}
+            productId={hid ?? null}
+            onClearProduct={() => void navigate({ to: "/opname", search: { tab: "riwayat" }, replace: true })}
+            onOpenItem={(id) => openCek(id)}
+            canOpen
+          />
+        </Panel>
+      ) : null}
+      {tab === "laporan" ? (
+        <Panel>
+          <OpnameReport categories={categories} />
+        </Panel>
+      ) : null}
     </div>
   );
 }
 
-function OpnameCek() {
-  const [q, setQ] = usePersistedState("opname:q", "");
-  const [kategori, setKategori] = usePersistedState<string[]>("opname:kat", []);
-  const [status, setStatus] = usePersistedState("opname:status", "belum");
+function Daftar({
+  canSave,
+  categories,
+  q,
+  setQ,
+  kategori,
+  setKategori,
+  filter,
+  setFilter,
+  summaryTick,
+  onOpen,
+}: {
+  canSave: boolean;
+  categories: string[];
+  q: string;
+  setQ: (v: string) => void;
+  kategori: string;
+  setKategori: (v: string) => void;
+  filter: OpnameFilterKey;
+  setFilter: (v: OpnameFilterKey) => void;
+  summaryTick: number;
+  onOpen: (id: number) => void;
+}) {
   const [page, setPage] = useState(1);
-  const [kategoriQ, setKategoriQ] = useState("");
-  const [data, setData] = useState<OpnameData | null>(null);
+  const [summary, setSummary] = useState<OpnameSummary | null>(null);
+  const [data, setData] = useState<{ total: number; perPage: number; items: OpnameItem[] } | null>(null);
   const [error, setError] = useState("");
-  const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [redo, setRedo] = useState<number[]>([]);
-  const [busy, setBusy] = useState<number[]>([]);
-  const loadSeq = useRef(0);
-  const dropdown = useRef<HTMLDetailsElement>(null);
+  const dq = useDebounced(q.trim());
 
-  // Selalu muat memakai filter terbaru, walau fungsi dipanggil dari proses simpan yang dimulai lebih awal.
-  const latest = useRef({ q, kategori, status, page });
-  latest.current = { q, kategori, status, page };
-
-  function load(next?: number) {
-    const seq = ++loadSeq.current;
-    const cur = latest.current;
-    const target = next ?? cur.page;
-    void listOpname({ data: { q: cur.q, kategori: cur.kategori, status: cur.status, page: target } })
+  useEffect(() => {
+    let alive = true;
+    void opnameSummary({ data: { kategori: kategori ? [kategori] : [] } })
       .then((res) => {
-        if (seq !== loadSeq.current) return;
-        const pages = Math.max(1, Math.ceil(res.total / res.perPage));
-        // Halaman terakhir baru saja kosong (mis. semua barangnya sudah dicek): mundur ke halaman yang masih ada.
-        if (target > pages) { setPage(pages); return; }
+        if (alive) setSummary(res);
+      })
+      .catch((err: Error) => {
+        if (alive) setError(err.message || "Gagal memuat ringkasan.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [kategori, summaryTick]);
+
+  useEffect(() => {
+    let alive = true;
+    void opnameList({ data: { q: dq, kategori: kategori ? [kategori] : [], filter, page } })
+      .then((res) => {
+        if (!alive) return;
         setError("");
         setData(res);
       })
-      .catch((e: Error) => {
-        if (seq !== loadSeq.current) return;
-        setError(e.message || "Gagal memuat daftar barang.");
+      .catch((err: Error) => {
+        if (!alive) return;
+        setError(err.message || "Gagal memuat daftar barang.");
       });
-  }
+    return () => {
+      alive = false;
+    };
+  }, [dq, kategori, filter, page]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => load(page), q ? 250 : 0);
-    return () => clearTimeout(timer);
-  }, [q, kategori, status, page]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Saat tab dibuka lagi, ambil stok terbaru (mungkin ada penjualan di kasir selagi Anda menghitung).
-  useEffect(() => {
-    const onFocus = () => load(page);
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [q, kategori, status, page]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const clearDraft = (id: number) => setDrafts((d) => { const next = { ...d }; delete next[id]; return next; });
-  const closeRedo = (id: number) => setRedo((r) => r.filter((v) => v !== id));
-
-  async function submit(item: Item, fisik: number) {
-    if (busy.includes(item.id)) return;
-    if (Math.abs(fisik - item.stok) > BIG_DIFF) {
-      const ok = await confirmDialog(
-        `Stok ${item.nama} akan berubah dari ${item.stok} menjadi ${fisik}. Apakah angkanya benar?`,
-        { title: "Selisih besar", confirmText: "Ya, ubah stok" },
-      );
-      if (!ok) return;
-    }
-    setBusy((b) => [...b, item.id]);
-    try {
-      const res = await saveOpnameCheck({ data: { id: item.id, sistem: item.stok, fisik } });
-      if (!res.ok) {
-        toast.error(`Stok ${item.nama} di sistem sudah berubah menjadi ${res.current}. Angka sudah diperbarui, cek lagi.`);
-      } else if (fisik === item.stok) {
-        toast.success(`${item.nama}: cocok`);
-      } else {
-        toast.success(`${item.nama}: stok ${item.stok} → ${fisik}`, { description: "Stok di Daftar Sparepart sudah disesuaikan." });
-      }
-      clearDraft(item.id);
-      closeRedo(item.id);
-      load();
-      window.dispatchEvent(new Event("mjs-opname-changed"));
-    } catch (e) {
-      toast.error((e as Error).message || "Gagal menyimpan hasil cek.");
-    } finally {
-      setBusy((b) => b.filter((id) => id !== item.id));
-    }
-  }
-
-  function saveDraft(item: Item) {
-    const raw = drafts[item.id] ?? "";
-    if (!/^\d+$/.test(raw)) { toast.error("Isi stok fisik dengan angka bulat, 0 atau lebih."); return; }
-    void submit(item, Number(raw));
-  }
-
-  async function startNewRound() {
-    const scope = kategori.length ? kategori.join(", ") : "semua kategori";
-    const ok = await confirmDialog(
-      `Tanda sudah dicek untuk ${scope} akan dikosongkan, jadi semua barangnya kembali Belum dicek. Riwayat lama tetap tersimpan.`,
-      { title: "Mulai putaran baru?", confirmText: "Ya, mulai baru" },
-    );
-    if (!ok) return;
-    try {
-      const res = await resetOpnameRound({ data: { kategori } });
-      toast.success(`${res.reset} barang siap dicek ulang`);
-      setRedo([]);
-      setPage(1);
-      load(1);
-      window.dispatchEvent(new Event("mjs-opname-changed"));
-    } catch (e) {
-      toast.error((e as Error).message || "Gagal memulai putaran baru.");
-    }
-  }
-
-  const items = data?.items ?? [];
-  const counts = data?.counts;
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.perPage)) : 1;
-  const done = counts ? counts.total - counts.belum : 0;
-  const pct = counts && counts.total ? Math.round((done / counts.total) * 100) : 0;
-  const categories = (data?.categories ?? []).filter((c) => c.toLowerCase().includes(kategoriQ.trim().toLowerCase()));
-  const hasKategori = (c: string) => kategori.some((v) => v.toLowerCase() === c.toLowerCase());
-  const toggleKategori = (c: string) => {
-    setPage(1);
-    setKategori((prev) => (prev.some((v) => v.toLowerCase() === c.toLowerCase()) ? prev.filter((v) => v.toLowerCase() !== c.toLowerCase()) : [...prev, c]));
+  const changePage = (next: number) => {
+    setPage(next);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const pick = (key: OpnameFilterKey) => {
+    setPage(1);
+    setFilter(key);
+  };
+  const reset = () => {
+    setQ("");
+    setKategori("");
+    setFilter("semua");
+    setPage(1);
+  };
+  const dirty = Boolean(q || kategori || filter !== "semua");
 
-  function emptyText() {
-    if (!counts || counts.total === 0) return q || kategori.length ? "Tidak ada barang untuk filter ini." : "Belum ada barang.";
-    if (status === "belum") return "Semua barang di filter ini sudah dicek. Pilih \"Mulai putaran baru\" kalau mau memeriksa ulang.";
-    return "Tidak ada barang untuk filter ini.";
-  }
+  const cards: Array<{ key: OpnameFilterKey; label: string; value: number | null; tone: OpnameTone; span?: boolean }> = [
+    { key: "semua", label: "Total Barang", value: summary?.total ?? null, tone: "blue", span: true },
+    { key: "sudah", label: "Sudah Dicek", value: summary?.sudah ?? null, tone: "green" },
+    { key: "belum", label: "Belum Dicek", value: summary?.belum ?? null, tone: "gray" },
+    { key: "selisih", label: "Ada Selisih", value: summary?.selisih ?? null, tone: "orange" },
+    { key: "ulang", label: "Perlu Cek Ulang", value: summary?.ulang ?? null, tone: "yellow" },
+  ];
 
   return (
     <>
       <Panel>
-        <div className="flex flex-col gap-2 md:flex-row">
-          <input
-            className={inputClass}
-            placeholder="Cari nama, part number, atau merek"
-            value={q}
-            onChange={(e) => { setPage(1); setQ(e.target.value); }}
-          />
-          <details ref={dropdown} className="relative min-w-[240px]">
-            <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-sm">
-              <span className="truncate">
-                {kategori.length === 0 ? "Semua Kategori" : kategori.length <= 2 ? kategori.join(", ") : `${kategori.length} kategori dipilih`}
-              </span>
-              <span className="shrink-0 text-slate-600">▾</span>
-            </summary>
-            <div className="absolute left-0 top-12 z-20 w-full min-w-[300px] overflow-hidden rounded-xl border border-line bg-white shadow-xl">
-              <div className="space-y-2 border-b border-line p-3">
-                <input
-                  className="h-10 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-blue-500"
-                  placeholder="Cari nama kategori..."
-                  value={kategoriQ}
-                  onChange={(e) => setKategoriQ(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <button type="button" className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-left text-sm font-bold hover:bg-slate-50" onClick={() => { setPage(1); setKategori([]); setKategoriQ(""); }}>
-                    ☑ Semua Kategori
-                  </button>
-                  {kategori.length > 0 ? (
-                    <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-danger hover:bg-red-100" onClick={() => { setPage(1); setKategori([]); }}>
-                      Hapus
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="max-h-56 overflow-y-auto py-1">
-                {categories.length === 0 ? <p className="px-3 py-3 text-sm text-slate-500">Tidak ada kategori cocok.</p> : null}
-                {categories.map((c) => (
-                  <label key={c} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
-                    <input type="checkbox" className="size-4" checked={hasKategori(c)} onChange={() => toggleKategori(c)} />
-                    <span className="truncate">{c}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="border-t border-line p-2">
-                <button type="button" className={`${btnPrimary} w-full`} onClick={() => { if (dropdown.current) dropdown.current.open = false; }}>
-                  OK, terapkan
-                </button>
-              </div>
-            </div>
-          </details>
-          <select className={`${inputClass} md:w-44`} value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
-            {STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-          <button type="button" className="inline-flex h-11 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-sm font-semibold text-slate-800 hover:bg-slate-50" onClick={() => void startNewRound()} title="Kosongkan tanda sudah dicek untuk kategori yang dipilih">
-            <RotateCcw className="size-4" /> Mulai putaran baru
-          </button>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {cards.map((card) => {
+            const tone = TONE[card.tone];
+            const active = filter === card.key;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                aria-label={`${card.label}: tampilkan daftarnya`}
+                aria-pressed={active}
+                onClick={() => pick(card.key)}
+                className={`flex flex-col items-start rounded-xl border p-3 text-left transition ${card.span ? "col-span-2 sm:col-span-1" : ""} ${tone.panel} ${active ? "ring-2 ring-accent ring-offset-1" : "hover:brightness-95"}`}
+              >
+                <span className="text-[11px] font-bold uppercase tracking-wide opacity-80">{card.label}</span>
+                <span className="num mt-0.5 text-2xl font-extrabold leading-tight text-slate-900">{card.value == null ? "…" : card.value.toLocaleString("id-ID")}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3">
+          <div className="flex items-end justify-between gap-2">
+            <p className="text-sm font-extrabold text-slate-900">Progres Pemeriksaan</p>
+            <p className="num text-lg font-extrabold text-accent">{summary ? `${summary.progress}%` : "…"}</p>
+          </div>
+          <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary?.progress ?? 0}>
+            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${summary?.progress ?? 0}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            {summary ? `${summary.sudah.toLocaleString("id-ID")} dari ${summary.total.toLocaleString("id-ID")} barang sudah dicek${kategori ? ` (kategori ${kategori})` : ""}` : "Memuat..."}
+          </p>
         </div>
       </Panel>
 
       <Panel>
-        {error ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-danger">{error}</p> : null}
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <Metric label="Belum dicek" value={counts?.belum ?? 0} />
-          <Metric label="Cocok" value={counts?.cocok ?? 0} tone="text-emerald-700" />
-          <Metric label="Selisih" value={counts?.selisih ?? 0} tone="text-amber-700" />
-          <Metric label="Habis" value={counts?.habis ?? 0} tone="text-red-700" />
-        </div>
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
-            <span>{done} dari {counts?.total ?? 0} barang sudah dicek</span>
-            <span className="num font-semibold">{pct}%</span>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="relative sm:col-span-2 xl:col-span-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className={`${inputClass} pl-9 pr-10`}
+              placeholder="Cari nama, kode, part number, alt, merek"
+              aria-label="Cari barang"
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+            />
+            {q ? (
+              <button type="button" aria-label="Hapus pencarian" onClick={() => { setPage(1); setQ(""); }} className="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-lg text-slate-500">
+                <X className="size-4" />
+              </button>
+            ) : null}
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-          </div>
+          <select className={inputClass} aria-label="Kategori barang" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }}>
+            <option value="">Semua Kategori</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select className={inputClass} aria-label="Status pemeriksaan" value={filter} onChange={(e) => pick(e.target.value as OpnameFilterKey)}>
+            {FILTER_OPTIONS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+          </select>
+          <button type="button" aria-label="Reset filter" disabled={!dirty} onClick={reset} className="col-span-full inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-40 sm:col-span-2 xl:col-span-1">
+            <RotateCcw className="size-4" /> Reset Filter
+          </button>
         </div>
-
-        <div className="mt-4 overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="bg-slate-50 text-left">
-              <tr>
-                <th className={th}>Barang</th>
-                <th className={`${th} text-center`}>Stok sistem</th>
-                <th className={`${th} text-center`}>Stok fisik</th>
-                <th className={`${th} text-center`}>Status</th>
-                <th className={th}>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data && items.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-slate-500">{emptyText()}</td></tr> : null}
-              {!data && !error ? <tr><td colSpan={5} className="py-10 text-center text-slate-500">Memuat daftar barang...</td></tr> : null}
-              {items.map((item) => {
-                const open = item.dicekAt === null || redo.includes(item.id);
-                const draft = drafts[item.id] ?? "";
-                const isBusy = busy.includes(item.id);
-                const changed = item.dicekAt !== null && item.selisih !== 0;
-                return (
-                  <tr key={item.id} className="border-t border-line">
-                    <td className={td}>
-                      <div className="font-semibold leading-snug text-slate-900">{item.nama}</div>
-                      {item.merek ? (
-                        <div className="mt-0.5"><span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">{item.merek}</span></div>
-                      ) : null}
-                      <div className="mt-0.5 font-mono text-xs text-slate-500">{item.partNumber || item.kode || "-"}</div>
-                    </td>
-                    <td className={`${td} whitespace-nowrap text-center`}>
-                      {changed ? <span className="mr-1 text-xs text-slate-400 line-through">{item.stok - item.selisih}</span> : null}
-                      <span className={`num font-bold ${item.stok <= 0 ? "text-red-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</span>
-                    </td>
-                    <td className={`${td} text-center`}>
-                      {open ? (
-                        <input
-                          className="h-9 w-28 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100"
-                          inputMode="numeric"
-                          placeholder="isi jika beda"
-                          aria-label={`Stok fisik ${item.nama}`}
-                          value={draft}
-                          disabled={isBusy}
-                          onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setDrafts((d) => ({ ...d, [item.id]: v })); }}
-                          onKeyDown={(e) => { if (e.key === "Enter" && draft !== "") saveDraft(item); }}
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className={`${td} text-center`}>
-                      {item.dicekAt ? <HasilBadge hasil={item.hasil} selisih={item.selisih} /> : <span className="inline-block whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">Belum dicek</span>}
-                    </td>
-                    <td className={td}>
-                      {!open ? (
-                        <button type="button" className={btnNeutral} onClick={() => setRedo((r) => [...r, item.id])}>
-                          <RotateCcw className="size-4" /> Cek ulang
-                        </button>
-                      ) : draft !== "" ? (
-                        <div className="flex gap-1.5">
-                          <button type="button" className={btnPrimary} disabled={isBusy} onClick={() => saveDraft(item)}><Check className="size-4" /> Simpan</button>
-                          <button type="button" className={btnNeutral} disabled={isBusy} onClick={() => clearDraft(item.id)}>Batal</button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-1.5">
-                          <button type="button" className={btnNeutral} disabled={isBusy} onClick={() => void submit(item, item.stok)}><Check className="size-4" /> Cocok</button>
-                          <button type="button" className={btnNeutral} disabled={isBusy} onClick={() => void submit(item, 0)}><PackageX className="size-4" /> Habis</button>
-                          {redo.includes(item.id) ? <button type="button" className={btnNeutral} onClick={() => closeRedo(item.id)}>Batal</button> : null}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+        <p className="mt-3 text-xs font-semibold text-slate-600">{data ? `${data.total.toLocaleString("id-ID")} barang` : "Memuat..."}</p>
+        <div className="mt-2">
+          {data ? (
+            <OpnameRows items={data.items} q={dq} canSave={canSave} onOpen={onOpen} />
+          ) : (
+            <div className="space-y-2" aria-busy="true">
+              {[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />)}
+            </div>
+          )}
         </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-          <span>{data ? `${data.total} barang · Hal ${data.page} dari ${pages}` : ""}</span>
-          <div className="flex gap-2">
-            <button type="button" className={btnNeutral} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Sebelumnya</button>
-            <button type="button" className={btnNeutral} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
-          </div>
-        </div>
+        {data ? <Pager page={page} total={data.total} perPage={data.perPage} onPage={changePage} /> : null}
       </Panel>
+
+      {canSave ? <SyncSetting /> : null}
     </>
+  );
+}
+
+function SyncSetting() {
+  const [autoSync, setAutoSync] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    void opnameSettings()
+      .then((res) => setAutoSync(res.autoSync))
+      .catch(() => undefined);
+  }, []);
+  if (autoSync == null) return null;
+  return (
+    <Panel>
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1 size-5 shrink-0"
+          checked={autoSync}
+          disabled={saving}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setSaving(true);
+            void opnameSaveSettings({ data: { autoSync: next } })
+              .then((res) => {
+                setAutoSync(res.autoSync);
+                toast.success(res.autoSync ? "Jumlah di sistem akan disesuaikan otomatis setelah pemeriksaan." : "Pemeriksaan hanya dicatat, jumlah di sistem tidak diubah.");
+              })
+              .catch((err: Error) => toast.error(err.message))
+              .finally(() => setSaving(false));
+          }}
+        />
+        <span className="min-w-0 text-sm">
+          <span className="block font-bold text-slate-900">Sesuaikan jumlah di sistem otomatis</span>
+          <span className="block text-xs leading-5 text-slate-600">
+            Jika aktif, setelah pemeriksaan disimpan jumlah barang di sistem disamakan dengan jumlah fisik. Jika nonaktif, pemeriksaan hanya dicatat tanpa mengubah jumlah.
+          </span>
+        </span>
+      </label>
+    </Panel>
   );
 }

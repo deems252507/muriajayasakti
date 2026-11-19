@@ -98,3 +98,86 @@ export type SupplierReceipt = {
   totalValue: number;
   items: SupplierReceiptItem[];
 };
+
+/* ===== Stok Opname ===== */
+
+/** Status pemeriksaan barang. Berbeda dari hasil (sesuai / selisih). */
+export type OpnameStatus = "BELUM_DICEK" | "SUDAH_DICEK" | "PERLU_CEK_ULANG";
+
+/** Hasil pemeriksaan terakhir (hanya ada jika barang pernah diperiksa). */
+export type OpnameHasil = "SESUAI" | "SELISIH" | "FISIK_HABIS" | "STOK_SISTEM_0";
+
+export type OpnameFilter = "semua" | "belum" | "sudah" | "selisih" | "ulang" | "habis" | "sistem0";
+
+/** Barang dari Master Data (Daftar Sparepart) + pemeriksaan terakhirnya. */
+export type OpnameItem = Product & {
+  statusCek: OpnameStatus;
+  hasil: OpnameHasil | null;
+  stokFisik: number | null;
+  selisih: number | null;
+  stokSebelum: number | null;
+  stokSesudah: number | null;
+  dicekPada: string | null;
+  petugas: string;
+  catatan: string;
+};
+
+export type OpnameSummary = {
+  total: number;
+  sudah: number;
+  belum: number;
+  ulang: number;
+  selisih: number;
+  habis: number;
+  sistem0: number;
+  /** Persen barang yang sudah dicek dan masih berlaku (0-100, dibulatkan ke bawah). */
+  progress: number;
+};
+
+export type OpnameLog = {
+  id: number;
+  productId: number | null;
+  kode: string;
+  nama: string;
+  partNumber: string;
+  partNumbersAlt: string;
+  merek: string;
+  kategori: string;
+  kodePajak: string;
+  satuan: string;
+  stokSebelum: number;
+  stokFisik: number;
+  selisih: number;
+  stokSesudah: number;
+  hasil: OpnameHasil;
+  disesuaikan: boolean;
+  alasan: string;
+  catatan: string;
+  petugas: string;
+  dicekPada: string;
+  dibukaPada: string | null;
+  mutasi: number;
+};
+
+export type OpnameSaveResult =
+  | {
+      ok: true;
+      duplikat: boolean;
+      logId: number;
+      hasil: OpnameHasil;
+      stokSebelum: number;
+      stokFisik: number;
+      selisih: number;
+      stokSesudah: number;
+      disesuaikan: boolean;
+      dicekPada: string;
+      petugas: string;
+    }
+  | {
+      ok: false;
+      konflik: true;
+      stokTerbaru: number;
+      stokDilihat: number;
+      jumlahMutasi: number;
+      netMutasi: number;
+    };

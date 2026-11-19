@@ -24,7 +24,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
-import { chatUnread, getOpnameDueCount, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
+import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setPrintUser, setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
@@ -52,8 +52,8 @@ const ADMIN = [
       { to: "/manual", label: "Transaksi Manual", icon: ArrowLeftRight },
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
-      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
       { to: "/pemasok", label: "Barang Masuk Pemasok", icon: PackagePlus },
+      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
     ],
   },
   {
@@ -99,6 +99,7 @@ const OWNER = [
     label: "Data (lihat saja)",
     items: [
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
       { to: "/mitra", label: "Pelanggan & Supplier", icon: Users },
       { to: "/jejak", label: "Riwayat Aktivitas", icon: ScrollText },
     ],
@@ -223,17 +224,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
   const [tagBadge, setTagBadge] = useState(0);
-  const [opnameDue, setOpnameDue] = useState(0);
-  // Angka merah di menu Stok Opname: jumlah kategori yang sudah lewat jadwal cek (khusus Admin).
-  useEffect(() => {
-    if (me.role !== "Admin") return;
-    let alive = true;
-    const run = () => { void getOpnameDueCount().then((res) => { if (alive) setOpnameDue(res.terlambat); }).catch(() => undefined); };
-    run();
-    const timer = window.setInterval(() => { if (!document.hidden) run(); }, 300000);
-    window.addEventListener("mjs-opname-changed", run);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("mjs-opname-changed", run); };
-  }, [me.role]);
   const [askLogout, setAskLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const pathRef = useRef(path);
@@ -433,7 +423,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                     >
                       <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
                       {item.label}
-                      {item.to === "/opname" && opnameDue > 0 ? <span title={`${opnameDue} kategori sudah waktunya dicek`} className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{opnameDue > 99 ? "99+" : opnameDue}</span> : null}
                       {item.to === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
                     </Link>
                   );

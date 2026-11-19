@@ -932,3 +932,73 @@ export function printSupplierInvoice(
     <div class="sign"><div><p>Bagian Pembelian,</p><i></i></div><div><p>Disetujui,</p><i></i></div></div>`,
   );
 }
+
+/** Laporan Stok Opname (landscape). Dipanggil dari tab Laporan di menu Stok Opname. */
+export function printOpnameReport(
+  items: Array<{
+    nama: string;
+    merek?: string;
+    kode: string;
+    kodePajak?: string;
+    partNumber?: string;
+    partNumbersAlt?: string;
+    kategori?: string;
+    satuan: string;
+    stok: number;
+    statusCek: string;
+    hasil: string | null;
+    stokFisik: number | null;
+    selisih: number | null;
+    dicekPada: string | null;
+    petugas?: string;
+  }>,
+  info: { jenis: string; kategori?: string; dateFrom?: string; dateTo?: string },
+) {
+  if (!items.length) throw new Error("Tidak ada data laporan untuk dicetak.");
+  const statusText: Record<string, string> = { BELUM_DICEK: "Belum Dicek", SUDAH_DICEK: "Sudah Dicek", PERLU_CEK_ULANG: "Perlu Cek Ulang" };
+  const hasilText: Record<string, string> = { SESUAI: "Sesuai", SELISIH: "Ada Selisih", FISIK_HABIS: "Fisik Habis", STOK_SISTEM_0: "Stok Sistem 0" };
+  const fmtDate = (iso: string | null) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toLocaleString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).replace(".", ":");
+  };
+  const sel = (n: number | null) => (n == null ? "-" : n > 0 ? `+${n}` : String(n));
+  const kategori = info.kategori?.trim() || "Semua Kategori";
+  const periode = info.dateFrom || info.dateTo ? ` · Tanggal periksa: ${info.dateFrom || "..."} s/d ${info.dateTo || "..."}` : "";
+  const tanggal = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Makassar" });
+  const judul = `LAPORAN STOK OPNAME - ${info.jenis.toUpperCase()}`;
+  const count = (fn: (i: (typeof items)[number]) => boolean) => items.filter(fn).length;
+  const rows = items
+    .map((item, index) => {
+      const stale = item.statusCek === "PERLU_CEK_ULANG";
+      const tone = item.hasil === "SESUAI" ? "pos" : item.hasil ? "neg" : "";
+      return `<tr>
+        <td class="center">${index + 1}</td>
+        <td><b>${esc(item.nama)}${item.kodePajak ? ` (${esc(item.kodePajak)})` : ""}</b>${item.merek ? `<span class="sub">${esc(item.merek)}</span>` : ""}<span class="sub mono">${esc(item.kode)}</span></td>
+        <td>${esc(item.kategori || "-")}</td>
+        <td class="mono">${esc(item.partNumber || item.kode || "-")}${item.partNumbersAlt ? `<span class="sub">Alt: ${esc(item.partNumbersAlt)}</span>` : ""}</td>
+        <td class="center">${item.stok} ${esc(item.satuan)}</td>
+        <td class="center">${item.stokFisik == null ? "-" : `${item.stokFisik} ${esc(item.satuan)}`}</td>
+        <td class="center bold">${sel(item.selisih)}</td>
+        <td class="center">${esc(statusText[item.statusCek] ?? item.statusCek)}</td>
+        <td class="center ${stale ? "" : tone}">${item.hasil ? esc(hasilText[item.hasil] ?? item.hasil) + (stale ? " (lama)" : "") : "-"}</td>
+        <td>${esc(fmtDate(item.dicekPada))}${item.petugas ? `<span class="sub">${esc(item.petugas)}</span>` : ""}</td>
+      </tr>`;
+    })
+    .join("");
+  openPrint(
+    judul,
+    `<style>table { font-size: 10.5px; } td, th { overflow-wrap: break-word; }</style>
+    <div class="doc-title"><div><h2>${esc(judul)}</h2><p>Kategori: ${esc(kategori)}${esc(periode)} · Tanggal cetak: ${esc(tanggal)} · ${items.length} barang</p></div></div>
+    <div class="stats">
+      <div><span>Total barang</span><b>${items.length}</b></div>
+      <div><span>Sudah dicek</span><b>${count((i) => i.statusCek === "SUDAH_DICEK")}</b></div>
+      <div><span>Belum dicek</span><b>${count((i) => i.statusCek === "BELUM_DICEK")}</b></div>
+      <div><span>Perlu cek ulang</span><b>${count((i) => i.statusCek === "PERLU_CEK_ULANG")}</b></div>
+      <div><span>Ada selisih</span><b>${count((i) => i.statusCek === "SUDAH_DICEK" && !!i.hasil && i.hasil !== "SESUAI")}</b></div>
+    </div>
+    <table><thead><tr><th class="center">No</th><th>Nama Barang</th><th>Kategori</th><th>Part Number</th><th class="center">Stok Sistem</th><th class="center">Stok Fisik</th><th class="center">Selisih</th><th class="center">Status</th><th class="center">Hasil</th><th>Terakhir Dicek</th></tr></thead><tbody>${rows}</tbody></table>`,
+    true,
+  );
+}
