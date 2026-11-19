@@ -15,6 +15,10 @@ export const Route = createFileRoute("/_shop")({
     if (me.role === "Kasir" && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {
       throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
     }
+    // Stok Opname hanya untuk Admin (Owner, Kasir, dan Staf dialihkan; server juga menolak).
+    if (me.role !== "Admin" && (location.pathname.replace(/\/+$/, "") || "/") === "/opname") {
+      throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
+    }
     return { me };
   },
   component: ShopLayout,

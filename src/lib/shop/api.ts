@@ -903,3 +903,85 @@ export const itemCommentTagged = createServerFn({ method: "GET" })
     const { itemCommentTagged: run } = await import("./logic.server");
     return run();
   });
+
+/* ---------- Stok Opname (khusus Admin) ---------- */
+
+export const listOpname = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; kategori?: string[]; status?: string; page?: number }) => ({
+    q: String(input?.q ?? "").trim(),
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : [],
+    status: String(input?.status ?? ""),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { listOpname: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const saveOpnameCheck = createServerFn({ method: "POST" })
+  .validator((input: { id: number; sistem: number; fisik: number }) => ({
+    id: Number(input?.id),
+    sistem: Number(input?.sistem),
+    fisik: Number(input?.fisik),
+  }))
+  .handler(async ({ data }) => {
+    const { saveOpnameCheck: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const resetOpnameRound = createServerFn({ method: "POST" })
+  .validator((input: { kategori?: string[] }) => ({
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : [],
+  }))
+  .handler(async ({ data }) => {
+    const { resetOpnameRound: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const listOpnameHistory = createServerFn({ method: "GET" })
+  .validator((input: { from?: string; to?: string; kategori?: string; q?: string; onlySelisih?: boolean; page?: number }) => ({
+    from: String(input?.from ?? ""),
+    to: String(input?.to ?? ""),
+    kategori: String(input?.kategori ?? "").trim(),
+    q: String(input?.q ?? "").trim(),
+    onlySelisih: Boolean(input?.onlySelisih),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { listOpnameHistory: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const getOpnameDetail = createServerFn({ method: "GET" })
+  .validator((input: { tgl: string; kategori: string; username: string }) => ({
+    tgl: String(input?.tgl ?? ""),
+    kategori: String(input?.kategori ?? ""),
+    username: String(input?.username ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { getOpnameDetail: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const getOpnameSchedule = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { getOpnameSchedule: run } = await import("./logic.server");
+    return run();
+  });
+
+export const getOpnameDueCount = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { getOpnameDueCount: run } = await import("./logic.server");
+    return run();
+  });
+
+export const saveOpnameInterval = createServerFn({ method: "POST" })
+  .validator((input: { semua?: boolean; kategori?: string[]; bulan: number }) => ({
+    semua: Boolean(input?.semua),
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : [],
+    bulan: Number(input?.bulan),
+  }))
+  .handler(async ({ data }) => {
+    const { saveOpnameInterval: run } = await import("./logic.server");
+    return run(data);
+  });
