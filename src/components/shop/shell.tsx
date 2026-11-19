@@ -2,7 +2,6 @@ import { clearPersistedState } from "@/lib/persist";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
-  ClipboardCheck,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -24,7 +23,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
-import { chatUnread, itemCommentInbox, logout, listMasters, opnameDueCount } from "@/lib/shop/api";
+import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setPrintUser, setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
@@ -52,7 +51,6 @@ const ADMIN = [
       { to: "/manual", label: "Transaksi Manual", icon: ArrowLeftRight },
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
-      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
       { to: "/pemasok", label: "Barang Masuk Pemasok", icon: PackagePlus },
     ],
   },
@@ -223,7 +221,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
   const [tagBadge, setTagBadge] = useState(0);
-  const [opnameBadge, setOpnameBadge] = useState(0);
   const [askLogout, setAskLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const pathRef = useRef(path);
@@ -373,22 +370,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       document.title = baseTitle;
     };
   }, []);
-  // Angka merah Stok Opname: jumlah kategori yang sudah lewat jadwal cek (hanya Admin).
-  useEffect(() => {
-    if (me.role !== "Admin") return;
-    let alive = true;
-    const load = () => { void opnameDueCount().then((res) => { if (alive) setOpnameBadge(res.due); }).catch(() => undefined); };
-    load();
-    const timer = window.setInterval(load, 300000);
-    window.addEventListener("mjs-opname-changed", load);
-    window.addEventListener("focus", load);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener("mjs-opname-changed", load);
-      window.removeEventListener("focus", load);
-    };
-  }, [me.role]);
   const baseGroups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
   // Pengaturan hanya terlihat oleh Admin 1 (Admin yang dicentang kelola akun).
   // Staf, Admin lain, dan Owner juga melihat Pengaturan, tetapi isinya hanya Nama dan Foto Akun. Kasir tidak.
@@ -439,7 +420,6 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                     >
                       <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
                       {item.label}
-                      {item.to === "/opname" && opnameBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" title="Kategori yang sudah waktunya dicek">{opnameBadge > 99 ? "99+" : opnameBadge}</span> : null}
                       {item.to === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
                     </Link>
                   );

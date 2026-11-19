@@ -30,7 +30,6 @@ import { Route as ShopPengaturanRouteImport } from './routes/_shop/pengaturan'
 import { Route as ShopReturRouteImport } from './routes/_shop/retur'
 import { Route as ShopRiwayatRouteImport } from './routes/_shop/riwayat'
 import { Route as ShopStokRouteImport } from './routes/_shop/stok'
-import { Route as ShopOpnameRouteImport } from './routes/_shop/opname'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -136,11 +135,6 @@ const ShopStokRoute = ShopStokRouteImport.update({
   path: '/stok',
   getParentRoute: () => ShopRoute,
 } as any)
-const ShopOpnameRoute = ShopOpnameRouteImport.update({
-  id: '/opname',
-  path: '/opname',
-  getParentRoute: () => ShopRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -163,7 +157,6 @@ export interface FileRoutesByFullPath {
   '/retur': typeof ShopReturRoute
   '/riwayat': typeof ShopRiwayatRoute
   '/stok': typeof ShopStokRoute
-  '/opname': typeof ShopOpnameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -186,7 +179,6 @@ export interface FileRoutesByTo {
   '/retur': typeof ShopReturRoute
   '/riwayat': typeof ShopRiwayatRoute
   '/stok': typeof ShopStokRoute
-  '/opname': typeof ShopOpnameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -211,7 +203,6 @@ export interface FileRoutesById {
   '/_shop/retur': typeof ShopReturRoute
   '/_shop/riwayat': typeof ShopRiwayatRoute
   '/_shop/stok': typeof ShopStokRoute
-  '/_shop/opname': typeof ShopOpnameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -236,7 +227,6 @@ export interface FileRouteTypes {
     | '/retur'
     | '/riwayat'
     | '/stok'
-    | '/opname'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -259,7 +249,6 @@ export interface FileRouteTypes {
     | '/retur'
     | '/riwayat'
     | '/stok'
-    | '/opname'
   id:
     | '__root__'
     | '/'
@@ -283,7 +272,6 @@ export interface FileRouteTypes {
     | '/_shop/retur'
     | '/_shop/riwayat'
     | '/_shop/stok'
-    | '/_shop/opname'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -442,13 +430,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShopStokRouteImport
       parentRoute: typeof ShopRoute
     }
-    '/_shop/opname': {
-      id: '/_shop/opname'
-      path: '/opname'
-      fullPath: '/opname'
-      preLoaderRoute: typeof ShopOpnameRouteImport
-      parentRoute: typeof ShopRoute
-    }
   }
 }
 
@@ -470,7 +451,6 @@ interface ShopRouteChildren {
   ShopReturRoute: typeof ShopReturRoute
   ShopRiwayatRoute: typeof ShopRiwayatRoute
   ShopStokRoute: typeof ShopStokRoute
-  ShopOpnameRoute: typeof ShopOpnameRoute
 }
 
 const ShopRouteChildren: ShopRouteChildren = {
@@ -491,7 +471,6 @@ const ShopRouteChildren: ShopRouteChildren = {
   ShopReturRoute: ShopReturRoute,
   ShopRiwayatRoute: ShopRiwayatRoute,
   ShopStokRoute: ShopStokRoute,
-  ShopOpnameRoute: ShopOpnameRoute,
 }
 
 const ShopRouteWithChildren = ShopRoute._addFileChildren(ShopRouteChildren)
