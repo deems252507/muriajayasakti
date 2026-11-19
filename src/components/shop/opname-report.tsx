@@ -1,6 +1,7 @@
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { KategoriPicker } from "@/components/shop/opname-kategori";
 import { OpnameRows } from "@/components/shop/opname-rows";
 import { Pager, filterLabel, type OpnameFilterKey } from "@/components/shop/opname-ui";
 import { inputClass } from "@/components/shop/shell";
@@ -20,7 +21,7 @@ const JENIS: Array<{ key: OpnameFilterKey; label: string }> = [
 
 export function OpnameReport({ categories }: { categories: string[] }) {
   const [jenis, setJenis] = useState<OpnameFilterKey>("semua");
-  const [kategori, setKategori] = useState("");
+  const [kategori, setKategori] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -28,7 +29,7 @@ export function OpnameReport({ categories }: { categories: string[] }) {
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
 
-  const query = { filter: jenis, kategori: kategori ? [kategori] : [], dateFrom, dateTo };
+  const query = { filter: jenis, kategori, dateFrom, dateTo };
 
   useEffect(() => {
     let alive = true;
@@ -54,7 +55,7 @@ export function OpnameReport({ categories }: { categories: string[] }) {
       const res = await opnameList({ data: { ...query, page: 1, all: true } });
       printOpnameReport(res.items, {
         jenis: JENIS.find((j) => j.key === jenis)?.label ?? filterLabel(jenis),
-        kategori: kategori || "Semua Kategori",
+        kategori: kategori.join(", ") || "Semua Kategori",
         dateFrom,
         dateTo,
       });
@@ -71,10 +72,7 @@ export function OpnameReport({ categories }: { categories: string[] }) {
         <select className={inputClass} aria-label="Jenis laporan" value={jenis} onChange={(e) => { setPage(1); setJenis(e.target.value as OpnameFilterKey); }}>
           {JENIS.map((j) => <option key={j.key} value={j.key}>{j.label}</option>)}
         </select>
-        <select className={inputClass} aria-label="Kategori" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }}>
-          <option value="">Semua Kategori</option>
-          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <KategoriPicker value={kategori} options={categories} onChange={(next) => { setPage(1); setKategori(next); }} />
         <label className="block">
           <span className="sr-only">Dicek dari tanggal</span>
           <input type="date" className={inputClass} aria-label="Dicek dari tanggal" value={dateFrom} onChange={(e) => { setPage(1); setDateFrom(e.target.value); }} />
@@ -83,7 +81,7 @@ export function OpnameReport({ categories }: { categories: string[] }) {
           <span className="sr-only">Dicek sampai tanggal</span>
           <input type="date" className={inputClass} aria-label="Dicek sampai tanggal" value={dateTo} onChange={(e) => { setPage(1); setDateTo(e.target.value); }} />
         </label>
-        <button type="button" aria-label="Reset filter laporan" onClick={() => { setJenis("semua"); setKategori(""); setDateFrom(""); setDateTo(""); setPage(1); }} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">
+        <button type="button" aria-label="Reset filter laporan" onClick={() => { setJenis("semua"); setKategori([]); setDateFrom(""); setDateTo(""); setPage(1); }} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">
           Reset
         </button>
         <button type="button" aria-label="Cetak atau simpan PDF" disabled={printing || !data || data.total === 0} onClick={() => void cetak()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-extrabold text-white disabled:opacity-50">

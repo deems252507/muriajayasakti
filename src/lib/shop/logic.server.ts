@@ -4154,6 +4154,7 @@ export async function opnameHistory(data: {
   kategori?: unknown;
   productId?: unknown;
   onlyDiff?: unknown;
+  belumDiterapkan?: unknown;
   dateFrom?: unknown;
   dateTo?: unknown;
   page?: unknown;
@@ -4183,6 +4184,7 @@ export async function opnameHistory(data: {
     );
   }
   if (data?.onlyDiff) where.push(`l.hasil <> 'SESUAI'`);
+  if (data?.belumDiterapkan) where.push(`(not l.disesuaikan and l.selisih <> 0)`);
   const from = opDate(data?.dateFrom);
   const to = opDate(data?.dateTo);
   if (from) {
@@ -4199,7 +4201,11 @@ export async function opnameHistory(data: {
   const from_ = `stock_opname_logs l left join products p on p.id = l.product_id`;
   const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from ${from_} ${clause}`, params);
   const rows = await db.query<Record<string, unknown>>(
-    `select l.*, p.part_number, p.part_numbers_alt, p.merek, p.kategori, p.kode_pajak
+    `select l.*, p.part_number, p.part_numbers_alt, p.merek, p.kategori, p.kode_pajak,
+       (l.disesuaikan and p.id is not null and p.stok = l.stok_sesudah
+         and l.id = (select x.id from stock_opname_logs x where x.product_id = l.product_id order by x.dicek_pada desc, x.id desc limit 1)) as bisa_kembali,
+       (not l.disesuaikan and l.selisih <> 0 and p.id is not null and p.stok = l.stok_sesudah
+         and l.id = (select y.id from stock_opname_logs y where y.product_id = l.product_id order by y.dicek_pada desc, y.id desc limit 1)) as bisa_terapkan
      from ${from_} ${clause} order by l.dicek_pada desc, l.id desc limit ${perPage} offset ${(page - 1) * perPage}`,
     params,
   );
@@ -4226,6 +4232,9 @@ export async function opnameHistory(data: {
     dicekPada: opIso(r.dicek_pada) ?? "",
     dibukaPada: opIso(r.dibuka_pada),
     mutasi: Number(r.mutasi_selama_cek ?? 0),
+    bisaKembali: Boolean(r.bisa_kembali),
+    bisaTerapkan: Boolean(r.bisa_terapkan),
+    diterapkanPada: opIso(r.diterapkan_pada),
   }));
   return { total: Number(countRow?.n ?? 0), page, perPage, items };
 }
@@ -4250,4 +4259,67 @@ export async function opnameSaveSettings(data: { autoSync: boolean }) {
   );
   await audit(me, `Pengaturan Stok Opname: sinkron stok otomatis ${autoSync ? "aktif" : "nonaktif"}`);
   return { autoSync };
+}
+
+/** Hapus satu catatan riwayat pemeriksaan (Admin). kembalikan = ikut mengembalikan stok ke angka sebelum pemeriksaan. */
+export async function opnameDelete(data: { logId: number; kembalikan?: boolean }) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const logId = Number(data?.logId);
+  if (!Number.isInteger(logId) || logId <= 0) throw new Error("Catatan tidak valid.");
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: Record<string, unknown> | string }>(`select shop_opname_delete($1::jsonb) as r`, [
+      JSON.stringify({ logId, kembalikan: Boolean(data?.kembalikan) }),
+    ]);
+    const r = (typeof row?.r === "string" ? JSON.parse(row.r) : row?.r) as Record<string, unknown>;
+    if (r?.ok) {
+      await audit(
+        me,
+        `Hapus riwayat Stok Opname ${String(r.kode ?? "")} ${String(r.nama ?? "")}${r.dikembalikan ? `, stok dikembalikan menjadi ${String(r.stokSekarang)}` : ""}`.trim(),
+      );
+    }
+    return {
+      ok: Boolean(r?.ok),
+      dikembalikan: Boolean(r?.dikembalikan),
+      stokSekarang: r?.stokSekarang == null ? null : Number(r.stokSekarang),
+    };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+const OPNAME_APPLY_REASON: Record<string, string> = {
+  tidak_ditemukan: "catatan tidak ditemukan",
+  barang_hilang: "barang sudah tidak ada di Master Data",
+  sudah_diterapkan: "sudah pernah diterapkan",
+  tidak_ada_selisih: "tidak ada selisih",
+  bukan_terbaru: "sudah ada pemeriksaan yang lebih baru",
+  stok_berubah: "stok barang sudah berubah, periksa ulang barangnya",
+};
+
+/** Terapkan hasil pemeriksaan (yang dicatat tanpa sinkron otomatis) ke stok Master Data. Satu per satu, masing-masing atomik. */
+export async function opnameApply(data: { logIds: number[] }) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const ids = [...new Set((Array.isArray(data?.logIds) ? data.logIds : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 200);
+  if (!ids.length) throw new Error("Pilih catatan yang akan diterapkan.");
+  const db = await sql();
+  let berhasil = 0;
+  const gagal: Array<{ nama: string; alasan: string }> = [];
+  for (const logId of ids) {
+    try {
+      const [row] = await db.query<{ r: Record<string, unknown> | string }>(`select shop_opname_apply($1::jsonb) as r`, [JSON.stringify({ logId, actor: me.username })]);
+      const r = (typeof row?.r === "string" ? JSON.parse(row.r) : row?.r) as Record<string, unknown>;
+      if (r?.ok) {
+        berhasil += 1;
+        await audit(me, `Terapkan Stok Opname ke stok ${String(r.kode ?? "")} ${String(r.nama ?? "")}: stok jadi ${String(r.stokSesudah)}`.trim());
+      } else {
+        gagal.push({ nama: String(r?.nama ?? `Catatan #${logId}`), alasan: OPNAME_APPLY_REASON[String(r?.alasan)] ?? "tidak bisa diterapkan" });
+      }
+    } catch (error) {
+      gagal.push({ nama: `Catatan #${logId}`, alasan: cleanError(error) });
+    }
+  }
+  return { berhasil, gagal };
 }

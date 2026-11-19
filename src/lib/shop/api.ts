@@ -966,11 +966,12 @@ export const opnameNext = createServerFn({ method: "GET" })
   });
 
 export const opnameHistory = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; kategori?: string[]; productId?: number | null; onlyDiff?: boolean; dateFrom?: string; dateTo?: string; page?: number; all?: boolean }) => ({
+  .validator((input: { q?: string; kategori?: string[]; productId?: number | null; onlyDiff?: boolean; belumDiterapkan?: boolean; dateFrom?: string; dateTo?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
     kategori: opnameCats(input?.kategori),
     productId: input?.productId == null ? null : Number(input.productId),
     onlyDiff: Boolean(input?.onlyDiff),
+    belumDiterapkan: Boolean(input?.belumDiterapkan),
     dateFrom: String(input?.dateFrom ?? ""),
     dateTo: String(input?.dateTo ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
@@ -991,5 +992,19 @@ export const opnameSaveSettings = createServerFn({ method: "POST" })
   .validator((input: { autoSync: boolean }) => ({ autoSync: Boolean(input?.autoSync) }))
   .handler(async ({ data }) => {
     const { opnameSaveSettings: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameDelete = createServerFn({ method: "POST" })
+  .validator((input: { logId: number; kembalikan?: boolean }) => ({ logId: Number(input?.logId), kembalikan: Boolean(input?.kembalikan) }))
+  .handler(async ({ data }) => {
+    const { opnameDelete: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameApply = createServerFn({ method: "POST" })
+  .validator((input: { logIds: number[] }) => ({ logIds: Array.isArray(input?.logIds) ? input.logIds.map(Number) : [] }))
+  .handler(async ({ data }) => {
+    const { opnameApply: run } = await import("./logic.server");
     return run(data);
   });

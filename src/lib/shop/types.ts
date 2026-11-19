@@ -157,6 +157,11 @@ export type OpnameLog = {
   dicekPada: string;
   dibukaPada: string | null;
   mutasi: number;
+  /** Catatan ini pemeriksaan terakhir barang dan stok belum berubah: stok bisa dikembalikan saat dihapus. */
+  bisaKembali: boolean;
+  /** Pemeriksaan terakhir yang belum diterapkan ke stok dan stok belum berubah: bisa diterapkan. */
+  bisaTerapkan: boolean;
+  diterapkanPada: string | null;
 };
 
 export type OpnameSaveResult =

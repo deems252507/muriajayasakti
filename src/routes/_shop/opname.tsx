@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ClipboardCheck, RotateCcw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { KategoriPicker } from "@/components/shop/opname-kategori";
 import { OpnameCek } from "@/components/shop/opname-cek";
 import { OpnameHistory } from "@/components/shop/opname-history";
 import { OpnameReport } from "@/components/shop/opname-report";
@@ -47,7 +48,7 @@ function OpnamePage() {
 
   // Filter daftar diingat selama tab browser terbuka (juga dipakai tombol "Lanjut ke Barang Berikutnya").
   const [q, setQ] = usePersistedState("opname:q", "");
-  const [kategori, setKategori] = usePersistedState("opname:kategori", "");
+  const [kategori, setKategori] = usePersistedState<string[]>("opname:kategori2", []);
   const [filter, setFilter] = usePersistedState<OpnameFilterKey>("opname:filter", "semua");
   const [categories, setCategories] = useState<string[]>([]);
   const [summaryTick, setSummaryTick] = useState(0);
@@ -67,7 +68,7 @@ function OpnamePage() {
       <OpnameCek
         productId={cek}
         canSave={canSave}
-        ctx={{ q: q.trim(), kategori: kategori ? [kategori] : [], filter }}
+        ctx={{ q: q.trim(), kategori: kategori, filter }}
         onBack={goList}
         onOpen={(id) => openCek(id, true)}
         onHistory={(id) => void navigate({ to: "/opname", search: { tab: "riwayat", hid: id } })}
@@ -123,6 +124,7 @@ function OpnamePage() {
           setFilter={setFilter}
           summaryTick={summaryTick}
           onOpen={(id) => openCek(id)}
+          onHistory={(id) => void navigate({ to: "/opname", search: { tab: "riwayat", hid: id } })}
         />
       ) : null}
       {tab === "riwayat" ? (
@@ -133,6 +135,7 @@ function OpnamePage() {
             onClearProduct={() => void navigate({ to: "/opname", search: { tab: "riwayat" }, replace: true })}
             onOpenItem={(id) => openCek(id)}
             canOpen
+            canDelete={canSave}
           />
         </Panel>
       ) : null}
@@ -156,17 +159,19 @@ function Daftar({
   setFilter,
   summaryTick,
   onOpen,
+  onHistory,
 }: {
   canSave: boolean;
   categories: string[];
   q: string;
   setQ: (v: string) => void;
-  kategori: string;
-  setKategori: (v: string) => void;
+  kategori: string[];
+  setKategori: (v: string[]) => void;
   filter: OpnameFilterKey;
   setFilter: (v: OpnameFilterKey) => void;
   summaryTick: number;
   onOpen: (id: number) => void;
+  onHistory: (id: number) => void;
 }) {
   const [page, setPage] = useState(1);
   const [summary, setSummary] = useState<OpnameSummary | null>(null);
@@ -176,7 +181,7 @@ function Daftar({
 
   useEffect(() => {
     let alive = true;
-    void opnameSummary({ data: { kategori: kategori ? [kategori] : [] } })
+    void opnameSummary({ data: { kategori: kategori } })
       .then((res) => {
         if (alive) setSummary(res);
       })
@@ -190,7 +195,7 @@ function Daftar({
 
   useEffect(() => {
     let alive = true;
-    void opnameList({ data: { q: dq, kategori: kategori ? [kategori] : [], filter, page } })
+    void opnameList({ data: { q: dq, kategori: kategori, filter, page } })
       .then((res) => {
         if (!alive) return;
         setError("");
@@ -215,11 +220,11 @@ function Daftar({
   };
   const reset = () => {
     setQ("");
-    setKategori("");
+    setKategori([]);
     setFilter("semua");
     setPage(1);
   };
-  const dirty = Boolean(q || kategori || filter !== "semua");
+  const dirty = Boolean(q || kategori.length > 0 || filter !== "semua");
 
   const cards: Array<{ key: OpnameFilterKey; label: string; value: number | null; tone: OpnameTone; span?: boolean }> = [
     { key: "semua", label: "Total Barang", value: summary?.total ?? null, tone: "blue", span: true },
@@ -260,7 +265,7 @@ function Daftar({
             <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${summary?.progress ?? 0}%` }} />
           </div>
           <p className="mt-1 text-xs text-slate-600">
-            {summary ? `${summary.sudah.toLocaleString("id-ID")} dari ${summary.total.toLocaleString("id-ID")} barang sudah dicek${kategori ? ` (kategori ${kategori})` : ""}` : "Memuat..."}
+            {summary ? `${summary.sudah.toLocaleString("id-ID")} dari ${summary.total.toLocaleString("id-ID")} barang sudah dicek${kategori.length ? ` (kategori ${kategori.join(", ")})` : ""}` : "Memuat..."}
           </p>
         </div>
       </Panel>
@@ -285,10 +290,7 @@ function Daftar({
               </button>
             ) : null}
           </div>
-          <select className={inputClass} aria-label="Kategori barang" value={kategori} onChange={(e) => { setPage(1); setKategori(e.target.value); }}>
-            <option value="">Semua Kategori</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <KategoriPicker value={kategori} options={categories} onChange={(next) => { setPage(1); setKategori(next); }} />
           <select className={inputClass} aria-label="Status pemeriksaan" value={filter} onChange={(e) => pick(e.target.value as OpnameFilterKey)}>
             {FILTER_OPTIONS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
@@ -300,7 +302,7 @@ function Daftar({
         <p className="mt-3 text-xs font-semibold text-slate-600">{data ? `${data.total.toLocaleString("id-ID")} barang` : "Memuat..."}</p>
         <div className="mt-2">
           {data ? (
-            <OpnameRows items={data.items} q={dq} canSave={canSave} onOpen={onOpen} />
+            <OpnameRows items={data.items} q={dq} canSave={canSave} onOpen={onOpen} onHistory={onHistory} />
           ) : (
             <div className="space-y-2" aria-busy="true">
               {[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />)}

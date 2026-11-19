@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, History } from "lucide-react";
 import { MarkWords } from "@/components/shop/shell";
 import {
   HasilBadge,
@@ -33,6 +33,7 @@ export function OpnameRows({
   q,
   canSave,
   onOpen,
+  onHistory,
   readOnly = false,
   empty = "Tidak ada barang pada filter yang dipilih.",
 }: {
@@ -40,6 +41,8 @@ export function OpnameRows({
   q: string;
   canSave: boolean;
   onOpen?: (id: number) => void;
+  /** Buka riwayat pemeriksaan barang itu. */
+  onHistory?: (id: number) => void;
   /** Mode laporan: tanpa tombol aksi. */
   readOnly?: boolean;
   empty?: string;
@@ -81,16 +84,23 @@ export function OpnameRows({
               </div>
               {stale ? <p className="mt-1 text-[11px] font-medium text-yellow-800">Jumlah di sistem berubah setelah dicek ({item.stokSesudah} → {item.stok}). Hasil di atas adalah hasil lama.</p> : null}
               {readOnly ? null : (
-                <button
-                  type="button"
-                  aria-label={`${actionLabel(item, canSave)} ${item.nama}`}
-                  onClick={() => onOpen?.(item.id)}
-                  className={`mt-3 inline-flex h-11 w-full items-center justify-center gap-1 rounded-xl text-sm font-extrabold active:scale-[.99] ${
-                    canSave && item.statusCek !== "SUDAH_DICEK" ? "bg-accent text-white" : "border border-slate-300 bg-white text-slate-800"
-                  }`}
-                >
-                  {actionLabel(item, canSave)} <ChevronRight className="size-4" />
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    aria-label={`${actionLabel(item, canSave)} ${item.nama}`}
+                    onClick={() => onOpen?.(item.id)}
+                    className={`inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl text-sm font-extrabold active:scale-[.99] ${
+                      canSave && item.statusCek !== "SUDAH_DICEK" ? "bg-accent text-white" : "border border-slate-300 bg-white text-slate-800"
+                    }`}
+                  >
+                    {actionLabel(item, canSave)} <ChevronRight className="size-4" />
+                  </button>
+                  {onHistory ? (
+                    <button type="button" aria-label={`Riwayat ${item.nama}`} onClick={() => onHistory(item.id)} className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">
+                      <History className="size-4" /> Riwayat
+                    </button>
+                  ) : null}
+                </div>
               )}
             </article>
           );
@@ -151,16 +161,23 @@ export function OpnameRows({
                   </td>
                   {readOnly ? null : (
                     <td className="whitespace-nowrap px-2 py-2.5 text-center align-middle" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        aria-label={`${actionLabel(item, canSave)} ${item.nama}`}
-                        onClick={() => onOpen?.(item.id)}
-                        className={`inline-flex h-10 items-center justify-center rounded-xl px-3 text-xs font-extrabold ${
-                          canSave && item.statusCek !== "SUDAH_DICEK" ? "bg-accent text-white" : "border border-slate-300 bg-white text-slate-800"
-                        }`}
-                      >
-                        {actionLabel(item, canSave)}
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label={`${actionLabel(item, canSave)} ${item.nama}`}
+                          onClick={() => onOpen?.(item.id)}
+                          className={`inline-flex h-10 items-center justify-center rounded-xl px-3 text-xs font-extrabold ${
+                            canSave && item.statusCek !== "SUDAH_DICEK" ? "bg-accent text-white" : "border border-slate-300 bg-white text-slate-800"
+                          }`}
+                        >
+                          {actionLabel(item, canSave)}
+                        </button>
+                        {onHistory ? (
+                          <button type="button" aria-label={`Riwayat ${item.nama}`} title="Riwayat pemeriksaan barang ini" onClick={() => onHistory(item.id)} className="grid size-10 place-items-center rounded-xl border border-slate-300 bg-white text-slate-700">
+                            <History className="size-4" />
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   )}
                 </tr>
