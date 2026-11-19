@@ -903,3 +903,73 @@ export const itemCommentTagged = createServerFn({ method: "GET" })
     const { itemCommentTagged: run } = await import("./logic.server");
     return run();
   });
+
+
+// ── Stok opname (hanya Admin) ──
+export const opnameOverview = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { opnameOverview: run } = await import("./logic.server");
+    return run();
+  });
+
+export const opnameDueCount = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { opnameDueCount: run } = await import("./logic.server");
+    return run();
+  });
+
+export const opnameItems = createServerFn({ method: "GET" })
+  .validator((input: { kategori: string }) => ({ kategori: String(input?.kategori ?? "").trim() }))
+  .handler(async ({ data }) => {
+    const { opnameItems: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const saveOpname = createServerFn({ method: "POST" })
+  .validator((input: { kategori: string; items: { productId: number; sistem: number; fisik: number }[] }) => ({
+    kategori: String(input?.kategori ?? "").trim(),
+    items: Array.isArray(input?.items) ? input.items : [],
+  }))
+  .handler(async ({ data }) => {
+    const { saveOpname: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameHistory = createServerFn({ method: "GET" })
+  .validator((input: { start?: string; end?: string; kategori?: string; q?: string; onlySelisih?: boolean; page?: number }) => ({
+    start: String(input?.start ?? ""),
+    end: String(input?.end ?? ""),
+    kategori: String(input?.kategori ?? "").trim(),
+    q: String(input?.q ?? "").trim(),
+    onlySelisih: Boolean(input?.onlySelisih),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameHistory: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameHistoryDetail = createServerFn({ method: "GET" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { opnameHistoryDetail: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const saveOpnameSettings = createServerFn({ method: "POST" })
+  .validator((input: { kategori?: string[]; all?: boolean; intervalBulan: number }) => ({
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v)) : [],
+    all: Boolean(input?.all),
+    intervalBulan: Number(input?.intervalBulan),
+  }))
+  .handler(async ({ data }) => {
+    const { saveOpnameSettings: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const resetOpnameMarks = createServerFn({ method: "POST" })
+  .validator((input: { kategori: string[] }) => ({ kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v)) : [] }))
+  .handler(async ({ data }) => {
+    const { resetOpnameMarks: run } = await import("./logic.server");
+    return run(data);
+  });

@@ -11,6 +11,10 @@ export const Route = createFileRoute("/_shop")({
       const path = location.pathname.replace(/\/+$/, "") || "/";
       if (!["/barang", "/chat", "/pengaturan"].includes(path)) throw redirect({ to: "/barang" });
     }
+    // Stok opname hanya untuk Admin.
+    if ((location.pathname.replace(/\/+$/, "") || "/") === "/opname" && me.role !== "Admin") {
+      throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
+    }
     // Pengaturan sistem dan password hanya untuk Admin 1. Staf, Admin lain, dan Owner hanya mendapat halaman Nama dan Foto Akun. Kasir tidak.
     if (me.role === "Kasir" && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {
       throw redirect({ to: me.role === "Kasir" ? "/kasir" : "/dashboard" });
