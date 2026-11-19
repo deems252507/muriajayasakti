@@ -929,35 +929,6 @@ export const saveOpnameCheck = createServerFn({ method: "POST" })
     return run(data);
   });
 
-export const batalOpnameCheck = createServerFn({ method: "POST" })
-  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
-  .handler(async ({ data }) => {
-    const { batalOpnameCheck: run } = await import("./logic.server");
-    return run(data);
-  });
-
-export const batalOpnameGroup = createServerFn({ method: "POST" })
-  .validator((input: { tgl: string; kategori: string; username: string }) => ({
-    tgl: String(input?.tgl ?? ""),
-    kategori: String(input?.kategori ?? ""),
-    username: String(input?.username ?? ""),
-  }))
-  .handler(async ({ data }) => {
-    const { batalOpnameGroup: run } = await import("./logic.server");
-    return run(data);
-  });
-
-export const hapusOpnameRiwayat = createServerFn({ method: "POST" })
-  .validator((input: { tgl: string; kategori: string; username: string }) => ({
-    tgl: String(input?.tgl ?? ""),
-    kategori: String(input?.kategori ?? ""),
-    username: String(input?.username ?? ""),
-  }))
-  .handler(async ({ data }) => {
-    const { hapusOpnameRiwayat: run } = await import("./logic.server");
-    return run(data);
-  });
-
 export const resetOpnameRound = createServerFn({ method: "POST" })
   .validator((input: { kategori?: string[] }) => ({
     kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean) : [],
