@@ -15,9 +15,9 @@ const th = "whitespace-nowrap px-3 py-2.5 text-[11px] font-bold uppercase tracki
 const td = "px-3 py-2.5 align-middle";
 
 /**
- * Tabel stok Daftar Sparepart dan Laporan Stok. Kolom dan isi sama seperti sebelumnya
- * (Nama Barang, Kategori, Part Number, Part Number Alt, Stok Akhir, Harga Jual, Kode Pajak, Status Stok, Aksi);
- * yang dirapikan hanya tampilannya.
+ * Tabel stok Daftar Sparepart dan Laporan Stok.
+ * Kolom: Nama Barang (kode pajak tampil di dalam kurung), Kategori, Part Number (Part Number Alt tampil di bawahnya),
+ * Stok Akhir, Harga Jual, Status Stok, Aksi.
  */
 export function StockTable({
   items,
@@ -49,16 +49,14 @@ export function StockTable({
             <th className={th}>Nama Barang</th>
             <th className={th}>Kategori</th>
             <th className={th}>Part Number</th>
-            <th className={th}>Part Number Alt</th>
             <th className={`${th} text-center`}>Stok Akhir</th>
             <th className={`${th} text-right`}>Harga Jual</th>
-            <th className={`${th} text-center`}>Kode Pajak</th>
             <th className={`${th} text-center`}>Status Stok</th>
             <th className={`${th} text-center`}>Aksi</th>
           </tr>
         </thead>
         <tbody>
-          {items.length === 0 ? <tr><td colSpan={9} className="py-8 text-center text-slate-500">{empty}</td></tr> : null}
+          {items.length === 0 ? <tr><td colSpan={7} className="py-8 text-center text-slate-500">{empty}</td></tr> : null}
           {items.map((item) => {
             const level = stockLevel(item);
             const category = (item.kategori || "TANPA KATEGORI").trim();
@@ -72,7 +70,7 @@ export function StockTable({
               <Fragment key={item.id}>
                 {showCategory ? (
                   <tr>
-                    <td colSpan={9} className="border-y border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td>
+                    <td colSpan={7} className="border-y border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900">{category.toUpperCase()}</td>
                   </tr>
                 ) : null}
                 <tr {...rowProps?.(item)} className="cursor-pointer border-b border-slate-100 bg-white transition-colors hover:bg-blue-50/70" title="Klik baris untuk melihat detail" onClick={() => onOpen(item)}>
@@ -84,8 +82,10 @@ export function StockTable({
                     {item.merek ? <div className="mt-0.5"><span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
                   </td>
                   <td className={`${td} text-xs font-semibold text-slate-700`}><Mark text={item.kategori || "-"} q={q} /></td>
-                  <td className={`${td} whitespace-nowrap font-mono text-xs`}><Mark text={item.partNumber || item.kode || "-"} q={q} /></td>
-                  <td className={`${td} whitespace-nowrap font-mono text-xs text-slate-600`}><Mark text={item.partNumbersAlt || "-"} q={q} /></td>
+                  <td className={`${td} min-w-[150px]`}>
+                    <div className="whitespace-nowrap font-mono text-xs"><Mark text={item.partNumber || item.kode || "-"} q={q} /></div>
+                    {item.partNumbersAlt ? <div className="mt-0.5 break-words font-mono text-[11px] text-slate-500">Alt: <Mark text={item.partNumbersAlt} q={q} /></div> : null}
+                  </td>
                   <td className={`${td} whitespace-nowrap text-center`}>
                     <div className={`num font-bold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</div>
                     {dus ? (
@@ -96,7 +96,6 @@ export function StockTable({
                     {rupiah(item.hargaJual)}
                     {variant === "barang" && item.hargaJualAlt ? <div className="text-[11px] font-medium text-slate-500">{item.satuanAlt} {rupiah(item.hargaJualAlt)}</div> : null}
                   </td>
-                  <td className={`${td} whitespace-nowrap text-center text-xs`}><Mark text={item.kodePajak || "-"} q={q} /></td>
                   <td className={`${td} text-center`}>
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold leading-4 ${level === "HABIS" ? "bg-red-100 text-red-700" : level === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{statusText}</span>
                   </td>

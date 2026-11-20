@@ -660,8 +660,7 @@ export const STOCK_COLUMNS = [
   { key: "no", label: "No", head: "No", def: true },
   { key: "nama", label: "Nama Barang (beserta merek)", head: "Nama", def: true },
   { key: "kategori", label: "Kategori", head: "Kategori", def: true },
-  { key: "partNumber", label: "Part Number", head: "Part Number", def: true },
-  { key: "partNumbersAlt", label: "Part Number Alternatif", head: "Alt PN", def: true },
+  { key: "partNumber", label: "Part Number (Alt tampil di bawahnya)", head: "Part Number", def: true },
   { key: "kodePajak", label: "Kode Pajak", head: "Kode Pajak", def: true },
   { key: "stokMin", label: "Min Stok", head: "Min Stok", def: false },
   { key: "stok", label: "Stok Akhir", head: "Stok Akhir", def: true },
@@ -689,8 +688,7 @@ export function printStockReport(items: Array<{ nama: string; merek?: string; pa
       case "no": return `<td class="center no">${index + 1}</td>`;
       case "nama": return `<td><b>${esc(item.nama)}</b><span class="sub">${esc(item.merek || "-")}</span></td>`;
       case "kategori": return `<td>${esc(item.kategori || "-")}</td>`;
-      case "partNumber": return `<td>${esc(item.partNumber || "-")}</td>`;
-      case "partNumbersAlt": return `<td>${esc(item.partNumbersAlt || "-")}</td>`;
+      case "partNumber": return `<td>${esc(item.partNumber || "-")}${item.partNumbersAlt ? `<span class="sub">Alt: ${esc(item.partNumbersAlt)}</span>` : ""}</td>`;
       case "kodePajak": return `<td class="center mono">${esc(item.kodePajak || "-")}</td>`;
       case "stokMin": return `<td class="center">${item.stokMin}</td>`;
       case "stok": return `<td class="center" style="font-weight:bold">${item.stok} ${esc(item.satuan)}</td>`;
