@@ -1,4 +1,4 @@
-import { ChevronRight, History } from "lucide-react";
+import { ChevronRight, History, RefreshCw } from "lucide-react";
 import { MarkWords } from "@/components/shop/shell";
 import {
   DraftTag,
@@ -24,6 +24,12 @@ function actionLabel(item: OpnameItem, canSave: boolean) {
   return "Lihat Detail";
 }
 
+/** Alasan barang berstatus Perlu Cek Ulang. */
+export function staleNote(item: OpnameItem) {
+  if (item.resetPada) return `Ditandai perlu cek ulang${item.resetOleh ? ` oleh ${item.resetOleh}` : ""} (${waktuText(item.resetPada)}). Hasil di atas adalah hasil lama.`;
+  return `Jumlah di sistem berubah setelah dicek (${item.stokSesudah} → ${item.stok}). Hasil di atas adalah hasil lama.`;
+}
+
 /**
  * Daftar barang Stok Opname. Data dari Master Data; nama, part number, part number alt, dan kode pajak
  * tampil sama seperti di Daftar Sparepart.
@@ -35,6 +41,7 @@ export function OpnameRows({
   canSave,
   onOpen,
   onHistory,
+  onReset,
   readOnly = false,
   empty = "Tidak ada barang pada filter yang dipilih.",
 }: {
@@ -44,6 +51,8 @@ export function OpnameRows({
   onOpen?: (id: number) => void;
   /** Buka riwayat pemeriksaan barang itu. */
   onHistory?: (id: number) => void;
+  /** Admin: tandai barang yang sudah dicek menjadi perlu cek ulang. */
+  onReset?: (item: OpnameItem) => void;
   /** Mode laporan: tanpa tombol aksi. */
   readOnly?: boolean;
   empty?: string;
@@ -83,7 +92,7 @@ export function OpnameRows({
                 <HasilBadge hasil={item.hasil} stale={stale} />
                 <span className="truncate text-[11px] text-slate-500">{item.dicekPada ? `${waktuText(item.dicekPada)}` : "Belum pernah dicek"}</span>
               </div>
-              {stale ? <p className="mt-1 text-[11px] font-medium text-yellow-800">Jumlah di sistem berubah setelah dicek ({item.stokSesudah} → {item.stok}). Hasil di atas adalah hasil lama.</p> : null}
+              {stale ? <p className="mt-1 text-[11px] font-medium text-yellow-800">{staleNote(item)}</p> : null}
               {readOnly ? null : (
                 <div className="mt-3 flex gap-2">
                   <button
@@ -96,6 +105,11 @@ export function OpnameRows({
                   >
                     {actionLabel(item, canSave)} <ChevronRight className="size-4" />
                   </button>
+                  {onReset && item.statusCek === "SUDAH_DICEK" ? (
+                    <button type="button" aria-label={`Tandai cek ulang ${item.nama}`} onClick={() => onReset(item)} className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">
+                      <RefreshCw className="size-4" /> Cek Ulang
+                    </button>
+                  ) : null}
                   {onHistory ? (
                     <button type="button" aria-label={`Riwayat ${item.nama}`} onClick={() => onHistory(item.id)} className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">
                       <History className="size-4" /> Riwayat
@@ -174,6 +188,11 @@ export function OpnameRows({
                         >
                           {actionLabel(item, canSave)}
                         </button>
+                        {onReset && item.statusCek === "SUDAH_DICEK" ? (
+                          <button type="button" aria-label={`Tandai cek ulang ${item.nama}`} title="Tandai perlu cek ulang" onClick={() => onReset(item)} className="grid size-10 place-items-center rounded-xl border border-slate-300 bg-white text-slate-700">
+                            <RefreshCw className="size-4" />
+                          </button>
+                        ) : null}
                         {onHistory ? (
                           <button type="button" aria-label={`Riwayat ${item.nama}`} title="Riwayat pemeriksaan barang ini" onClick={() => onHistory(item.id)} className="grid size-10 place-items-center rounded-xl border border-slate-300 bg-white text-slate-700">
                             <History className="size-4" />

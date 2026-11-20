@@ -3887,7 +3887,7 @@ function assertOpnameView(me: Staff) {
 
 const OPNAME_PER_PAGE = 20;
 
-/** Barang (Master Data) + pemeriksaan terakhirnya. status_cek: tidak ada log = BELUM_DICEK; stok sekarang beda dari stok setelah pemeriksaan terakhir = PERLU_CEK_ULANG. */
+/** Barang (Master Data) + pemeriksaan terakhirnya. status_cek: tidak ada log = BELUM_DICEK; ditandai cek ulang setelah pemeriksaan terakhir (stock_opname_reset) atau stok sekarang beda dari stok setelah pemeriksaan terakhir = PERLU_CEK_ULANG. */
 const OPNAME_BASE = `
   select p.*,
     l.id as log_id, l.stok_fisik, l.selisih as log_selisih, l.hasil,
@@ -3898,13 +3898,19 @@ const OPNAME_BASE = `
     (select jsonb_agg(jsonb_build_object('lokasi', d.lokasi, 'jumlah', d.jumlah, 'qty', d.qty_input, 'satuan', d.satuan_input) order by d.lokasi) from stock_opname_draft d where d.product_id = p.id) as draft_rincian,
     case
       when l.id is null then 'BELUM_DICEK'
+      when rs.reset_pada is not null and rs.reset_pada > l.dicek_pada then 'PERLU_CEK_ULANG'
       when p.stok <> l.stok_sesudah then 'PERLU_CEK_ULANG'
       else 'SUDAH_DICEK'
-    end as status_cek
+    end as status_cek,
+    case when l.id is not null and rs.reset_pada > l.dicek_pada then rs.reset_pada end as reset_pada,
+    case when l.id is not null and rs.reset_pada > l.dicek_pada then rs.oleh_nama end as reset_oleh
   from products p
   left join lateral (
     select x.* from stock_opname_logs x where x.product_id = p.id order by x.dicek_pada desc, x.id desc limit 1
-  ) l on true`;
+  ) l on true
+  left join lateral (
+    select r.reset_pada, r.oleh_nama from stock_opname_reset r where r.product_id = p.id order by r.reset_pada desc, r.id desc limit 1
+  ) rs on true`;
 
 const OPNAME_ORDER = `lower(t.kategori), lower(t.nama), t.id`;
 
@@ -3994,6 +4000,8 @@ function mapOpnameItem(row: Record<string, unknown>): OpnameItem {
     catatan: String(row.log_catatan ?? ""),
     draftTotal: Number(row.draft_total ?? 0),
     draft: opJson(row.draft_rincian).map(opEntry),
+    resetPada: log ? opIso(row.reset_pada) : null,
+    resetOleh: String(row.reset_oleh ?? ""),
   };
 }
 
@@ -4305,6 +4313,85 @@ export async function opnameSaveSettings(data: { autoSync: boolean }) {
   );
   await audit(me, `Pengaturan Stok Opname: sinkron stok otomatis ${autoSync ? "aktif" : "nonaktif"}`);
   return { autoSync };
+}
+
+/**
+ * Tandai barang yang SUDAH DICEK sebagai "perlu cek ulang". Hanya status; stok dan riwayat tidak berubah.
+ * mode: "barang" (satu barang), "filter" (barang yang tampil sesuai pencarian/kategori), "semua" (putaran baru).
+ * preview = true hanya menghitung jumlahnya (untuk kotak konfirmasi).
+ */
+export async function opnameReset(data: {
+  mode: "barang" | "filter" | "semua";
+  productId?: unknown;
+  q?: unknown;
+  kategori?: unknown;
+  filter?: unknown;
+  preview?: unknown;
+}) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const mode = data?.mode === "barang" || data?.mode === "semua" ? data.mode : "filter";
+  const params: unknown[] = [];
+  const where: string[] = [`t.status_cek = 'SUDAH_DICEK'`];
+  let cakupan = "Semua barang (putaran baru)";
+  if (mode === "barang") {
+    const id = Number(data?.productId);
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Barang tidak valid.");
+    params.push(id);
+    where.push(`t.id = $${params.length}`);
+    cakupan = "Satu barang";
+  } else if (mode === "filter") {
+    const f = opnameWhere({ q: data?.q, kategori: data?.kategori, filter: data?.filter }, params, { skipDate: true });
+    where.push(...f);
+    const cats = opKategori(data?.kategori);
+    const q = String(data?.q ?? "").trim();
+    const parts = [cats.length ? `kategori ${cats.join(", ")}` : "", q ? `pencarian "${q}"` : "", String(data?.filter ?? "semua") !== "semua" ? `filter ${String(data?.filter)}` : ""].filter(Boolean);
+    cakupan = parts.length ? parts.join(", ") : "Semua barang";
+  }
+  const clause = where.join(" and ");
+  if (data?.preview) {
+    const [row] = await db.query<{ n: number }>(`select count(*)::int as n from (${OPNAME_BASE}) t where ${clause}`, params);
+    return { jumlah: Number(row?.n ?? 0), cakupan };
+  }
+  const batch = randomBytes(8).toString("hex");
+  params.push(batch, cakupan.slice(0, 200), me.username, me.name);
+  const b = params.length - 3;
+  const inserted = await db.query<{ id: number }>(
+    `insert into stock_opname_reset (product_id, batch_id, cakupan, oleh, oleh_nama)
+     select t.id, $${b}, $${b + 1}, $${b + 2}, $${b + 3} from (${OPNAME_BASE}) t where ${clause}
+     returning id`,
+    params,
+  );
+  const jumlah = inserted.length;
+  if (jumlah > 0) await audit(me, `Stok Opname: ${jumlah} barang ditandai perlu cek ulang (${cakupan})`);
+  return { jumlah, cakupan };
+}
+
+/** Penandaan cek ulang terakhir yang masih bisa diurungkan. */
+export async function opnameResetInfo() {
+  const me = await requireStaff();
+  assertOpnameView(me);
+  const db = await sql();
+  const [row] = await db.query<{ batch_id: string; cakupan: string; reset_pada: string; oleh_nama: string; n: number }>(
+    `select r.batch_id, r.cakupan, r.reset_pada, r.oleh_nama,
+            (select count(*)::int from stock_opname_reset x where x.batch_id = r.batch_id) as n
+     from stock_opname_reset r order by r.id desc limit 1`,
+  );
+  if (!row) return null;
+  return { jumlah: Number(row.n), cakupan: String(row.cakupan), pada: opIso(row.reset_pada), oleh: String(row.oleh_nama) };
+}
+
+/** Urungkan penandaan cek ulang terakhir (semua barang di batch itu). Status kembali mengikuti pemeriksaan sebelumnya. */
+export async function opnameResetUndo() {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const [last] = await db.query<{ batch_id: string }>(`select batch_id from stock_opname_reset order by id desc limit 1`);
+  if (!last) return { jumlah: 0 };
+  const removed = await db.query<{ id: number }>(`delete from stock_opname_reset where batch_id = $1 returning id`, [last.batch_id]);
+  await audit(me, `Stok Opname: urungkan penandaan cek ulang terakhir (${removed.length} barang)`);
+  return { jumlah: removed.length };
 }
 
 /** Hapus satu catatan riwayat pemeriksaan (Admin). kembalikan = ikut mengembalikan stok ke angka sebelum pemeriksaan. */

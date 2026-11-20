@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
 import { usePersistedState } from "@/lib/persist";
-import { opnameDraftConfirm, opnameDraftDelete, opnameDraftSave, opnameGetItem, opnameNext, opnameSave, opnameSettings } from "@/lib/shop/api";
+import { opnameDraftConfirm, opnameDraftDelete, opnameDraftSave, opnameGetItem, opnameNext, opnameReset, opnameSave, opnameSettings } from "@/lib/shop/api";
 import type { OpnameDraftEntry, OpnameItem, OpnameLog, OpnameSaveResult } from "@/lib/shop/types";
 import {
   HASIL_LABEL,
@@ -88,6 +88,19 @@ export function OpnameCek({
   async function fetchItem(): Promise<Loaded> {
     const res = await opnameGetItem({ data: { productId } });
     return { item: res.item, openedAt: res.openedAt, expected: res.item.stok, recent: res.recent, drafts: res.drafts, draftMutasi: res.draftMutasi, lokasiList: res.lokasiList };
+  }
+
+  async function tandaiUlang() {
+    if (!data) return;
+    if (!(await confirmDialog(`Tandai "${data.item.nama}" perlu dicek ulang? Hanya status yang berubah. Stok dan riwayat pemeriksaan tidak diubah.`, { title: "Tandai cek ulang", confirmText: "Ya, tandai" }))) return;
+    try {
+      await opnameReset({ data: { mode: "barang", productId } });
+      setData(await fetchItem());
+      onSaved();
+      toast.success("Barang ditandai perlu cek ulang.");
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
   }
 
   useEffect(() => {
@@ -398,12 +411,25 @@ export function OpnameCek({
             {item.dicekPada ? (
               <p className="mt-1.5 text-xs leading-5">
                 Terakhir dicek {waktuText(item.dicekPada)}{item.petugas ? ` oleh ${item.petugas}` : ""}. Sistem {item.stokSebelum} · Fisik {item.stokFisik} · Selisih {selisihText(item.selisih)}.
-                {item.statusCek === "PERLU_CEK_ULANG" ? ` Jumlah di sistem berubah setelah pemeriksaan itu (sekarang ${item.stok} ${satuan}), jadi barang ini perlu dicek ulang.` : ""}
+                {item.statusCek === "PERLU_CEK_ULANG"
+                  ? item.resetPada
+                    ? ` Ditandai perlu cek ulang${item.resetOleh ? ` oleh ${item.resetOleh}` : ""} (${waktuText(item.resetPada)}), jadi barang ini perlu dicek ulang.`
+                    : ` Jumlah di sistem berubah setelah pemeriksaan itu (sekarang ${item.stok} ${satuan}), jadi barang ini perlu dicek ulang.`
+                  : ""}
                 {item.catatan ? ` Catatan: ${item.catatan}` : ""}
               </p>
             ) : (
               <p className="mt-1.5 text-xs leading-5">Barang ini belum pernah diperiksa.</p>
             )}
+            {canSave && item.statusCek === "SUDAH_DICEK" ? (
+              <button
+                type="button"
+                onClick={() => void tandaiUlang()}
+                className="mt-2 inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800"
+              >
+                Tandai perlu cek ulang
+              </button>
+            ) : null}
           </section>
 
           {conflict ? (

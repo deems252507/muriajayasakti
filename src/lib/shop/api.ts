@@ -1057,3 +1057,29 @@ export const opnameDraftConfirm = createServerFn({ method: "POST" })
     const { opnameDraftConfirm: run } = await import("./logic.server");
     return run(data);
   });
+
+export const opnameReset = createServerFn({ method: "POST" })
+  .validator((input: { mode: "barang" | "filter" | "semua"; productId?: number; q?: string; kategori?: string[]; filter?: string; preview?: boolean }) => ({
+    mode: input?.mode === "barang" || input?.mode === "semua" ? input.mode : ("filter" as const),
+    productId: input?.productId == null ? undefined : Number(input.productId),
+    q: String(input?.q ?? "").trim(),
+    kategori: opnameCats(input?.kategori),
+    filter: String(input?.filter ?? "semua"),
+    preview: Boolean(input?.preview),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameReset: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameResetInfo = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { opnameResetInfo: run } = await import("./logic.server");
+    return run();
+  });
+
+export const opnameResetUndo = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { opnameResetUndo: run } = await import("./logic.server");
+    return run();
+  });

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ClipboardCheck, RotateCcw, Search, X } from "lucide-react";
+import { ClipboardCheck, RefreshCw, RotateCcw, Search, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { KategoriPicker } from "@/components/shop/opname-kategori";
@@ -10,8 +10,9 @@ import { OpnameReport } from "@/components/shop/opname-report";
 import { OpnameRows } from "@/components/shop/opname-rows";
 import { FILTER_OPTIONS, Pager, TONE, type OpnameFilterKey, type OpnameTone } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
+import { confirmDialog } from "@/lib/confirm";
 import { usePersistedState } from "@/lib/persist";
-import { listKategoriBarang, opnameList, opnameSaveSettings, opnameSettings, opnameSummary } from "@/lib/shop/api";
+import { listKategoriBarang, opnameList, opnameReset, opnameResetInfo, opnameResetUndo, opnameSaveSettings, opnameSettings, opnameSummary } from "@/lib/shop/api";
 import type { OpnameItem, OpnameSummary } from "@/lib/shop/types";
 
 type Tab = "daftar" | "sementara" | "riwayat" | "laporan";
@@ -185,6 +186,19 @@ function Daftar({
   const [data, setData] = useState<{ total: number; perPage: number; items: OpnameItem[] } | null>(null);
   const [error, setError] = useState("");
   const dq = useDebounced(q.trim());
+  const [reloadTick, setReloadTick] = useState(0);
+  const refresh = () => setReloadTick((n) => n + 1);
+
+  const resetOne = async (item: OpnameItem) => {
+    if (!(await confirmDialog(`Tandai "${item.nama}" perlu dicek ulang? Hanya status yang berubah. Stok dan riwayat pemeriksaan tidak diubah.`, { title: "Tandai cek ulang", confirmText: "Ya, tandai" }))) return;
+    try {
+      const res = await opnameReset({ data: { mode: "barang", productId: item.id } });
+      toast.success(res.jumlah > 0 ? "Barang ditandai perlu cek ulang." : "Barang ini sudah berstatus perlu cek ulang.");
+      refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -198,7 +212,7 @@ function Daftar({
     return () => {
       alive = false;
     };
-  }, [kategori, summaryTick]);
+  }, [kategori, summaryTick, reloadTick]);
 
   useEffect(() => {
     let alive = true;
@@ -215,7 +229,7 @@ function Daftar({
     return () => {
       alive = false;
     };
-  }, [dq, kategori, filter, page]);
+  }, [dq, kategori, filter, page, reloadTick]);
 
   const changePage = (next: number) => {
     setPage(next);
@@ -310,7 +324,7 @@ function Daftar({
         <p className="mt-3 text-xs font-semibold text-slate-600">{data ? `${data.total.toLocaleString("id-ID")} barang` : "Memuat..."}</p>
         <div className="mt-2">
           {data ? (
-            <OpnameRows items={data.items} q={dq} canSave={canSave} onOpen={onOpen} onHistory={onHistory} />
+            <OpnameRows items={data.items} q={dq} canSave={canSave} onOpen={onOpen} onHistory={onHistory} onReset={canSave ? (item) => void resetOne(item) : undefined} />
           ) : (
             <div className="space-y-2" aria-busy="true">
               {[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />)}
@@ -320,6 +334,7 @@ function Daftar({
         {data ? <Pager page={page} total={data.total} perPage={data.perPage} onPage={changePage} /> : null}
       </Panel>
 
+      {canSave ? <CekUlangPanel q={dq} kategori={kategori} filter={filter} tick={summaryTick + reloadTick} onDone={refresh} /> : null}
       {canSave ? <SyncSetting /> : null}
     </>
   );
@@ -361,6 +376,98 @@ function SyncSetting() {
           </span>
         </span>
       </label>
+    </Panel>
+  );
+}
+
+type ResetInfo = { jumlah: number; cakupan: string; pada: string | null; oleh: string } | null;
+
+/** Admin: tandai barang yang sudah dicek menjadi "Perlu Cek Ulang" (hanya status, stok tidak berubah). */
+function CekUlangPanel({ q, kategori, filter, tick, onDone }: { q: string; kategori: string[]; filter: OpnameFilterKey; tick: number; onDone: () => void }) {
+  const [info, setInfo] = useState<ResetInfo>(null);
+  const [busy, setBusy] = useState(false);
+  const adaFilter = Boolean(q || kategori.length > 0 || (filter !== "semua" && filter !== "sudah"));
+
+  useEffect(() => {
+    void opnameResetInfo()
+      .then(setInfo)
+      .catch(() => undefined);
+  }, [tick]);
+
+  const run = async (mode: "filter" | "semua") => {
+    setBusy(true);
+    try {
+      const base = { mode, q, kategori, filter } as const;
+      const pre = await opnameReset({ data: { ...base, preview: true } });
+      if (pre.jumlah === 0) {
+        toast.info("Tidak ada barang berstatus Sudah Dicek yang bisa ditandai pada cakupan ini.");
+        return;
+      }
+      const pesan =
+        mode === "semua"
+          ? `Mulai putaran baru? ${pre.jumlah.toLocaleString("id-ID")} barang yang sudah dicek akan ditandai "Perlu Cek Ulang" dan progres kembali ke 0%. Stok dan riwayat pemeriksaan tidak diubah.`
+          : `${pre.jumlah.toLocaleString("id-ID")} barang yang sudah dicek (${pre.cakupan}) akan ditandai "Perlu Cek Ulang". Stok dan riwayat pemeriksaan tidak diubah.`;
+      if (!(await confirmDialog(pesan, { title: mode === "semua" ? "Mulai Putaran Baru" : "Tandai cek ulang", confirmText: "Ya, tandai", danger: mode === "semua" }))) return;
+      const res = await opnameReset({ data: base });
+      toast.success(`${res.jumlah.toLocaleString("id-ID")} barang ditandai perlu cek ulang.`);
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undo = async () => {
+    if (!info) return;
+    if (!(await confirmDialog(`Urungkan penandaan terakhir (${info.jumlah.toLocaleString("id-ID")} barang, ${info.cakupan})? Status barang kembali seperti sebelum ditandai.`, { title: "Urungkan", confirmText: "Ya, urungkan" }))) return;
+    setBusy(true);
+    try {
+      const res = await opnameResetUndo();
+      toast.success(`${res.jumlah.toLocaleString("id-ID")} barang dikembalikan statusnya.`);
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel>
+      <p className="text-sm font-extrabold text-slate-900">Cek Ulang Berkala</p>
+      <p className="mt-0.5 text-xs leading-5 text-slate-600">
+        Tandai barang yang sudah dicek agar muncul lagi di &quot;Perlu Cek Ulang&quot;. Hanya status yang berubah: stok dan riwayat pemeriksaan tidak diubah. Satu barang bisa ditandai dari barisnya.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          disabled={busy || !adaFilter}
+          onClick={() => void run("filter")}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 disabled:opacity-40"
+        >
+          <RefreshCw className="size-4" /> Tandai cek ulang barang yang tampil
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run("semua")}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-extrabold text-white disabled:opacity-40"
+        >
+          <RefreshCw className="size-4" /> Mulai Putaran Baru (semua)
+        </button>
+      </div>
+      {!adaFilter ? <p className="mt-1.5 text-[11px] text-slate-500">Pilih kategori atau isi pencarian dulu untuk menandai sebagian barang.</p> : null}
+      {info ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <span className="min-w-0">
+            Penandaan terakhir: <b>{info.jumlah.toLocaleString("id-ID")} barang</b> ({info.cakupan}){info.oleh ? ` oleh ${info.oleh}` : ""}.
+          </span>
+          <button type="button" disabled={busy} onClick={() => void undo()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 font-bold text-slate-800 disabled:opacity-40">
+            <Undo2 className="size-4" /> Urungkan
+          </button>
+        </div>
+      ) : null}
     </Panel>
   );
 }

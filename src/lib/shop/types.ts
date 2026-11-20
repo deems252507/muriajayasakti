@@ -136,6 +136,9 @@ export type OpnameItem = Product & {
   catatan: string;
   draftTotal: number;
   draft: OpnameDraftEntry[];
+  /** Diisi bila pemeriksaan terakhir ditandai perlu cek ulang oleh Admin (bukan karena stok berubah). */
+  resetPada: string | null;
+  resetOleh: string;
 };
 
 /** Barang yang punya hitungan sementara (tab Hitungan Sementara). */
