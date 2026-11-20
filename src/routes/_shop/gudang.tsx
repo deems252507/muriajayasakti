@@ -2,7 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRightLeft, Check, ClipboardCheck, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AmbilDialog, EditLogDialog, ItemIdentity, OpnameDialog, SesuaikanDialog, TambahDialog } from "@/components/shop/gudang-dialogs";
+import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, TambahDialog } from "@/components/shop/gudang-dialogs";
+import { GudangHitungDialog } from "@/components/shop/gudang-hitung";
 import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
 import { confirmDialog } from "@/lib/confirm";
@@ -221,14 +222,16 @@ function StokTab({ onHistory }: { onHistory: (productId: number) => void }) {
                   <Plus className="size-4" /> Tambah stok
                 </button>
               ) : null}
+              {bisaUbah ? (
+                <button type="button" aria-label="Hitung stok gudang" title="Hitung stok gudang (hitungan sementara)" onClick={() => setDialog({ kind: "opname", item })} className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 text-sm font-bold text-violet-900">
+                  <ClipboardCheck className="size-4" /> Hitung
+                </button>
+              ) : null}
               <button type="button" aria-label="Riwayat barang" onClick={() => onHistory(item.productId)} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
                 <History className="size-4" />
               </button>
               {admin ? (
                 <>
-                  <button type="button" aria-label="Opname gudang" title="Stok opname gudang" onClick={() => setDialog({ kind: "opname", item })} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
-                    <ClipboardCheck className="size-4" />
-                  </button>
                   <button type="button" aria-label="Sesuaikan stok" title="Sesuaikan stok" onClick={() => setDialog({ kind: "sesuaikan", item })} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
                     <SlidersHorizontal className="size-4" />
                   </button>
@@ -247,7 +250,7 @@ function StokTab({ onHistory }: { onHistory: (productId: number) => void }) {
       {dialog?.kind === "tambah" ? <TambahDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "ambil" ? <AmbilDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "sesuaikan" ? <SesuaikanDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
-      {dialog?.kind === "opname" ? <OpnameDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
+      {dialog?.kind === "opname" ? <GudangHitungDialog item={dialog.item} canCount={bisaUbah} admin={admin} onClose={() => setDialog(null)} onChanged={load} onDone={done} /> : null}
     </>
   );
 }

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { KategoriPicker } from "@/components/shop/opname-kategori";
 import { OpnameDraft } from "@/components/shop/opname-draft";
 import { OpnameCek } from "@/components/shop/opname-cek";
+import { OpnameGudang } from "@/components/shop/opname-gudang";
 import { OpnameHistory } from "@/components/shop/opname-history";
 import { OpnameReport } from "@/components/shop/opname-report";
 import { OpnameRows } from "@/components/shop/opname-rows";
@@ -54,6 +55,8 @@ function OpnamePage() {
   const [filter, setFilter] = usePersistedState<OpnameFilterKey>("opname:filter", "semua");
   const [categories, setCategories] = useState<string[]>([]);
   const [summaryTick, setSummaryTick] = useState(0);
+  // Toko dan gudang dihitung terpisah (stok gudang tidak dibandingkan dengan stok toko).
+  const [lokasiMode, setLokasiMode] = usePersistedState<"toko" | "gudang">("opname:lokasiMode", "toko");
 
   useEffect(() => {
     void listKategoriBarang()
@@ -95,7 +98,7 @@ function OpnamePage() {
           </span>
           <div className="min-w-0">
             <h2 className="text-lg font-extrabold leading-tight text-slate-900">Stok Opname</h2>
-            <p className="text-xs text-slate-600">Cek stok barang kapan saja. Status pemeriksaan setiap barang selalu tersimpan.</p>
+            <p className="text-xs text-slate-600">Cek stok toko dan gudang kapan saja. Toko dan gudang dihitung terpisah. Status pemeriksaan setiap barang selalu tersimpan.</p>
           </div>
         </div>
         <div role="tablist" aria-label="Menu Stok Opname" className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4">
@@ -116,6 +119,26 @@ function OpnamePage() {
       </Panel>
 
       {tab === "daftar" ? (
+        <Panel>
+          <div role="group" aria-label="Pilih lokasi stok" className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+            {(["toko", "gudang"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={lokasiMode === m}
+                onClick={() => setLokasiMode(m)}
+                className={`h-11 rounded-lg text-sm font-bold transition ${lokasiMode === m ? "bg-white text-accent shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                {m === "toko" ? "Stok Toko" : "Stok Gudang"}
+              </button>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {tab === "daftar" && lokasiMode === "gudang" ? <OpnameGudang canSave={canSave} /> : null}
+
+      {tab === "daftar" && lokasiMode === "toko" ? (
         <Daftar
           canSave={canSave}
           categories={categories}

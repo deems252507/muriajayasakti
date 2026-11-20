@@ -294,3 +294,49 @@ export type GudangPickItem = {
 };
 
 export type GudangResult = { ok: true; stokGudang: number; stokToko?: number; baru?: boolean; logId?: number } | { ok: false; pesan: string };
+
+/* ===== Stok Opname Gudang (hitungan sementara) ===== */
+export type GudangDraftEntry = {
+  id: number;
+  lokasi: string;
+  /** Jumlah dalam satuan dasar, dan jumlah yang diketik dengan satuannya (mis. 4 Dus). */
+  jumlah: number;
+  qty: number;
+  satuan: string;
+  petugas: string;
+  petugasUsername: string;
+  diubah: string;
+  catatan: string;
+};
+
+export type GudangOpnameItem = GudangItem & {
+  statusCek: OpnameStatus;
+  /** Hasil hitung fisik pada opname terakhir (satuan dasar) dan siapa yang mengonfirmasi. */
+  opnameFisik: number | null;
+  opnameOleh: string;
+  draftN: number;
+  draftTotal: number;
+};
+
+export type GudangOpnameSummary = {
+  total: number;
+  sudah: number;
+  belum: number;
+  ulang: number;
+  draft: number;
+  progress: number;
+};
+
+export type GudangOpnameRecent = {
+  id: number;
+  tanggal: string;
+  stokSebelum: number;
+  stokFisik: number;
+  selisih: number;
+  oleh: string;
+  catatan: string;
+};
+
+export type GudangConfirmResult =
+  | { ok: true; stokSebelum: number; stokFisik: number; selisih: number }
+  | { ok: false; peringatan: true; jumlahMutasi: number; total: number };

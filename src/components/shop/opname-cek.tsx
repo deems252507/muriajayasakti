@@ -217,7 +217,7 @@ export function OpnameCek({
   async function saveDraft() {
     if (!data || !item || !canSave || draftBusy || savingRef.current) return;
     if (!lokasi.trim()) {
-      toast.error("Isi lokasi hitungan, misalnya Gudang atau Toko.");
+      toast.error("Isi lokasi hitungan di toko, misalnya Etalase atau Rak 1.");
       return;
     }
     if (qty == null) {
@@ -468,9 +468,9 @@ export function OpnameCek({
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <Trio label="Stok Sistem" value={`${done.stokSebelum}`} unit={satuan} />
-                  <Trio label="Stok Fisik" value={`${done.stokFisik}`} unit={satuan} />
-                  <Trio label="Selisih" value={selisihText(done.selisih)} unit={satuan} valueClass={selisihClass(done.selisih)} />
+                  <Trio label="Stok Sistem" value={`${done.stokSebelum}`} unit={satuan} sub={dusText(item, done.stokSebelum)} />
+                  <Trio label="Stok Fisik" value={`${done.stokFisik}`} unit={satuan} sub={dusText(item, done.stokFisik)} />
+                  <Trio label="Selisih" value={selisihText(done.selisih)} unit={satuan} sub={dusText(item, Math.abs(done.selisih))} valueClass={selisihClass(done.selisih)} />
                 </div>
                 <dl className="mt-3 divide-y divide-black/5 text-xs">
                   <Row label="Jumlah di sistem sekarang" value={`${done.stokSesudah} ${satuan}${done.disesuaikan ? " (sudah disesuaikan)" : done.selisih !== 0 ? " (tidak diubah)" : ""}`} />
@@ -506,13 +506,13 @@ export function OpnameCek({
                   maxLength={40}
                   disabled={saving || draftBusy}
                   onChange={(e) => setLokasi(e.target.value)}
-                  placeholder="Contoh: Gudang, Toko"
+                  placeholder="Contoh: Etalase, Rak 1, Toko"
                   className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-blue-100"
                 />
                 <datalist id="opname-lokasi-list">
                   {data.lokasiList.map((l) => <option key={l} value={l} />)}
                 </datalist>
-                <p className="mt-1 text-[11px] leading-4 text-slate-500">Barang ada di beberapa tempat? Isi lokasi lalu pilih “Simpan Hitungan Sementara”. Stok sistem baru berubah saat Anda konfirmasi total.</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">Barang ada di beberapa tempat di toko? Isi lokasi lalu pilih “Simpan Hitungan Sementara”. Stok sistem baru berubah saat Anda konfirmasi total. Stok gudang dihitung terpisah lewat pilihan “Stok Gudang” di daftar Stok Opname.</p>
                 <label htmlFor="opname-fisik" className="mt-3 block text-sm font-extrabold text-slate-900">Masukkan Jumlah Fisik</label>
                 {hasAlt ? (
                   <div role="group" aria-label="Satuan pemeriksaan" className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
@@ -588,9 +588,9 @@ export function OpnameCek({
 
               {data.drafts.length === 0 ? (
                 <section className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-                  <Trio label="Stok Sistem" value={`${expected}`} unit={satuan} />
-                  <Trio label="Stok Fisik" value={fisik == null ? "-" : `${fisik}`} unit={fisik == null ? "" : satuan} />
-                  <Trio label="Selisih" value={selisihText(selisih)} unit={selisih == null ? "" : satuan} valueClass={selisihClass(selisih)} />
+                  <Trio label="Stok Sistem" value={`${expected}`} unit={satuan} sub={dusText(item, expected)} />
+                  <Trio label="Stok Fisik" value={fisik == null ? "-" : `${fisik}`} unit={fisik == null ? "" : satuan} sub={fisik == null ? "" : dusText(item, fisik)} />
+                  <Trio label="Selisih" value={selisihText(selisih)} unit={selisih == null ? "" : satuan} sub={selisih == null ? "" : dusText(item, Math.abs(selisih))} valueClass={selisihClass(selisih)} />
                 </section>
               ) : null}
 
@@ -650,12 +650,13 @@ function hasilPesan(hasil: OpnameLog["hasil"], sistem: number, fisik: number, sa
   }
 }
 
-function Trio({ label, value, unit, valueClass = "text-slate-900" }: { label: string; value: string; unit?: string; valueClass?: string }) {
+function Trio({ label, value, unit, sub, valueClass = "text-slate-900" }: { label: string; value: string; unit?: string; sub?: string; valueClass?: string }) {
   return (
     <div className="min-w-0 rounded-xl bg-white/70 px-1 py-2 ring-1 ring-black/5">
       <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
       <p className={`num truncate text-xl font-extrabold leading-tight ${valueClass}`}>{value}</p>
       {unit ? <p className="truncate text-[10px] font-medium text-slate-500">{unit}</p> : null}
+      {sub ? <p className="truncate text-[11px] font-medium text-blue-700">{sub}</p> : null}
     </div>
   );
 }
@@ -723,6 +724,11 @@ function DraftPanel({
     <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
       <p className="text-sm font-extrabold text-violet-900">Hitungan Sementara</p>
       <p className="text-[11px] text-violet-800">Belum mengubah stok sistem. Stok berubah saat Konfirmasi Total.</p>
+      {drafts.some((d) => /gudang/i.test(d.lokasi)) ? (
+        <p className="mt-2 rounded-lg bg-yellow-100 px-2 py-1.5 text-[11px] font-semibold leading-4 text-yellow-900">
+          Ada hitungan berlokasi “gudang”. Stok gudang dihitung terpisah dan tidak dijumlahkan dengan stok toko. Hapus hitungan itu, lalu hitung gudang lewat pilihan “Stok Gudang” di daftar Stok Opname.
+        </p>
+      ) : null}
       <ul className="mt-2 divide-y divide-violet-100 rounded-xl bg-white">
         {drafts.map((d) => (
           <li key={d.id ?? d.lokasi} className="flex items-center gap-2 px-3 py-2">

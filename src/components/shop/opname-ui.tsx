@@ -105,6 +105,34 @@ export function dusText(item: Pick<Product, "satuan" | "satuanAlt" | "isiSatuanA
   return `${dus} ${item.satuanAlt}${sisa ? ` + ${sisa} ${item.satuan}` : ""}`;
 }
 
+/** Jumlah seperti di Daftar Sparepart: angka Pcs tebal, di bawahnya rincian "10 Dus + 3 Pcs" (biru). Tanpa rincian bila barang tidak punya Dus. */
+export function QtyDus({
+  item,
+  value,
+  signed = false,
+  className = "",
+  valueClass = "",
+  showUnit = true,
+}: {
+  item: Pick<Product, "satuan" | "satuanAlt" | "isiSatuanAlt">;
+  value: number;
+  /** Untuk selisih: tampilkan tanda +/-. */
+  signed?: boolean;
+  className?: string;
+  valueClass?: string;
+  showUnit?: boolean;
+}) {
+  const abs = Math.abs(value);
+  const dus = dusText(item, abs);
+  const main = signed ? selisihText(value) : value.toLocaleString("id-ID");
+  return (
+    <span className={`inline-flex flex-col items-center leading-tight ${className}`}>
+      <span className={`num whitespace-nowrap font-bold ${valueClass}`}>{main}{showUnit ? ` ${item.satuan || "Pcs"}` : ""}</span>
+      {dus && abs >= Number(item.isiSatuanAlt) ? <span className="whitespace-nowrap text-[11px] font-medium text-blue-700">{signed && value < 0 ? "-" : ""}{dus}</span> : null}
+    </span>
+  );
+}
+
 /** Nama barang persis seperti di Daftar Sparepart: nama, (kode pajak), dan merek. */
 export function ItemTitle({ item, q = "", className = "" }: { item: Pick<Product, "nama" | "kodePajak" | "merek">; q?: string; className?: string }) {
   return (

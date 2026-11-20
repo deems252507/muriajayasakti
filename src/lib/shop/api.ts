@@ -1198,3 +1198,50 @@ export const gudangOpname = createServerFn({ method: "POST" })
     const { gudangOpname: run } = await import("./logic.server");
     return run(data);
   });
+
+
+/* ===== Stok Opname Gudang (hitungan sementara) ===== */
+export const gudangOpnameList = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; kategori?: string; filter?: string; page?: number }) => ({
+    q: String(input?.q ?? "").trim(),
+    kategori: String(input?.kategori ?? "").trim(),
+    filter: String(input?.filter ?? "semua"),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangOpnameList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangOpnameItem = createServerFn({ method: "GET" })
+  .validator((input: { productId: number }) => ({ productId: Number(input?.productId) }))
+  .handler(async ({ data }) => {
+    const { gudangOpnameItem: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangDraftSave = createServerFn({ method: "POST" })
+  .validator((input: GudangQtyInput & { lokasi: string }) => ({ ...gudangQtyInput(input), lokasi: String(input?.lokasi ?? "") }))
+  .handler(async ({ data }) => {
+    const { gudangDraftSave: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangDraftDelete = createServerFn({ method: "POST" })
+  .validator((input: { draftId: number }) => ({ draftId: Number(input?.draftId) }))
+  .handler(async ({ data }) => {
+    const { gudangDraftDelete: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangDraftConfirm = createServerFn({ method: "POST" })
+  .validator((input: { productId: number; expected: number; force?: boolean; catatan?: string }) => ({
+    productId: Number(input?.productId),
+    expected: Number(input?.expected),
+    force: Boolean(input?.force),
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangDraftConfirm: run } = await import("./logic.server");
+    return run(data);
+  });

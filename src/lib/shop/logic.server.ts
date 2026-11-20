@@ -3,7 +3,7 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { formatQtyPack, hasAltUnit, packFromName, toBaseQty } from "@/lib/shop/format";
-import type { Bank, GudangItem, GudangLog, GudangPickItem, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
+import type { Bank, GudangConfirmResult, GudangDraftEntry, GudangItem, GudangLog, GudangOpnameItem, GudangOpnameRecent, GudangOpnameSummary, GudangPickItem, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
 
@@ -4114,7 +4114,7 @@ export async function opnameGetItem(data: { productId: number }) {
   const lokasiRows = await db.query<{ lokasi: string }>(
     `select lokasi from stock_opname_draft group by lokasi order by max(diubah_pada) desc limit 20`,
   );
-  const lokasiList = [...new Set([...lokasiRows.map((r) => String(r.lokasi)), "Gudang", "Toko"])];
+  const lokasiList = [...new Set([...lokasiRows.map((r) => String(r.lokasi)).filter((l) => !/gudang/i.test(l)), "Toko", "Etalase"])];
   return {
     item,
     drafts: drafts.map((r) => ({ ...opEntry(r), catatan: String(r.catatan ?? "") })),
@@ -4477,6 +4477,9 @@ export async function opnameDraftSave(data: { productId: number; lokasi: string;
   const qty = Number(data?.qty);
   if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak valid.");
   if (!Number.isInteger(qty) || qty < 0) throw new Error("Jumlah fisik harus bilangan bulat 0 atau lebih.");
+  if (/gudang/i.test(String(data?.lokasi ?? ""))) {
+    throw new Error("Stok gudang dihitung terpisah. Pilih \"Gudang\" di atas daftar Stok Opname, jangan dicampur ke hitungan toko.");
+  }
   const db = await sql();
   const rows = await db.query<Record<string, unknown>>(`select * from products where id = $1`, [productId]);
   if (!rows[0]) throw new Error("Barang tidak ditemukan.");
@@ -5080,6 +5083,246 @@ export async function gudangOpname(data: { productId: number; qty: number; unit:
       `Stok Opname Gudang ${c.units.kode} ${c.units.nama}: sistem ${gudangFmt(Number(r.stokSebelum), c.units)}, fisik ${gudangFmt(Number(r.stokFisik), c.units)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`,
     );
     return { ok: true as const, stokSebelum: Number(r.stokSebelum), stokFisik: Number(r.stokFisik), selisih };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+
+/* ===== Stok Opname Gudang (hitungan sementara) =====
+   Gudang dan toko dihitung terpisah, tidak pernah dijumlahkan. Hitungan gudang disimpan sebagai draft
+   (gudang_opname_draft) yang tidak mengubah stok. Admin menekan Konfirmasi Total, lalu shop_gudang_opname
+   menyesuaikan stok gudang. Status: tidak ada opname = BELUM_DICEK; ada tambah/ambil/koreksi setelah opname
+   terakhir = PERLU_CEK_ULANG; selain itu SUDAH_DICEK. Migrasi 0052. */
+
+const GUDANG_OPNAME_BASE = `
+  select g.product_id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
+    p.satuan, p.satuan_alt, p.isi_satuan_alt, g.stok as stok_gudang, p.stok as stok_toko,
+    o.id as opname_id, o.tanggal as opname_pada, o.jumlah as opname_selisih, o.qty_input as opname_fisik, o.oleh_nama as opname_oleh,
+    (select count(*)::int from gudang_opname_draft d where d.product_id = g.product_id) as draft_n,
+    (select coalesce(sum(d.jumlah), 0)::int from gudang_opname_draft d where d.product_id = g.product_id) as draft_total,
+    case
+      when o.id is null then 'BELUM_DICEK'
+      when exists (select 1 from gudang_log m where m.product_id = g.product_id and m.tipe <> 'OPNAME' and m.id > o.id) then 'PERLU_CEK_ULANG'
+      else 'SUDAH_DICEK'
+    end as status_cek
+  from gudang_items g
+  join products p on p.id = g.product_id
+  left join lateral (
+    select l.id, l.tanggal, l.jumlah, l.qty_input, l.oleh_nama
+    from gudang_log l where l.product_id = g.product_id and l.tipe = 'OPNAME' order by l.tanggal desc, l.id desc limit 1
+  ) o on true`;
+
+const GUDANG_OPNAME_FILTER: Record<string, string> = {
+  belum: `t.status_cek = 'BELUM_DICEK'`,
+  sudah: `t.status_cek = 'SUDAH_DICEK'`,
+  ulang: `t.status_cek = 'PERLU_CEK_ULANG'`,
+  draft: `t.draft_n > 0`,
+};
+
+function mapGudangOpnameItem(row: Record<string, unknown>): GudangOpnameItem {
+  const checked = row.opname_id != null;
+  return {
+    productId: Number(row.product_id),
+    kode: String(row.kode ?? ""),
+    partNumber: String(row.part_number ?? ""),
+    partNumbersAlt: String(row.part_numbers_alt ?? ""),
+    nama: String(row.nama ?? ""),
+    kategori: String(row.kategori ?? ""),
+    merek: String(row.merek ?? ""),
+    kodePajak: String(row.kode_pajak ?? ""),
+    satuan: String(row.satuan ?? "Pcs"),
+    satuanAlt: String(row.satuan_alt ?? ""),
+    isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
+    stokGudang: Number(row.stok_gudang ?? 0),
+    stokToko: Number(row.stok_toko ?? 0),
+    opnamePada: checked ? opIso(row.opname_pada) : null,
+    opnameSelisih: checked ? Number(row.opname_selisih ?? 0) : null,
+    statusCek: String(row.status_cek ?? "BELUM_DICEK") as GudangOpnameItem["statusCek"],
+    opnameFisik: checked ? Number(row.opname_fisik ?? 0) : null,
+    opnameOleh: String(row.opname_oleh ?? ""),
+    draftN: Number(row.draft_n ?? 0),
+    draftTotal: Number(row.draft_total ?? 0),
+  };
+}
+
+export async function gudangOpnameList(data: { q?: unknown; kategori?: unknown; filter?: unknown; page?: unknown }) {
+  const me = await requireGudangView();
+  const db = await sql();
+  const params: unknown[] = [];
+  const where = gudangWhere({ q: data?.q, kategori: data?.kategori }, params);
+  const base = `${GUDANG_OPNAME_BASE} ${where.length ? `where ${where.join(" and ")}` : ""}`;
+  const filterSql = GUDANG_OPNAME_FILTER[String(data?.filter ?? "semua")];
+  const outer = filterSql ? `where ${filterSql}` : "";
+  const page = Math.max(1, Number(data?.page ?? 1) || 1);
+  const perPage = 20;
+
+  const [count] = await db.query<{ n: number }>(`select count(*)::int as n from (${base}) t ${outer}`, params);
+  const rows = await db.query<Record<string, unknown>>(
+    `select t.* from (${base}) t ${outer} order by lower(t.nama), t.product_id limit ${perPage} offset ${(page - 1) * perPage}`,
+    params,
+  );
+
+  const sParams: unknown[] = [];
+  const sWhere = gudangWhere({ kategori: data?.kategori }, sParams);
+  const [sum] = await db.query<Record<string, number>>(
+    `select count(*)::int as total,
+            count(*) filter (where t.status_cek = 'SUDAH_DICEK')::int as sudah,
+            count(*) filter (where t.status_cek = 'BELUM_DICEK')::int as belum,
+            count(*) filter (where t.status_cek = 'PERLU_CEK_ULANG')::int as ulang,
+            count(*) filter (where t.draft_n > 0)::int as draft
+     from (${GUDANG_OPNAME_BASE} ${sWhere.length ? `where ${sWhere.join(" and ")}` : ""}) t`,
+    sParams,
+  );
+  const total = Number(sum?.total ?? 0);
+  const sudah = Number(sum?.sudah ?? 0);
+  const summary: GudangOpnameSummary = {
+    total,
+    sudah,
+    belum: Number(sum?.belum ?? 0),
+    ulang: Number(sum?.ulang ?? 0),
+    draft: Number(sum?.draft ?? 0),
+    progress: total > 0 ? Math.floor((sudah / total) * 100) : 0,
+  };
+  const cats = await db.query<{ kategori: string }>(
+    `select distinct btrim(p.kategori) as kategori from gudang_items g join products p on p.id = g.product_id
+     where btrim(coalesce(p.kategori, '')) <> '' order by 1`,
+  );
+  return {
+    items: rows.map(mapGudangOpnameItem),
+    total: Number(count?.n ?? 0),
+    page,
+    perPage,
+    summary,
+    kategori: cats.map((c) => String(c.kategori)).filter(Boolean),
+    bisaHitung: Boolean(me.canGudang),
+    admin: me.role === "Admin",
+  };
+}
+
+/** Satu barang gudang: stok, hitungan sementara, dan opname terakhir. */
+export async function gudangOpnameItem(data: { productId: number }) {
+  const me = await requireGudangView();
+  const id = Number(data?.productId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Barang tidak valid.");
+  const db = await sql();
+  const [row] = await db.query<Record<string, unknown>>(`select t.* from (${GUDANG_OPNAME_BASE}) t where t.product_id = $1`, [id]);
+  if (!row) throw new Error("Barang ini sudah tidak ada di daftar gudang.");
+  const item = mapGudangOpnameItem(row);
+  const draftRows = await db.query<Record<string, unknown>>(
+    `select id, lokasi, jumlah, qty_input, satuan_input, catatan, petugas, petugas_nama, diubah_pada
+     from gudang_opname_draft where product_id = $1 order by lokasi`,
+    [id],
+  );
+  const drafts: GudangDraftEntry[] = draftRows.map((r) => ({
+    id: Number(r.id),
+    lokasi: String(r.lokasi ?? ""),
+    jumlah: Number(r.jumlah ?? 0),
+    qty: Number(r.qty_input ?? 0),
+    satuan: String(r.satuan_input ?? ""),
+    petugas: String(r.petugas_nama ?? ""),
+    petugasUsername: String(r.petugas ?? ""),
+    diubah: opIso(r.diubah_pada) ?? "",
+    catatan: String(r.catatan ?? ""),
+  }));
+  const [mut] = drafts.length
+    ? await db.query<{ n: number }>(
+        `select count(*)::int as n from gudang_log
+         where product_id = $1 and tipe <> 'OPNAME' and tanggal >= (select min(diubah_pada) from gudang_opname_draft where product_id = $1)`,
+        [id],
+      )
+    : [{ n: 0 }];
+  const recentRows = await db.query<Record<string, unknown>>(
+    `select id, tanggal, jumlah, qty_input, oleh_nama, catatan from gudang_log
+     where product_id = $1 and tipe = 'OPNAME' order by tanggal desc, id desc limit 5`,
+    [id],
+  );
+  const recent: GudangOpnameRecent[] = recentRows.map((r) => ({
+    id: Number(r.id),
+    tanggal: opIso(r.tanggal) ?? "",
+    stokFisik: Number(r.qty_input ?? 0),
+    selisih: Number(r.jumlah ?? 0),
+    stokSebelum: Number(r.qty_input ?? 0) - Number(r.jumlah ?? 0),
+    oleh: String(r.oleh_nama ?? ""),
+    catatan: String(r.catatan ?? ""),
+  }));
+  const lokasiRows = await db.query<{ lokasi: string }>(`select lokasi from gudang_opname_draft group by lokasi order by max(diubah_pada) desc limit 20`);
+  return {
+    item,
+    drafts,
+    recent,
+    mutasi: Number(mut?.n ?? 0),
+    lokasiList: [...new Set(lokasiRows.map((r) => String(r.lokasi)))],
+    bisaHitung: Boolean(me.canGudang),
+    admin: me.role === "Admin",
+    me: me.username,
+  };
+}
+
+/** Admin dan staf berizin gudang: simpan hitungan satu lokasi. Stok gudang tidak berubah. */
+export async function gudangDraftSave(data: { productId: number; lokasi: string; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireGudangOps();
+  const lokasi = String(data?.lokasi ?? "").trim();
+  if (/^toko$/i.test(lokasi)) throw new Error("Hitungan toko dilakukan di Stok Opname pilihan Toko. Di sini isi lokasi di dalam gudang, misalnya Rak A.");
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  const db = await sql();
+  try {
+    await db.query(`select shop_gudang_draft_save($1::jsonb)`, [
+      JSON.stringify({
+        productId: c.productId,
+        lokasi,
+        jumlah: c.jumlah,
+        qty: c.qty,
+        satuanInput: c.unit === "alt" ? c.units.satuanAlt : c.units.satuan,
+        catatan: String(data?.catatan ?? ""),
+        actor: me.username,
+        actorName: me.name,
+      }),
+    ]);
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+  return { ok: true as const };
+}
+
+/** Hapus hitungan sementara: Admin boleh semua, staf hanya hitungan miliknya. */
+export async function gudangDraftDelete(data: { draftId: number }) {
+  const me = await requireGudangOps();
+  const id = Number(data?.draftId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Hitungan tidak valid.");
+  const db = await sql();
+  const rows = await db.query<{ id: number }>(
+    `delete from gudang_opname_draft where id = $1 and ($2::boolean or petugas = $3) returning id`,
+    [id, me.role === "Admin", me.username],
+  );
+  if (!rows.length) throw new Error("Hitungan tidak ditemukan, atau dibuat oleh orang lain.");
+  return { ok: true as const };
+}
+
+/** Admin: konfirmasi total semua lokasi gudang. Di sinilah stok gudang berubah. */
+export async function gudangDraftConfirm(data: { productId: number; expected: number; force?: boolean; catatan?: string }): Promise<GudangConfirmResult> {
+  const me = await requireGudangAdmin();
+  const id = Number(data?.productId);
+  const expected = Number(data?.expected);
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(expected) || expected < 0) throw new Error("Data pemeriksaan tidak lengkap. Muat ulang halaman.");
+  const units = await gudangProductUnits(id);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_draft_confirm($1::jsonb) as r`, [
+      JSON.stringify({ productId: id, expectedStok: expected, force: Boolean(data?.force), catatan: String(data?.catatan ?? ""), actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; jumlahMutasi?: number; total?: number; stokSebelum?: number; stokFisik?: number; selisih?: number }>(row?.r);
+    if (!r?.ok) {
+      if (r?.alasan === "peringatan") return { ok: false, peringatan: true, jumlahMutasi: Number(r.jumlahMutasi ?? 0), total: Number(r.total ?? 0) };
+      if (r?.alasan === "berubah") throw new Error(`Stok gudang berubah saat dihitung (sekarang ${gudangFmt(Number(r.sisa ?? 0), units)}). Muat ulang lalu konfirmasi lagi.`);
+      throw new Error("Konfirmasi tidak dapat disimpan.");
+    }
+    const selisih = Number(r.selisih ?? 0);
+    await audit(
+      me,
+      `Stok Opname Gudang ${units.kode} ${units.nama}: sistem ${gudangFmt(Number(r.stokSebelum), units)}, fisik ${gudangFmt(Number(r.stokFisik), units)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`,
+    );
+    return { ok: true, stokSebelum: Number(r.stokSebelum), stokFisik: Number(r.stokFisik), selisih };
   } catch (error) {
     throw new Error(cleanError(error));
   }

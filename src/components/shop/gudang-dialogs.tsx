@@ -2,7 +2,7 @@ import { Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, PrimaryButton, inputClass } from "@/components/shop/shell";
-import { gudangEdit, gudangOpname, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah } from "@/lib/shop/api";
+import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah } from "@/lib/shop/api";
 import { formatQtyPack, hasAltUnit, toBaseQty } from "@/lib/shop/format";
 import type { GudangItem, GudangLog, GudangPickItem } from "@/lib/shop/types";
 
@@ -37,7 +37,7 @@ export function ItemIdentity({ item }: { item: { nama: string; kode: string; par
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -61,7 +61,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 /** Jumlah + pilihan satuan (satuan dasar atau satuan besar seperti Dus) sesuai Master Data. */
-function QtyField({ label, qty, unit, units, onQty, onUnit }: { label: string; qty: string; unit: Unit; units: Units; onQty: (v: string) => void; onUnit: (u: Unit) => void }) {
+export function QtyField({ label, qty, unit, units, onQty, onUnit }: { label: string; qty: string; unit: Unit; units: Units; onQty: (v: string) => void; onUnit: (u: Unit) => void }) {
   const alt = hasAltUnit(units.satuanAlt, units.isiSatuanAlt);
   const n = Number(qty);
   const valid = qty.trim() !== "" && Number.isInteger(n) && n >= 0;
@@ -94,17 +94,17 @@ function QtyField({ label, qty, unit, units, onQty, onUnit }: { label: string; q
   );
 }
 
-function defaultUnit(units: Units): Unit {
+export function defaultUnit(units: Units): Unit {
   return hasAltUnit(units.satuanAlt, units.isiSatuanAlt) ? "alt" : "base";
 }
 
-function baseOf(qty: string, unit: Unit, units: Units) {
+export function baseOf(qty: string, unit: Unit, units: Units) {
   const n = Number(qty);
   if (qty.trim() === "" || !Number.isInteger(n) || n < 0) return null;
   return toBaseQty(n, unit, units.isiSatuanAlt);
 }
 
-function fmt(base: number, units: Units) {
+export function fmt(base: number, units: Units) {
   return formatQtyPack(base, units.satuan, units.satuanAlt, units.isiSatuanAlt);
 }
 
@@ -121,7 +121,7 @@ function Actions({ onClose, busy, label }: { onClose: () => void; busy: boolean;
   );
 }
 
-function ErrorLine({ text }: { text: string }) {
+export function ErrorLine({ text }: { text: string }) {
   return text ? (
     <p role="alert" className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
       {text}
@@ -417,61 +417,6 @@ export function EditLogDialog({ log, onClose, onDone }: { log: GudangLog; onClos
         </div>
         <ErrorLine text={error} />
         <Actions onClose={onClose} busy={busy} label="Simpan perubahan" />
-      </form>
-    </Modal>
-  );
-}
-
-/** Admin: Stok Opname gudang. Hasil hitung fisik dibandingkan dengan stok sistem; selisih langsung menyesuaikan stok gudang. */
-export function OpnameDialog({ item, onClose, onDone }: { item: GudangItem; onClose: () => void; onDone: () => void }) {
-  const [qty, setQty] = useState("");
-  const [unit, setUnit] = useState<Unit>(defaultUnit(item));
-  const [catatan, setCatatan] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const base = baseOf(qty, unit, item);
-  const selisih = base == null ? null : base - item.stokGudang;
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (base == null) return setError("Isi hasil hitung fisik (0 atau lebih).");
-    setBusy(true);
-    setError("");
-    try {
-      const res = await gudangOpname({ data: { productId: item.productId, qty: Number(qty), unit, expected: item.stokGudang, catatan } });
-      toast.success(res.selisih === 0 ? "Stok gudang cocok" : "Opname tersimpan, stok gudang disesuaikan", {
-        description: `${item.nama}: sistem ${fmt(res.stokSebelum, item)}, fisik ${fmt(res.stokFisik, item)}`,
-      });
-      onDone();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan opname.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal title="Stok opname gudang" onClose={onClose}>
-      <form onSubmit={(event) => void submit(event)}>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <ItemIdentity item={item} />
-          <p className="mt-2 text-xs text-slate-600">
-            Stok sistem gudang <b className="text-slate-900">{fmt(item.stokGudang, item)}</b>
-          </p>
-        </div>
-        <div className="mt-3 space-y-2">
-          <QtyField label="Hasil hitung fisik" qty={qty} unit={unit} units={item} onQty={setQty} onUnit={setUnit} />
-          {selisih != null ? (
-            <p className={`rounded-lg px-3 py-2 text-xs font-semibold ${selisih === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
-              {selisih === 0 ? "Cocok, tidak ada selisih." : selisih > 0 ? `Lebih ${fmt(selisih, item)}. Stok gudang akan menjadi ${fmt(base ?? 0, item)}.` : `Kurang ${fmt(-selisih, item)}. Stok gudang akan menjadi ${fmt(base ?? 0, item)}.`}
-            </p>
-          ) : null}
-          <Field label="Catatan (opsional)">
-            <input className={inputClass} maxLength={300} placeholder="Contoh: rak B, dihitung ulang dua kali" value={catatan} onChange={(event) => setCatatan(event.target.value)} />
-          </Field>
-        </div>
-        <ErrorLine text={error} />
-        <Actions onClose={onClose} busy={busy} label="Simpan hasil opname" />
       </form>
     </Modal>
   );

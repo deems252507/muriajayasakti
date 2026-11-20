@@ -1,10 +1,12 @@
 import { ChevronRight, History, RefreshCw } from "lucide-react";
+import type React from "react";
 import { MarkWords } from "@/components/shop/shell";
 import {
   DraftTag,
   HasilBadge,
   ItemTitle,
   MetaLine,
+  QtyDus,
   StatusBadge,
   TONE,
   itemTone,
@@ -83,9 +85,9 @@ export function OpnameRows({
               </div>
               <DraftTag item={item} />
               <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
-                <Cell label="Stok Sistem" value={`${item.stok} ${item.satuan}`} />
-                <Cell label="Stok Fisik" value={checked ? `${item.stokFisik} ${item.satuan}` : "-"} dim={stale} />
-                <Cell label="Selisih" value={checked ? selisihText(item.selisih) : "-"} valueClass={checked ? selisihClass(item.selisih) : ""} dim={stale} />
+                <Cell label="Stok Sistem" node={<QtyDus item={item} value={item.stok} className="!items-center text-sm font-extrabold" />} />
+                <Cell label="Stok Fisik" node={checked ? <QtyDus item={item} value={item.stokFisik ?? 0} className="text-sm font-extrabold" /> : <span className="text-sm font-extrabold text-slate-900">-</span>} dim={stale} />
+                <Cell label="Selisih" node={checked ? <QtyDus item={item} value={item.selisih ?? 0} signed showUnit={false} valueClass={`text-sm font-extrabold ${selisihClass(item.selisih)}`} /> : <span className="text-sm font-extrabold text-slate-900">-</span>} dim={stale} />
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <HasilBadge hasil={item.hasil} stale={stale} />
@@ -159,9 +161,9 @@ export function OpnameRows({
                     <div className="whitespace-nowrap font-mono text-xs"><MarkWords text={item.partNumber || item.kode || "-"} q={q} /></div>
                     {item.partNumbersAlt ? <div className="mt-0.5 break-words font-mono text-[11px] text-slate-500">Alt: <MarkWords text={item.partNumbersAlt} q={q} /></div> : null}
                   </td>
-                  <td className={`${td} whitespace-nowrap text-center font-bold`}>{item.stok} {item.satuan}</td>
-                  <td className={`${td} whitespace-nowrap text-center font-semibold ${stale ? "opacity-50" : ""}`}>{checked ? `${item.stokFisik} ${item.satuan}` : "-"}</td>
-                  <td className={`${td} whitespace-nowrap text-center font-bold ${stale ? "opacity-50" : ""} ${checked ? selisihClass(item.selisih) : ""}`}>{checked ? selisihText(item.selisih) : "-"}</td>
+                  <td className={`${td} whitespace-nowrap text-center`}><QtyDus item={item} value={item.stok} /></td>
+                  <td className={`${td} whitespace-nowrap text-center ${stale ? "opacity-50" : ""}`}>{checked ? <QtyDus item={item} value={item.stokFisik ?? 0} /> : "-"}</td>
+                  <td className={`${td} whitespace-nowrap text-center ${stale ? "opacity-50" : ""}`}>{checked ? <QtyDus item={item} value={item.selisih ?? 0} signed showUnit={false} valueClass={selisihClass(item.selisih)} /> : "-"}</td>
                   <td className={`${td} text-center`}><StatusBadge status={item.statusCek} /></td>
                   <td className={`${td} text-center`}><HasilBadge hasil={item.hasil} stale={stale} /></td>
                   <td className={`${td} whitespace-nowrap text-xs text-slate-600`}>
@@ -210,11 +212,11 @@ export function OpnameRows({
   );
 }
 
-function Cell({ label, value, valueClass = "text-slate-900", dim }: { label: string; value: string; valueClass?: string; dim?: boolean }) {
+function Cell({ label, node, dim }: { label: string; node: React.ReactNode; dim?: boolean }) {
   return (
-    <div className={`min-w-0 rounded-lg bg-slate-50 px-1 py-1.5 ${dim ? "opacity-60" : ""}`}>
+    <div className={`flex min-w-0 flex-col items-center rounded-lg bg-slate-50 px-1 py-1.5 ${dim ? "opacity-60" : ""}`}>
       <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={`num truncate text-sm font-extrabold ${valueClass}`}>{value}</p>
+      {node}
     </div>
   );
 }
