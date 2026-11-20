@@ -743,12 +743,6 @@ function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => v
     ["Kategori", item.kategori || "-"],
     ["Merek", item.merek || "-"],
     ["Satuan", item.satuan || "-"],
-    ...(item.stokGudang != null
-      ? ([[
-          "Stok gudang (info)",
-          `${item.stokGudang.toLocaleString("id-ID")} ${item.satuan}${dus && item.stokGudang >= item.isiSatuanAlt ? ` (${Math.floor(item.stokGudang / item.isiSatuanAlt)} ${item.satuanAlt}${item.stokGudang % item.isiSatuanAlt ? ` + ${item.stokGudang % item.isiSatuanAlt} ${item.satuan}` : ""})` : ""}`,
-        ]] as Array<[string, ReactNode]>)
-      : []),
     ["Stok minimum", `${item.stokMin} ${item.satuan}`],
     ["Harga jual", `${rupiah(item.hargaJual)} / ${item.satuan}`],
     ...(dus ? ([[`Isi 1 ${item.satuanAlt}`, `${item.isiSatuanAlt} ${item.satuan}`], [`Harga jual 1 ${item.satuanAlt}`, rupiah(item.hargaJualAlt)]] as Array<[string, ReactNode]>) : []),
@@ -765,12 +759,31 @@ function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => v
           </div>
           <button type="button" className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-white" onClick={onClose} aria-label="Tutup"><X className="size-4" /></button>
         </div>
-        <div className="mt-3 rounded-xl border border-line bg-white p-3 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Stok saat ini</p>
-          <p className={`num text-3xl font-extrabold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</p>
-          {dus ? <p className="text-xs font-medium text-blue-700">= {dusQty} {item.satuanAlt}{sisa ? ` + ${sisa} ${item.satuan}` : ""}</p> : null}
-          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${level === "HABIS" ? "bg-red-100 text-red-700" : level === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{level === "MENIPIS" ? "KRITIS" : level}</span>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Stok Gudang</p>
+            {item.stokGudang != null && item.stokGudang > 0 ? (
+              <>
+                <p className="num text-2xl font-extrabold text-violet-900">{item.stokGudang.toLocaleString("id-ID")} {item.satuan}</p>
+                {dus && item.stokGudang >= item.isiSatuanAlt ? (
+                  <p className="text-xs font-medium text-violet-700">= {Math.floor(item.stokGudang / item.isiSatuanAlt)} {item.satuanAlt}{item.stokGudang % item.isiSatuanAlt ? ` + ${item.stokGudang % item.isiSatuanAlt} ${item.satuan}` : ""}</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="num text-2xl font-extrabold text-slate-300">0 {item.satuan}</p>
+            )}
+            <p className="mt-1 text-[10px] font-medium text-violet-700">Tidak dijual langsung</p>
+          </div>
+          <div className="rounded-xl border border-line bg-white p-3 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Stok Toko</p>
+            <p className={`num text-2xl font-extrabold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok.toLocaleString("id-ID")} {item.satuan}</p>
+            {dus ? <p className="text-xs font-medium text-blue-700">= {dusQty} {item.satuanAlt}{sisa ? ` + ${sisa} ${item.satuan}` : ""}</p> : null}
+            <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${level === "HABIS" ? "bg-red-100 text-red-700" : level === "MENIPIS" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{level === "MENIPIS" ? "KRITIS" : level}</span>
+          </div>
         </div>
+        {level !== "AMAN" && (item.stokGudang ?? 0) > 0 ? (
+          <p className="mt-2 rounded-lg bg-violet-100 px-3 py-1.5 text-center text-xs font-bold text-violet-900">Stok toko {level === "HABIS" ? "habis" : "menipis"}, masih ada di gudang. Minta dipindahkan ke toko.</p>
+        ) : null}
         <dl className="mt-3 divide-y divide-line text-sm">
           {rows.map(([label, value]) => (
             <div key={label} className="flex justify-between gap-4 py-2">

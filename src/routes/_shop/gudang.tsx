@@ -82,12 +82,12 @@ function GudangPage() {
         </div>
         ) : null}
       </Panel>
-      {tab === "stok" ? <StokTab onHistory={(id) => void navigate({ to: "/gudang", search: { tab: "riwayat", hid: id } })} /> : <RiwayatTab hid={hid} onClearHid={() => void navigate({ to: "/gudang", search: { tab: "riwayat" }, replace: true })} />}
+      {tab === "stok" ? <StokTab canHistory={showRiwayat} onHistory={(id) => void navigate({ to: "/gudang", search: { tab: "riwayat", hid: id } })} /> : <RiwayatTab hid={hid} onClearHid={() => void navigate({ to: "/gudang", search: { tab: "riwayat" }, replace: true })} />}
     </div>
   );
 }
 
-function StokTab({ onHistory }: { onHistory: (productId: number) => void }) {
+function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => void; canHistory: boolean }) {
   const [q, setQ] = usePersistedState("gudang:q", "");
   const [kategori, setKategori] = usePersistedState("gudang:kategori", "");
   const [hanyaStok, setHanyaStok] = usePersistedState("gudang:hanyaStok", false);
@@ -227,9 +227,11 @@ function StokTab({ onHistory }: { onHistory: (productId: number) => void }) {
                   <ClipboardCheck className="size-4" /> Hitung
                 </button>
               ) : null}
-              <button type="button" aria-label="Riwayat barang" onClick={() => onHistory(item.productId)} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
-                <History className="size-4" />
-              </button>
+              {canHistory ? (
+                <button type="button" aria-label="Riwayat barang" title="Riwayat mutasi barang ini" onClick={() => onHistory(item.productId)} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
+                  <History className="size-4" />
+                </button>
+              ) : null}
               {admin ? (
                 <>
                   <button type="button" aria-label="Sesuaikan stok" title="Sesuaikan stok" onClick={() => setDialog({ kind: "sesuaikan", item })} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
