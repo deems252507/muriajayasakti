@@ -3,6 +3,8 @@ import type { Bank } from "@/lib/shop/types";
 
 type ProductInput = {
   id?: number | null;
+  /** Stok toko saat form edit dibuka. Stok hanya ditimpa kalau angkanya beda dari ini. */
+  stokAsal?: number;
   partNumber: string;
   partNumbersAlt: string;
   nama: string;

@@ -70,7 +70,7 @@ function BarangPage() {
   const [sorts, setSorts] = usePersistedState<string[]>("barang:sorts", DEFAULT_SORTS);
   const [data, setData] = useState<{ total: number; items: Product[]; perPage: number; categories: string[] } | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [form, setForm] = useState(empty);
+  const [form, setForm] = useState<typeof empty & { stokGudang?: number | null; stokAsal?: number }>(empty);
   const [useDus, setUseDus] = useState(false);
   const [open, setOpen] = useState(false);
   const [replaceStock, setReplaceStock] = useState(true);
@@ -329,7 +329,7 @@ function BarangPage() {
           items={data?.items ?? []}
           q={q}
           groupByPart={hideCategoryHeaders(sorts, dupOnly)}
-          onOpen={(item) => { if (isStaf) { setDetail(item); return; } setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
+          onOpen={(item) => { if (!canEdit) { setDetail(item); return; } setForm({ ...item, id: item.id, stokAsal: item.stok }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }}
           actions={(item) => isStaf ? (
             <ExpandGroup>
               <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} />
@@ -338,12 +338,13 @@ function BarangPage() {
           ) : (
             <ExpandGroup>
               <CommentButton kind="barang" refId={item.id} label={item.nama} mark={comments.marks[String(item.id)]} />
+              {!canEdit ? <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} /> : null}
               <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
               {me.role !== "Kasir" ? <ExpandButton label="Pemasok" icon={<Truck />} onClick={() => openOrigin(item)} /> : null}
               <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item)} />
               {canEdit ? (
                 <>
-                  <ExpandButton label="Ubah" icon={<Pencil />} onClick={() => { setForm({ ...item, id: item.id }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }} />
+                  <ExpandButton label="Ubah" icon={<Pencil />} onClick={() => { setForm({ ...item, id: item.id, stokAsal: item.stok }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }} />
                   <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={async () => { if (await confirmDialog(`Barang "${item.nama}" akan dihapus dari daftar.`, { title: "Hapus barang?", danger: true })) void deleteProduct({ data: { id: item.id } }).then(() => { toast.success("Barang berhasil dihapus", { description: item.nama }); load(); }).catch((e: Error) => toast.error(e.message)); }} />
                 </>
               ) : null}
@@ -392,7 +393,21 @@ function BarangPage() {
               <Field label="Kategori"><input className={inputClass} value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></Field>
               <Field label="Merek"><input className={inputClass} value={form.merek} onChange={(e) => setForm({ ...form, merek: e.target.value })} /></Field>
               <Field label="Satuan"><input className={inputClass} value={form.satuan} onChange={(e) => setForm({ ...form, satuan: e.target.value })} /></Field>
-              <Field label={`Stok (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
+              {form.id ? (
+                <>
+                  <Field label="Stok gudang (baca saja)">
+                    <div className={`${inputClass} num flex items-center bg-violet-50 font-bold text-violet-900`} title="Stok gudang diubah lewat menu Stok Gudang atau Stok Opname">
+                      {form.stokGudang != null ? `${form.stokGudang.toLocaleString("id-ID")} ${form.satuan || "Pcs"}` : "–"}
+                    </div>
+                  </Field>
+                  <Field label={`Stok toko (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
+                  {form.stokAsal != null && form.stok !== form.stokAsal ? (
+                    <p className="sm:col-span-2 -mt-1 text-[11px] font-medium text-amber-700">Stok toko diubah dari {form.stokAsal.toLocaleString("id-ID")} menjadi {form.stok.toLocaleString("id-ID")} dan akan tercatat di riwayat aktivitas. Stok gudang tidak ikut berubah.</p>
+                  ) : null}
+                </>
+              ) : (
+                <Field label={`Stok awal toko (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stok} onChange={(e) => setForm({ ...form, stok: Number(e.target.value) || 0 })} /></Field>
+              )}
               <Field label={`Stok minimum (${form.satuan || "Pcs"})`}><input className={`${inputClass} num`} value={form.stokMin} onChange={(e) => setForm({ ...form, stokMin: Number(e.target.value) || 0 })} /></Field>
               <Field label="Harga beli"><input className={`${inputClass} num`} value={grouped(form.hargaBeli)} onChange={(e) => setForm({ ...form, hargaBeli: digits(e.target.value) })} /></Field>
               <Field label={`Harga jual per ${form.satuan || "Pcs"}`}><input className={`${inputClass} num`} value={grouped(form.hargaJual)} onChange={(e) => setForm({ ...form, hargaJual: digits(e.target.value) })} /></Field>

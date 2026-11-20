@@ -759,6 +759,9 @@ export async function saveProduct(data: any) {
     if (satuanAlt && isiSatuanAlt <= 0) throw new Error("Isi jumlah pcs di dalam 1 dus.");
     const hargaJualAlt = satuanAlt ? Number(data.hargaJualAlt) || 0 : 0;
     if (data.id) {
+      // Stok toko hanya ditimpa kalau Admin memang mengubah angkanya di form (beda dari angka saat form dibuka).
+      // Kalau tidak diubah, stok dibiarkan supaya penjualan kasir yang terjadi saat form terbuka tidak tertimpa.
+      const stokDiubah = data.stokAsal != null && (Number(data.stok) || 0) !== (Number(data.stokAsal) || 0);
       const before = (
         await db.query<{ nama: string; stok: number; harga_beli: number; harga_jual: number; harga_jual_alt: number }>(
           `select nama, stok, harga_beli, harga_jual, harga_jual_alt from products where id=$1`,
@@ -768,8 +771,9 @@ export async function saveProduct(data: any) {
       await db.query(
         `update products set
            part_number=$2, part_numbers_alt=$3, nama=$4, kategori=$5, merek=$6, satuan=$7,
-           stok_min=$8, stok=$9, harga_beli=$10, harga_jual=$11, satuan_alt=$12,
-           isi_satuan_alt=$13, harga_jual_alt=$14, pajak_status=$15, kode_pajak=$16, keterangan=$17
+           stok_min=$8, harga_beli=$9, harga_jual=$10, satuan_alt=$11,
+           isi_satuan_alt=$12, harga_jual_alt=$13, pajak_status=$14, kode_pajak=$15, keterangan=$16,
+           stok = case when $17::boolean then $18 else stok end
          where id=$1`,
         [
           data.id,
@@ -780,7 +784,6 @@ export async function saveProduct(data: any) {
           data.merek ?? "",
           data.satuan || "Pcs",
           Number(data.stokMin) || 0,
-          Number(data.stok) || 0,
           Number(data.hargaBeli) || 0,
           Number(data.hargaJual) || 0,
           satuanAlt,
@@ -789,6 +792,8 @@ export async function saveProduct(data: any) {
           pajak,
           kodePajak,
           data.keterangan ?? "",
+          stokDiubah,
+          Number(data.stok) || 0,
         ],
       );
       const rp = (n: unknown) => `Rp${Number(n || 0).toLocaleString("id-ID")}`;
@@ -797,7 +802,7 @@ export async function saveProduct(data: any) {
         if (Number(before.harga_jual) !== (Number(data.hargaJual) || 0)) changes.push(`harga jual ${rp(before.harga_jual)} → ${rp(data.hargaJual)}`);
         if (Number(before.harga_beli) !== (Number(data.hargaBeli) || 0)) changes.push(`harga beli ${rp(before.harga_beli)} → ${rp(data.hargaBeli)}`);
         if (Number(before.harga_jual_alt) !== hargaJualAlt) changes.push(`harga jual dus ${rp(before.harga_jual_alt)} → ${rp(hargaJualAlt)}`);
-        if (Number(before.stok) !== (Number(data.stok) || 0)) changes.push(`stok ${Number(before.stok)} → ${Number(data.stok) || 0}`);
+        if (stokDiubah && Number(before.stok) !== (Number(data.stok) || 0)) changes.push(`stok toko ${Number(before.stok)} → ${Number(data.stok) || 0}`);
         if (String(before.nama).trim() !== data.nama.trim()) changes.push(`nama "${before.nama}" → "${data.nama.trim()}"`);
       }
       await audit(me, `Ubah barang ${data.nama.trim()}${changes.length ? ` — ${changes.join("; ")}` : ""}`);
