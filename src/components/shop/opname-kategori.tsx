@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 /** Pilih kategori seperti di Daftar Sparepart: bisa diketik untuk mencari, boleh pilih lebih dari satu. */
-export function KategoriPicker({ value, onChange, options }: { value: string[]; onChange: (next: string[]) => void; options: string[] }) {
+export function KategoriPicker({ value, onChange, options, alignRight = false }: { value: string[]; onChange: (next: string[]) => void; options: string[]; alignRight?: boolean }) {
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDetailsElement>(null);
   const selected = new Set(value.map((v) => v.toLowerCase()));
@@ -18,7 +18,7 @@ export function KategoriPicker({ value, onChange, options }: { value: string[]; 
         <span className="truncate">{value.length === 0 ? "Semua Kategori" : value.length <= 2 ? value.join(", ") : `${value.length} kategori dipilih`}</span>
         <span className="shrink-0 text-slate-600">▾</span>
       </summary>
-      <div className="absolute left-0 right-0 top-12 z-30 overflow-hidden rounded-xl border border-line bg-white shadow-xl sm:right-auto sm:w-[320px]">
+      <div className={`absolute left-0 right-0 top-12 z-30 overflow-hidden rounded-xl border border-line bg-white shadow-xl ${alignRight ? "sm:left-auto sm:right-0" : "sm:right-auto"} sm:w-[320px]`}>
         <div className="space-y-2 border-b border-line p-3">
           <input
             className="h-10 w-full rounded-lg border border-line px-3 text-base outline-none focus:border-blue-500"

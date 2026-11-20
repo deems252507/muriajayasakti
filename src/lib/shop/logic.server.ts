@@ -4783,7 +4783,7 @@ export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaS
 }
 
 /** Cari barang di Master Data untuk ditambahkan ke gudang (barang yang sudah ada di gudang ditandai). */
-export async function gudangSearchMaster(data: { q: string; limit?: number; kategori?: string }): Promise<GudangPickItem[]> {
+export async function gudangSearchMaster(data: { q: string; limit?: number; kategori?: string[] }): Promise<GudangPickItem[]> {
   await requireGudangOps();
   const q = String(data?.q ?? "").trim();
   const db = await sql();
@@ -4797,10 +4797,10 @@ export async function gudangSearchMaster(data: { q: string; limit?: number; kate
     const n = params.length;
     return `(p.nama ilike $${n} or p.part_number ilike $${n} or p.part_numbers_alt ilike $${n} or p.kode ilike $${n} or p.merek ilike $${n} or p.kode_pajak ilike $${n} or p.kategori ilike $${n})`;
   });
-  const kategori = String(data?.kategori ?? "").trim();
-  if (kategori) {
+  const kategori = Array.isArray(data?.kategori) ? data.kategori.map((v) => String(v).trim().toLowerCase()).filter(Boolean) : [];
+  if (kategori.length) {
     params.push(kategori);
-    conds.push(`lower(btrim(p.kategori)) = lower($${params.length}::text)`);
+    conds.push(`lower(btrim(p.kategori)) = any($${params.length}::text[])`);
   }
   let orderBy = "lower(p.kategori), lower(p.nama)";
   if (q) {

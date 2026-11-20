@@ -1,6 +1,7 @@
 import { Search, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { KategoriPicker } from "@/components/shop/opname-kategori";
 import { Field, MarkWords, PrimaryButton, inputClass } from "@/components/shop/shell";
 import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah, listKategoriBarang } from "@/lib/shop/api";
 import { formatQtyPack, hasAltUnit, toBaseQty } from "@/lib/shop/format";
@@ -187,7 +188,7 @@ export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: Gud
   const [results, setResults] = useState<GudangPickItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [limit, setLimit] = useState(40);
-  const [kategori, setKategori] = useState("");
+  const [kategori, setKategori] = useState<string[]>([]);
   const [kategoriList, setKategoriList] = useState<string[]>([]);
   const [picked, setPicked] = useState<GudangPickItem | null>(
     item
@@ -288,17 +289,9 @@ export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: Gud
                 onChange={(event) => { setLimit(40); setQ(event.target.value); }}
               />
             </div>
-            <select
-              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100 sm:w-52"
-              aria-label="Kategori"
-              value={kategori}
-              onChange={(event) => { setLimit(40); setKategori(event.target.value); }}
-            >
-              <option value="">Semua kategori</option>
-              {kategoriList.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <div className="sm:w-56">
+              <KategoriPicker alignRight value={kategori} options={kategoriList} onChange={(next) => { setLimit(40); setKategori(next); }} />
+            </div>
           </div>
           <ErrorLine text={error} />
           <p className="mt-2 text-xs font-medium text-slate-500" aria-live="polite">
@@ -306,14 +299,14 @@ export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: Gud
               ? "Memuat..."
               : q.trim()
                 ? `${results.length}${results.length >= limit ? "+" : ""} barang cocok. Ketuk untuk memilih.`
-                : kategori
-                  ? `${results.length}${results.length >= limit ? "+" : ""} barang kategori ${kategori}. Ketuk untuk memilih.`
+                : kategori.length
+                  ? `${results.length}${results.length >= limit ? "+" : ""} barang kategori ${kategori.join(", ")}. Ketuk untuk memilih.`
                   : `${results.length}${results.length >= limit ? "+" : ""} barang, urut kategori. Pilih kategori atau ketik untuk menyaring.`}
           </p>
           <div className="mt-2 max-h-[55dvh] space-y-2 overflow-y-auto overscroll-contain sm:max-h-[50vh]">
             {!searching && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">{q.trim() ? "Barang tidak ditemukan di Daftar Sparepart." : "Daftar Sparepart masih kosong."}</p> : null}
             {results.map((row, index) => {
-              const showKategori = !q.trim() && !kategori && (index === 0 || (results[index - 1].kategori || "").toLowerCase() !== (row.kategori || "").toLowerCase());
+              const showKategori = !q.trim() && kategori.length === 0 && (index === 0 || (results[index - 1].kategori || "").toLowerCase() !== (row.kategori || "").toLowerCase());
               return (
                 <Fragment key={row.productId}>
                   {showKategori ? (
@@ -321,12 +314,12 @@ export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: Gud
                       role="button"
                       tabIndex={0}
                       title="Tampilkan hanya kategori ini"
-                      onClick={() => row.kategori && (setLimit(40), setKategori(row.kategori))}
+                      onClick={() => row.kategori && (setLimit(40), setKategori([row.kategori]))}
                       onKeyDown={(event) => {
                         if ((event.key === "Enter" || event.key === " ") && row.kategori) {
                           event.preventDefault();
                           setLimit(40);
-                          setKategori(row.kategori);
+                          setKategori([row.kategori]);
                         }
                       }}
                       className="sticky top-0 z-10 flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900"

@@ -1109,9 +1109,9 @@ export const gudangList = createServerFn({ method: "GET" })
   });
 
 export const gudangSearchMaster = createServerFn({ method: "GET" })
-  .validator((input: { q: string; limit?: number; kategori?: string }) => ({
+  .validator((input: { q: string; limit?: number; kategori?: string[] }) => ({
     q: String(input?.q ?? "").trim(),
-    kategori: String(input?.kategori ?? "").trim(),
+    kategori: Array.isArray(input?.kategori) ? input.kategori.map((v) => String(v).trim()).filter(Boolean).slice(0, 100) : [],
     limit: Math.min(Math.max(Number(input?.limit ?? 40) || 40, 1), 200),
   }))
   .handler(async ({ data }) => {
