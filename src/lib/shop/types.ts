@@ -25,6 +25,8 @@ export type Product = {
   satuan: string;
   stokMin: number;
   stok: number;
+  /** Stok di gudang (info saja, tidak ikut Stok Akhir/Kasir). null/kosong = barang belum ada di daftar Stok Gudang. */
+  stokGudang?: number | null;
   hargaBeli: number;
   hargaJual: number;
   satuanAlt: string;

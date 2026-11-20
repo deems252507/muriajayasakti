@@ -1,6 +1,6 @@
 import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { Mark } from "@/components/shop/shell";
-import { rupiah } from "@/lib/shop/format";
+import { formatQtyPack, rupiah } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
 
 export type StockLevel = "HABIS" | "MENIPIS" | "AMAN";
@@ -49,7 +49,7 @@ export function StockTable({
             <th className={th}>Nama Barang</th>
             <th className={th}>Kategori</th>
             <th className={th}>Part Number</th>
-            <th className={`${th} text-center`}>Stok Akhir</th>
+            <th className={`${th} text-center`}>Stok Akhir <span className="block text-[10px] font-semibold normal-case tracking-normal text-slate-500">toko · gudang</span></th>
             <th className={`${th} text-right`}>Harga Jual</th>
             <th className={`${th} text-center`}>Status Stok</th>
             <th className={`${th} text-center`}>Aksi</th>
@@ -94,6 +94,12 @@ export function StockTable({
                     <div className={`num font-bold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</div>
                     {dus ? (
                       <div className="text-[11px] font-medium text-blue-700">{dusQty} {item.satuanAlt}{variant === "barang" && sisa ? ` + ${sisa} ${item.satuan}` : ""}</div>
+                    ) : null}
+                    {item.stokGudang != null ? (
+                      <div className="mt-1 border-t border-slate-100 pt-1 text-[11px] font-semibold text-violet-800" title="Stok di gudang (info). Stok Akhir di atas adalah stok toko.">
+                        Gudang: {item.stokGudang.toLocaleString("id-ID")} {item.satuan}
+                        {dus && item.stokGudang >= item.isiSatuanAlt ? <span className="font-medium text-violet-700"> ({formatQtyPack(item.stokGudang, item.satuan, item.satuanAlt, item.isiSatuanAlt)})</span> : null}
+                      </div>
                     ) : null}
                   </td>
                   <td className={`${td} num whitespace-nowrap text-right font-semibold`}>

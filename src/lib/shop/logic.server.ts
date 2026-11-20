@@ -144,6 +144,7 @@ function mapProduct(row: Record<string, unknown>): Product {
     satuan: String(row.satuan ?? "Pcs"),
     stokMin: Number(row.stok_min ?? 0),
     stok: Number(row.stok ?? 0),
+    stokGudang: row.stok_gudang == null ? null : Number(row.stok_gudang),
     hargaBeli: Number(row.harga_beli ?? 0),
     hargaJual: Number(row.harga_jual ?? 0),
     satuanAlt: String(row.satuan_alt ?? ""),
@@ -691,7 +692,8 @@ export async function listProducts(data: any) {
     const perPage = data.all ? 100000 : 15;
     const offset = (data.page - 1) * perPage;
     const rows = await db.query(
-      `select * from products ${clause} order by ${order}, lower(part_number) asc limit ${perPage} offset ${offset}`,
+      `select products.*, (select g.stok from gudang_items g where g.product_id = products.id) as stok_gudang
+       from products ${clause} order by ${order}, lower(part_number) asc limit ${perPage} offset ${offset}`,
       params,
     );
     const cats = await db.query<{ kategori: string }>(

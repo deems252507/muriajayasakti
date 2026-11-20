@@ -728,6 +728,12 @@ function ProductDetailModal({ item, onClose }: { item: Product; onClose: () => v
     ["Kategori", item.kategori || "-"],
     ["Merek", item.merek || "-"],
     ["Satuan", item.satuan || "-"],
+    ...(item.stokGudang != null
+      ? ([[
+          "Stok gudang (info)",
+          `${item.stokGudang.toLocaleString("id-ID")} ${item.satuan}${dus && item.stokGudang >= item.isiSatuanAlt ? ` (${Math.floor(item.stokGudang / item.isiSatuanAlt)} ${item.satuanAlt}${item.stokGudang % item.isiSatuanAlt ? ` + ${item.stokGudang % item.isiSatuanAlt} ${item.satuan}` : ""})` : ""}`,
+        ]] as Array<[string, ReactNode]>)
+      : []),
     ["Stok minimum", `${item.stokMin} ${item.satuan}`],
     ["Harga jual", `${rupiah(item.hargaJual)} / ${item.satuan}`],
     ...(dus ? ([[`Isi 1 ${item.satuanAlt}`, `${item.isiSatuanAlt} ${item.satuan}`], [`Harga jual 1 ${item.satuanAlt}`, rupiah(item.hargaJualAlt)]] as Array<[string, ReactNode]>) : []),
