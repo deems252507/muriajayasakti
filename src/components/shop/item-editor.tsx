@@ -137,18 +137,18 @@ export function stokText(info: { stok: number; satuan: string; satuanAlt: string
   return `${info.stok} ${info.satuan} (${dus} ${info.satuanAlt}${sisa ? ` + ${sisa} ${info.satuan}` : ""})`;
 }
 
-/** Detail barang seperti di Daftar Sparepart: nama (kode pajak), merek, kategori, PN, PN Alt. */
+/** Detail barang seperti di Daftar Sparepart: nama, lalu merek dan kode pajak sebagai badge, kategori, PN, PN Alt. */
 function ProductDetail({ nama, info, q, compact = false }: { nama: string; info?: ProductInfo | null; q: string; compact?: boolean }) {
   return (
     <div className="min-w-0">
       <p className={`font-semibold text-slate-900 ${compact ? "text-sm" : "text-sm"}`}>
         <Mark text={nama} q={q} />
-        {info?.kodePajak ? <> (<Mark text={info.kodePajak} q={q} />)</> : null}
       </p>
       {info ? (
         <>
           <div className="mt-0.5 flex flex-wrap items-center gap-1">
             {info.merek ? <span className="inline-block rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-800"><Mark text={info.merek} q={q} /></span> : null}
+            {info.kodePajak ? <span className="inline-block rounded-md bg-slate-200 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-800">[<Mark text={info.kodePajak} q={q} />]</span> : null}
             {info.kategori ? <span className="text-[11px] font-bold text-slate-600"><Mark text={info.kategori} q={q} /></span> : null}
           </div>
           <p className="mt-0.5 font-mono text-[11px] text-slate-700">

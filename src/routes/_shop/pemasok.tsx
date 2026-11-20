@@ -40,9 +40,13 @@ function masterBeli(product: Product, satuan: string) { return isAltUnit(product
 function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kategori, hidePn }: { nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; kategori?: string; hidePn?: boolean }) {
   return (
     <div className="leading-snug">
-      <b className="text-sm">{nama}</b>
-      {merek ? <span className="ml-2 inline-block rounded bg-blue-100 px-1.5 py-px align-middle text-[11px] font-bold text-blue-800">{merek}</span> : null}
-      {kodePajak ? <span className="ml-1.5 inline-block rounded bg-slate-100 px-1.5 py-px align-middle font-mono text-[11px] font-bold text-slate-700">Kode {kodePajak}</span> : null}
+      <b className="block text-sm">{nama}</b>
+      {merek || kodePajak ? (
+        <span className="mt-0.5 flex flex-wrap items-center gap-1">
+          {merek ? <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">{merek}</span> : null}
+          {kodePajak ? <span className="inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[{kodePajak}]</span> : null}
+        </span>
+      ) : null}
       {hidePn ? null : <span className="mt-0.5 block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{partNumber || "-"}</span></span>}
       {partNumbersAlt ? <span className="block text-xs text-slate-600">PN Alt: <span className="font-mono">{partNumbersAlt}</span></span> : null}
       {kategori ? <span className="block text-[11px] text-muted">{kategori}</span> : null}
@@ -387,7 +391,8 @@ function PemasokPage() {
                   {row.items[0] ? (
                     <div className="leading-snug">
                       <p className="truncate text-sm font-bold" title={row.items.map((i) => i.nama).join("\n")}>{row.items[0].nama}</p>
-                      <p className="truncate text-xs text-slate-600">{row.items[0].kodePajak ? <>Kode <span className="font-mono font-semibold">{row.items[0].kodePajak}</span> · </> : null}PN: <span className="font-mono">{row.items[0].partNumber || "-"}</span></p>
+                      {row.items[0].kodePajak ? <span className="mt-0.5 inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[{row.items[0].kodePajak}]</span> : null}
+                      <p className="truncate text-xs text-slate-600">PN: <span className="font-mono">{row.items[0].partNumber || "-"}</span></p>
                       {row.items.length > 1 ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} barang lainnya</span> : null}
                     </div>
                   ) : "-"}
@@ -465,7 +470,8 @@ function PemasokPage() {
                         onClick={() => addProduct(product)}
                       >
                         <p className="text-sm font-semibold"><Mark text={product.nama} q={productQ} /></p>
-                        <p className="mt-0.5 text-xs text-muted">{product.kodePajak ? <>Kode: {product.kodePajak} · </> : null}PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
+                        {product.kodePajak ? <span className="mt-0.5 inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[{product.kodePajak}]</span> : null}
+                        <p className="mt-0.5 text-xs text-muted">PN: <Mark text={product.partNumber || product.kode || "-"} q={productQ} />{product.partNumbersAlt ? <> · Alt: <Mark text={product.partNumbersAlt} q={productQ} /></> : null} · {product.merek || "-"} · Stok: {product.stok} {product.satuan}</p>
                       </button>
                     ))}
                   </div>

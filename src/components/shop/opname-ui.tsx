@@ -120,9 +120,9 @@ export function ItemTitle({ item, q = "", className = "" }: { item: Pick<Product
             </span>
           ) : null}
           {item.kodePajak ? (
-            <span className="inline-block rounded bg-slate-100 px-1.5 py-px font-mono text-[11px] font-bold text-slate-700">
+            <span className="inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[
               <MarkWords text={item.kodePajak} q={q} />
-            </span>
+            ]</span>
           ) : null}
         </div>
       ) : null}

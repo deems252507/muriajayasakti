@@ -317,12 +317,16 @@ function KasirPage() {
                 <div>
                   <p className="line-clamp-2 text-xs font-semibold">
                     <Mark text={item.nama} q={q} />
-                    {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
                   </p>
+                  {item.merek || item.kodePajak ? (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      {item.merek ? <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[10px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span> : null}
+                      {item.kodePajak ? <span className="inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[10px] font-bold text-slate-800">[<Mark text={item.kodePajak} q={q} />]</span> : null}
+                    </div>
+                  ) : null}
                   <p className="mt-1 text-[10px] font-bold text-slate-600"><Mark text={item.kategori || "-"} q={q} /></p>
                   <p className="font-mono text-[10px] text-blue-600">PN: <Mark text={item.partNumber || item.kode || "-"} q={q} /></p>
                   {item.partNumbersAlt ? <p className="font-mono text-[10px] text-blue-500">Alt: <Mark text={item.partNumbersAlt} q={q} /></p> : null}
-                  {item.merek ? <p className="text-[10px] text-slate-500"><Mark text={item.merek} q={q} /></p> : null}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="btn-tight inline-flex items-center gap-1 bg-slate-900 text-white shadow-sm" onClick={() => addProduct(item, false, false)}><Plus size={13} aria-hidden />{item.satuan || "Pcs"}</button>
@@ -383,7 +387,8 @@ function KasirPage() {
             <li key={line.key} className="row-hover-flat border-b border-slate-100 p-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium">{line.nama}{line.kodePajak ? ` (${line.kodePajak})` : ""}</p>
+                  <p className="text-xs font-medium">{line.nama}</p>
+                  {line.kodePajak ? <span className="mt-0.5 inline-block rounded bg-slate-200 px-1.5 py-px font-mono text-[10px] font-bold text-slate-800">[{line.kodePajak}]</span> : null}
                   {!line.custom && line.satuanAlt && !line.locked ? (
                     <select
                       className="mt-1 rounded border border-blue-300 bg-blue-50 p-0.5 text-[10px] font-bold text-blue-600"
@@ -667,8 +672,9 @@ function ScanConfirm({ product, unit, onCancel, onOk }: { product: Product; unit
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">{product.kategori || "Tanpa kategori"}</span>
           {product.merek ? <span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{product.merek}</span> : null}
+          {product.kodePajak ? <span className="rounded-full bg-slate-200 px-2 py-1 font-mono font-bold text-slate-800">[{product.kodePajak}]</span> : null}
         </div>
-        <p className="mt-2 font-mono text-xs text-blue-700">PN: {product.partNumber || product.kode || "-"}{product.kodePajak ? ` · Pajak ${product.kodePajak}` : ""}</p>
+        <p className="mt-2 font-mono text-xs text-blue-700">PN: {product.partNumber || product.kode || "-"}</p>
         <p className="mt-1 text-sm">Stok: {product.stok} {product.satuan}{dusOk ? ` · ${dusStok} ${product.satuanAlt}` : ""}</p>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button type="button" className={`rounded-xl border-2 p-3 text-left ${mode === "pcs" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200"}`} onClick={() => setMode("pcs")}>
