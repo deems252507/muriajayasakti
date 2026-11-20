@@ -54,6 +54,10 @@ function StokPage() {
       .catch((error: Error) => setLoadError(error.message || "Gagal memuat laporan stok."));
   }, [q, dupOnly, sorts, page, kategori, status]);
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.perPage ?? 15)));
+  const goPage = (next: number) => {
+    setPage(next);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   return (
     <Panel>
       <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap">
@@ -201,9 +205,9 @@ function StokPage() {
       <div className="mt-3 flex items-center justify-between text-sm">
         <span className="text-slate-600">Menampilkan {data?.items.length ?? 0} dari {data?.total ?? 0} barang</span>
         <div className="flex items-center gap-2">
-          <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button>
+          <button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => goPage(page - 1)}>Sebelumnya</button>
           <span>Hal: {page}/{pages}</span>
-          <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button>
+          <button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => goPage(page + 1)}>Berikutnya</button>
         </div>
       </div>
       {printOpen ? <PrintColumnsDialog selected={printCols} onCancel={() => setPrintOpen(false)} onConfirm={(keys) => { setPrintCols(keys); setPrintOpen(false); cetakStok(keys); }} /> : null}
