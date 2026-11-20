@@ -2,8 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { packFromName } from "@/lib/shop/format";
-import type { Bank, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
+import { formatQtyPack, hasAltUnit, packFromName, toBaseQty } from "@/lib/shop/format";
+import type { Bank, GudangItem, GudangLog, GudangPickItem, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
 
@@ -177,7 +177,7 @@ async function readStaff(): Promise<Staff | null> {
   if (!token) return null;
   const db = await sql();
   const rows = await db.query<StaffRow>(
-    `select s.username, s.role, s.name, s.shift, s.status, s.photo, s.password_hash, s.can_manage_staff
+    `select s.username, s.role, s.name, s.shift, s.status, s.photo, s.password_hash, s.can_manage_staff, s.can_gudang
      from sessions e
      join staff s on s.username = e.username
      where e.token = $1 and e.expires_at > now() and s.status = 'Aktif'`,
@@ -194,7 +194,13 @@ async function readStaff(): Promise<Staff | null> {
     photo: String(row.photo ?? ""),
     mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
     canManageStaff: row.role === "Admin" && Boolean((row as unknown as { can_manage_staff?: boolean }).can_manage_staff),
+    canGudang: gudangAllowed(row.role, (row as unknown as { can_gudang?: boolean }).can_gudang),
   };
+}
+
+/** Admin selalu boleh mengelola Stok Gudang; Kasir/Staf hanya bila dipilih Admin. Owner hanya melihat. */
+function gudangAllowed(role: string, flag: unknown) {
+  return role === "Admin" || ((role === "Kasir" || role === "Staf") && Boolean(flag));
 }
 
 /**
@@ -246,7 +252,7 @@ export async function login(data: any) {
     await ensureStaff();
     const db = await sql();
     const rows = await db.query<StaffRow>(
-      `select username, password_hash, role, name, shift, status, photo, can_manage_staff from staff where lower(username) = lower($1)`,
+      `select username, password_hash, role, name, shift, status, photo, can_manage_staff, can_gudang from staff where lower(username) = lower($1)`,
       [data.username],
     );
     const row = rows[0];
@@ -290,6 +296,7 @@ export async function login(data: any) {
       photo: String(row.photo ?? ""),
       mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
       canManageStaff: row.role === "Admin" && Boolean((row as unknown as { can_manage_staff?: boolean }).can_manage_staff),
+      canGudang: gudangAllowed(row.role, (row as unknown as { can_gudang?: boolean }).can_gudang),
     };
     return me;
   }
@@ -2193,8 +2200,8 @@ export async function listStaff() {
   const me = await requireStaff();
   assertManageStaff(me);
   const db = await sql();
-  const rows = await db.query<Staff & { password_hash: string; can_manage_staff: boolean }>(
-    `select username, role, name, shift, status, photo, password_hash, can_manage_staff from staff order by username`,
+  const rows = await db.query<Staff & { password_hash: string; can_manage_staff: boolean; can_gudang: boolean }>(
+    `select username, role, name, shift, status, photo, password_hash, can_manage_staff, can_gudang from staff order by username`,
   );
   return rows.map((row) => ({
     username: row.username,
@@ -2205,6 +2212,7 @@ export async function listStaff() {
     photo: String(row.photo ?? ""),
     mustChange: stillDefault(row.username, String(row.password_hash ?? "")),
     canManageStaff: row.role === "Admin" && Boolean(row.can_manage_staff),
+    canGudang: gudangAllowed(row.role, row.can_gudang),
   }));
 }
 
@@ -2238,6 +2246,8 @@ export async function saveStaff(data: any) {
     const role: Role = data.role === "Owner" || data.role === "Admin" || data.role === "Staf" ? data.role : "Kasir";
     // Izin kelola akun hanya berlaku untuk role Admin.
     const canManage = role === "Admin" && Boolean(data.canManageStaff);
+    // Izin Stok Gudang dipilih Admin untuk akun Kasir atau Staf (Admin selalu boleh).
+    const canGudang = (role === "Kasir" || role === "Staf") && Boolean(data.canGudang);
     const db = await sql();
     const existing = await db.query<{ role: string; status: string; can_manage_staff: boolean }>(`select role, status, can_manage_staff from staff where username = $1`, [username]);
     if (existing.length && existing[0].role === "Owner" && (role !== "Owner" || status !== "Aktif")) {
@@ -2262,11 +2272,11 @@ export async function saveStaff(data: any) {
     if (existing.length) {
       if (data.password) {
         await db.query(
-          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7, can_manage_staff=$8, password_enc=$9 where username=$1`,
-          [username, data.name.trim(), role, shift, status, hashPassword(data.password), photo, canManage, encryptPassword(String(data.password))],
+          `update staff set name=$2, role=$3, shift=$4, status=$5, password_hash=$6, photo=$7, can_manage_staff=$8, password_enc=$9, can_gudang=$10 where username=$1`,
+          [username, data.name.trim(), role, shift, status, hashPassword(data.password), photo, canManage, encryptPassword(String(data.password)), canGudang],
         );
       } else {
-        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6, can_manage_staff=$7 where username=$1`, [
+        await db.query(`update staff set name=$2, role=$3, shift=$4, status=$5, photo=$6, can_manage_staff=$7, can_gudang=$8 where username=$1`, [
           username,
           data.name.trim(),
           role,
@@ -2274,13 +2284,14 @@ export async function saveStaff(data: any) {
           status,
           photo,
           canManage,
+          canGudang,
         ]);
       }
     } else {
       if (!data.password) throw new Error("Password wajib untuk akun baru.");
       await db.query(
-        `insert into staff (username, password_hash, role, name, shift, status, photo, can_manage_staff, password_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [username, hashPassword(data.password), role, data.name.trim(), shift, status, photo, canManage, encryptPassword(String(data.password))],
+        `insert into staff (username, password_hash, role, name, shift, status, photo, can_manage_staff, password_enc, can_gudang) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [username, hashPassword(data.password), role, data.name.trim(), shift, status, photo, canManage, encryptPassword(String(data.password)), canGudang],
       );
     }
     await audit(me, `Simpan akun ${username}`);
@@ -4613,4 +4624,463 @@ export async function opnameDraftConfirm(data: {
     }
   }
   return { items: out };
+}
+
+/* ===== Stok Gudang =====
+   Gudang menyimpan stok berlebih (hanya barang yang ditambahkan ke daftar gudang). Stok toko tetap products.stok.
+   Semua jumlah dalam satuan dasar; perubahan atomik dikerjakan fungsi SQL shop_gudang_* (migrasi 0051). */
+
+/** Semua akun boleh melihat daftar stok gudang (seperti Daftar Sparepart); yang tidak diberi izin hanya melihat. */
+async function requireGudangView() {
+  const me = await readStaff();
+  if (!me) throw new Error("Sesi habis. Masuk lagi.");
+  return me;
+}
+
+/** Riwayat mutasi: Admin, Owner (lihat saja), dan staf yang diberi izin Stok Gudang. */
+function gudangRiwayatAllowed(me: Staff) {
+  return me.role === "Admin" || me.role === "Owner" || Boolean(me.canGudang);
+}
+
+/** Boleh menambah barang/stok dan mengambil dari gudang: Admin dan staf yang dipilih Admin. */
+async function requireGudangOps() {
+  const me = await requireGudangView();
+  if (!me.canGudang) throw new Error("Akun Anda hanya dapat melihat Stok Gudang. Minta Admin memberi izin.");
+  return me;
+}
+
+/** Edit, hapus, dan sesuaikan stok: hanya Admin. */
+async function requireGudangAdmin() {
+  const me = await requireGudangView();
+  assertAdmin(me);
+  return me;
+}
+
+function gudangJson<T>(value: unknown): T {
+  return (typeof value === "string" ? JSON.parse(value) : value) as T;
+}
+
+type GudangUnits = { kode: string; nama: string; satuan: string; satuanAlt: string; isiSatuanAlt: number };
+
+async function gudangProductUnits(productId: number): Promise<GudangUnits> {
+  const db = await sql();
+  const [p] = await db.query<{ kode: string; nama: string; satuan: string; satuan_alt: string; isi_satuan_alt: number }>(
+    `select kode, nama, satuan, satuan_alt, isi_satuan_alt from products where id = $1`,
+    [productId],
+  );
+  if (!p) throw new Error("Barang tidak ditemukan di Daftar Sparepart.");
+  return { kode: p.kode, nama: p.nama, satuan: p.satuan, satuanAlt: p.satuan_alt, isiSatuanAlt: Number(p.isi_satuan_alt) };
+}
+
+/** Jumlah + satuan pilihan (dasar/besar) menjadi satuan dasar, memakai isi per Dus dari Master Data. */
+async function gudangQty(productId: unknown, qty: unknown, unit: unknown) {
+  const id = Number(productId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Barang tidak valid.");
+  const q = Number(qty);
+  if (!Number.isInteger(q) || q < 0 || q > 999_999_999) throw new Error("Jumlah harus bilangan bulat 0 atau lebih.");
+  const units = await gudangProductUnits(id);
+  const alt = unit === "alt";
+  if (alt && !hasAltUnit(units.satuanAlt, units.isiSatuanAlt)) throw new Error("Barang ini tidak punya satuan besar. Pakai satuan dasar.");
+  const jumlah = toBaseQty(q, alt ? "alt" : "base", units.isiSatuanAlt);
+  if (jumlah > 999_999_999) throw new Error("Jumlah terlalu besar.");
+  return { productId: id, qty: q, unit: (alt ? "alt" : "base") as "alt" | "base", jumlah, units };
+}
+
+function gudangFmt(base: number, u: GudangUnits) {
+  return formatQtyPack(base, u.satuan, u.satuanAlt, u.isiSatuanAlt);
+}
+
+function gudangFail(r: { alasan?: string; sisa?: number }, u: GudangUnits) {
+  const sisa = gudangFmt(Number(r.sisa ?? 0), u);
+  if (r.alasan === "gudang_kurang") return `Stok gudang tidak cukup. Sisa ${sisa}.`;
+  if (r.alasan === "toko_kurang") return `Stok toko tidak cukup untuk dibatalkan (sisa ${sisa}); sebagian barang sudah terjual. Pakai Sesuaikan stok.`;
+  return "Perubahan tidak dapat diproses.";
+}
+
+function gudangWhere(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown }, params: unknown[]) {
+  const where: string[] = [];
+  const q = String(data?.q ?? "").trim();
+  if (q) {
+    params.push(`%${q}%`);
+    const n = params.length;
+    where.push(`(p.nama ilike $${n} or p.part_number ilike $${n} or p.part_numbers_alt ilike $${n} or p.kode ilike $${n} or p.merek ilike $${n} or p.kode_pajak ilike $${n})`);
+  }
+  const kategori = String(data?.kategori ?? "").trim();
+  if (kategori) {
+    params.push(kategori.toLowerCase());
+    where.push(`lower(btrim(p.kategori)) = $${params.length}`);
+  }
+  if (data?.hanyaStok) where.push(`g.stok > 0`);
+  return where;
+}
+
+const GUDANG_PER_PAGE = 30;
+
+export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown; page?: unknown }) {
+  const me = await requireGudangView();
+  const db = await sql();
+  const params: unknown[] = [];
+  const where = gudangWhere(data, params);
+  const clause = where.length ? `where ${where.join(" and ")}` : "";
+  const page = Math.max(1, Number(data?.page ?? 1) || 1);
+  const [count] = await db.query<{ n: number; ada_stok: number }>(
+    `select count(*)::int as n, count(*) filter (where g.stok > 0)::int as ada_stok
+     from gudang_items g join products p on p.id = g.product_id ${clause}`,
+    params,
+  );
+  const rows = await db.query<Record<string, unknown>>(
+    `select g.product_id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
+            p.satuan, p.satuan_alt, p.isi_satuan_alt, g.stok as stok_gudang, p.stok as stok_toko,
+            (select l.tanggal from gudang_log l where l.product_id = g.product_id and l.tipe = 'OPNAME' order by l.tanggal desc, l.id desc limit 1) as opname_pada,
+            (select l.jumlah from gudang_log l where l.product_id = g.product_id and l.tipe = 'OPNAME' order by l.tanggal desc, l.id desc limit 1) as opname_selisih
+     from gudang_items g join products p on p.id = g.product_id
+     ${clause}
+     order by lower(p.nama), p.id
+     limit ${GUDANG_PER_PAGE} offset ${(page - 1) * GUDANG_PER_PAGE}`,
+    params,
+  );
+  const cats = await db.query<{ kategori: string }>(
+    `select distinct btrim(p.kategori) as kategori from gudang_items g join products p on p.id = g.product_id
+     where btrim(coalesce(p.kategori, '')) <> '' order by 1`,
+  );
+  const items: GudangItem[] = rows.map((row) => ({
+    productId: Number(row.product_id),
+    kode: String(row.kode ?? ""),
+    partNumber: String(row.part_number ?? ""),
+    partNumbersAlt: String(row.part_numbers_alt ?? ""),
+    nama: String(row.nama ?? ""),
+    kategori: String(row.kategori ?? ""),
+    merek: String(row.merek ?? ""),
+    kodePajak: String(row.kode_pajak ?? ""),
+    satuan: String(row.satuan ?? "Pcs"),
+    satuanAlt: String(row.satuan_alt ?? ""),
+    isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
+    stokGudang: Number(row.stok_gudang ?? 0),
+    stokToko: Number(row.stok_toko ?? 0),
+    opnamePada: row.opname_pada ? new Date(String(row.opname_pada)).toISOString() : null,
+    opnameSelisih: row.opname_pada ? Number(row.opname_selisih ?? 0) : null,
+  }));
+  return {
+    items,
+    total: Number(count?.n ?? 0),
+    adaStok: Number(count?.ada_stok ?? 0),
+    page,
+    perPage: GUDANG_PER_PAGE,
+    kategori: cats.map((c) => String(c.kategori)).filter(Boolean),
+    bisaUbah: Boolean(me.canGudang),
+    admin: me.role === "Admin",
+  };
+}
+
+/** Cari barang di Master Data untuk ditambahkan ke gudang (barang yang sudah ada di gudang ditandai). */
+export async function gudangSearchMaster(data: { q: string; limit?: number }): Promise<GudangPickItem[]> {
+  await requireGudangOps();
+  const q = String(data?.q ?? "").trim();
+  if (!q) return [];
+  const db = await sql();
+  const like = `%${q}%`;
+  const rows = await db.query<Record<string, unknown>>(
+    `select p.id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
+            p.satuan, p.satuan_alt, p.isi_satuan_alt, p.stok,
+            exists (select 1 from gudang_items g where g.product_id = p.id) as sudah
+     from products p
+     where p.nama ilike $1 or p.part_number ilike $1 or p.part_numbers_alt ilike $1
+        or p.kode ilike $1 or p.merek ilike $1 or p.kode_pajak ilike $1
+     order by case when lower(p.part_number) = lower($2) or lower(p.kode) = lower($2) then 0 else 1 end, lower(p.nama)
+     limit $3`,
+    [like, q, Math.min(Number(data?.limit ?? 12) || 12, 30)],
+  );
+  return rows.map((row) => ({
+    productId: Number(row.id),
+    kode: String(row.kode ?? ""),
+    partNumber: String(row.part_number ?? ""),
+    partNumbersAlt: String(row.part_numbers_alt ?? ""),
+    nama: String(row.nama ?? ""),
+    kategori: String(row.kategori ?? ""),
+    merek: String(row.merek ?? ""),
+    kodePajak: String(row.kode_pajak ?? ""),
+    satuan: String(row.satuan ?? "Pcs"),
+    satuanAlt: String(row.satuan_alt ?? ""),
+    isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
+    stokToko: Number(row.stok ?? 0),
+    sudahDiGudang: Boolean(row.sudah),
+  }));
+}
+
+/** Tambah barang ke daftar gudang dan/atau tambah stok gudang. Jumlah 0 hanya mendaftarkan barang baru. */
+export async function gudangTambah(data: { productId: number; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireGudangOps();
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_tambah($1::jsonb) as r`, [
+      JSON.stringify({
+        productId: c.productId,
+        jumlah: c.jumlah,
+        qty: c.qty,
+        unit: c.unit,
+        catatan: String(data?.catatan ?? ""),
+        actor: me.username,
+        actorName: me.name,
+        autoCek: me.role === "Admin",
+      }),
+    ]);
+    const r = gudangJson<{ ok: boolean; baru: boolean; stokGudang: number; logId: number | null }>(row?.r);
+    await audit(
+      me,
+      c.jumlah > 0
+        ? `Stok Gudang ${r.baru ? "tambah barang + " : ""}tambah stok ${c.units.kode} ${c.units.nama}: +${gudangFmt(c.jumlah, c.units)}, stok gudang ${gudangFmt(r.stokGudang, c.units)}`
+        : `Stok Gudang tambah barang ${c.units.kode} ${c.units.nama}`,
+    );
+    return { ok: true as const, baru: Boolean(r.baru), stokGudang: Number(r.stokGudang), logId: r.logId == null ? null : Number(r.logId) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Ambil dari gudang: stok gudang berkurang, stok toko bertambah. */
+export async function gudangPindah(data: { productId: number; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireGudangOps();
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  if (c.jumlah <= 0) throw new Error("Jumlah harus lebih dari 0.");
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_pindah($1::jsonb) as r`, [
+      JSON.stringify({
+        productId: c.productId,
+        jumlah: c.jumlah,
+        qty: c.qty,
+        unit: c.unit,
+        catatan: String(data?.catatan ?? ""),
+        actor: me.username,
+        actorName: me.name,
+        autoCek: me.role === "Admin",
+      }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; stokGudang?: number; stokToko?: number }>(row?.r);
+    if (!r?.ok) throw new Error(gudangFail(r ?? {}, c.units));
+    await audit(me, `Stok Gudang ambil ke toko ${c.units.kode} ${c.units.nama}: ${gudangFmt(c.jumlah, c.units)}, sisa gudang ${gudangFmt(Number(r.stokGudang), c.units)}`);
+    return { ok: true as const, stokGudang: Number(r.stokGudang), stokToko: Number(r.stokToko) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+const GUDANG_LOG_PER_PAGE = 30;
+
+export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek?: unknown; productId?: unknown; page?: unknown }) {
+  const me = await requireGudangView();
+  if (!gudangRiwayatAllowed(me)) throw new Error("Riwayat mutasi gudang hanya untuk Admin, Owner, dan staf yang diberi izin Stok Gudang.");
+  const db = await sql();
+  const params: unknown[] = [];
+  const where: string[] = [];
+  const q = String(data?.q ?? "").trim();
+  if (q) {
+    params.push(`%${q}%`);
+    const n = params.length;
+    where.push(`(p.nama ilike $${n} or p.part_number ilike $${n} or p.kode ilike $${n} or l.oleh_nama ilike $${n} or l.catatan ilike $${n})`);
+  }
+  const tipe = String(data?.tipe ?? "");
+  if (tipe === "MASUK" || tipe === "PINDAH" || tipe === "KOREKSI" || tipe === "OPNAME") {
+    params.push(tipe);
+    where.push(`l.tipe = $${params.length}`);
+  }
+  if (data?.belumDicek) where.push(`l.tipe in ('MASUK', 'PINDAH') and not l.dicek`);
+  const productId = Number(data?.productId);
+  if (Number.isInteger(productId) && productId > 0) {
+    params.push(productId);
+    where.push(`l.product_id = $${params.length}`);
+  }
+  const clause = where.length ? `where ${where.join(" and ")}` : "";
+  const page = Math.max(1, Number(data?.page ?? 1) || 1);
+  const [count] = await db.query<{ n: number; belum: number }>(
+    `select count(*)::int as n, (select count(*)::int from gudang_log where tipe in ('MASUK', 'PINDAH') and not dicek) as belum
+     from gudang_log l left join products p on p.id = l.product_id ${clause}`,
+    params,
+  );
+  const rows = await db.query<Record<string, unknown>>(
+    `select l.id, l.product_id, l.tipe, l.jumlah, l.qty_input, l.satuan_input, l.catatan, l.oleh, l.oleh_nama, l.tanggal,
+            l.dicek, l.dicek_nama, l.dicek_pada, l.diubah_nama, l.diubah_pada,
+            coalesce(p.kode, '') as kode, coalesce(p.nama, '(barang dihapus)') as nama, coalesce(p.part_number, '') as part_number,
+            coalesce(p.satuan, 'Pcs') as satuan, coalesce(p.satuan_alt, '') as satuan_alt, coalesce(p.isi_satuan_alt, 0) as isi_satuan_alt,
+            exists (select 1 from gudang_items g where g.product_id = l.product_id) as item_ada
+     from gudang_log l left join products p on p.id = l.product_id
+     ${clause}
+     order by l.tanggal desc, l.id desc
+     limit ${GUDANG_LOG_PER_PAGE} offset ${(page - 1) * GUDANG_LOG_PER_PAGE}`,
+    params,
+  );
+  const iso = (v: unknown) => (v ? new Date(String(v)).toISOString() : null);
+  const items: GudangLog[] = rows.map((row) => ({
+    id: Number(row.id),
+    productId: Number(row.product_id),
+    kode: String(row.kode ?? ""),
+    nama: String(row.nama ?? ""),
+    partNumber: String(row.part_number ?? ""),
+    satuan: String(row.satuan ?? "Pcs"),
+    satuanAlt: String(row.satuan_alt ?? ""),
+    isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
+    tipe: row.tipe as GudangLog["tipe"],
+    jumlah: Number(row.jumlah ?? 0),
+    qtyInput: Number(row.qty_input ?? 0),
+    satuanInput: row.satuan_input === "alt" ? "alt" : "base",
+    catatan: String(row.catatan ?? ""),
+    oleh: String(row.oleh ?? ""),
+    olehNama: String(row.oleh_nama ?? ""),
+    tanggal: iso(row.tanggal) ?? new Date().toISOString(),
+    dicek: Boolean(row.dicek),
+    dicekNama: String(row.dicek_nama ?? ""),
+    dicekPada: iso(row.dicek_pada),
+    diubahNama: String(row.diubah_nama ?? ""),
+    diubahPada: iso(row.diubah_pada),
+    itemAda: Boolean(row.item_ada),
+  }));
+  return {
+    items,
+    total: Number(count?.n ?? 0),
+    belumDicek: Number(count?.belum ?? 0),
+    page,
+    perPage: GUDANG_LOG_PER_PAGE,
+    admin: me.role === "Admin",
+  };
+}
+
+/** Edit entri riwayat (Admin): selisih jumlah otomatis dikoreksi ke stok. */
+export async function gudangEdit(data: { logId: number; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireGudangAdmin();
+  const logId = Number(data?.logId);
+  if (!Number.isInteger(logId) || logId <= 0) throw new Error("Catatan tidak valid.");
+  const db = await sql();
+  const [log] = await db.query<{ product_id: number; tipe: string; jumlah: number; qty_input: number; satuan_input: string }>(
+    `select product_id, tipe, jumlah, qty_input, satuan_input from gudang_log where id = $1`,
+    [logId],
+  );
+  if (!log) throw new Error("Catatan tidak ditemukan.");
+  const units = await gudangProductUnits(Number(log.product_id));
+  let jumlah = Number(log.jumlah);
+  let qty = Number(log.qty_input);
+  let unit: "base" | "alt" = log.satuan_input === "alt" ? "alt" : "base";
+  if (log.tipe === "MASUK" || log.tipe === "PINDAH") {
+    const c = await gudangQty(log.product_id, data?.qty, data?.unit);
+    jumlah = c.jumlah;
+    qty = c.qty;
+    unit = c.unit;
+  }
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_edit($1::jsonb) as r`, [
+      JSON.stringify({ logId, jumlah, qty, unit, catatan: String(data?.catatan ?? ""), actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; stokGudang?: number }>(row?.r);
+    if (!r?.ok) throw new Error(gudangFail(r ?? {}, units));
+    await audit(me, `Edit riwayat Stok Gudang ${units.kode} ${units.nama}: ${log.tipe} ${gudangFmt(Number(log.jumlah), units)} jadi ${gudangFmt(jumlah, units)}`);
+    return { ok: true as const, stokGudang: Number(r.stokGudang) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Hapus entri riwayat (Admin) = membatalkan pengaruhnya pada stok. */
+export async function gudangHapusLog(data: { logId: number }) {
+  const me = await requireGudangAdmin();
+  const logId = Number(data?.logId);
+  if (!Number.isInteger(logId) || logId <= 0) throw new Error("Catatan tidak valid.");
+  const db = await sql();
+  const [log] = await db.query<{ product_id: number }>(`select product_id from gudang_log where id = $1`, [logId]);
+  if (!log) throw new Error("Catatan tidak ditemukan.");
+  const units = await gudangProductUnits(Number(log.product_id));
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_hapus_log($1::jsonb) as r`, [JSON.stringify({ logId })]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; tipe?: string; stokGudang?: number }>(row?.r);
+    if (!r?.ok) throw new Error(gudangFail(r ?? {}, units));
+    await audit(me, `Hapus riwayat Stok Gudang ${units.kode} ${units.nama} (${String(r.tipe ?? "")}), stok gudang jadi ${gudangFmt(Number(r.stokGudang), units)}`);
+    return { ok: true as const, stokGudang: Number(r.stokGudang) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Sesuaikan stok gudang ke angka yang benar (Admin); alasan wajib. */
+export async function gudangSesuaikan(data: { productId: number; qty: number; unit: "base" | "alt"; catatan: string }) {
+  const me = await requireGudangAdmin();
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_sesuaikan($1::jsonb) as r`, [
+      JSON.stringify({ productId: c.productId, target: c.jumlah, catatan: String(data?.catatan ?? ""), actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; stokSebelum: number; stokGudang: number }>(row?.r);
+    await audit(me, `Sesuaikan Stok Gudang ${c.units.kode} ${c.units.nama}: ${gudangFmt(Number(r.stokSebelum), c.units)} jadi ${gudangFmt(Number(r.stokGudang), c.units)}`);
+    return { ok: true as const, stokGudang: Number(r.stokGudang) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Hapus barang dari daftar gudang (Admin). Master Daftar Sparepart tidak ikut terhapus. */
+export async function gudangHapusItem(data: { productId: number; force?: boolean }) {
+  const me = await requireGudangAdmin();
+  const productId = Number(data?.productId);
+  if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak valid.");
+  const units = await gudangProductUnits(productId);
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_hapus_item($1::jsonb) as r`, [
+      JSON.stringify({ productId, force: Boolean(data?.force), actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; stokDihapus?: number }>(row?.r);
+    if (!r?.ok) {
+      if (r?.alasan === "masih_ada_stok") return { ok: false as const, masihAdaStok: true as const, sisa: gudangFmt(Number(r.sisa ?? 0), units) };
+      throw new Error("Barang tidak dapat dihapus dari daftar gudang.");
+    }
+    await audit(me, `Hapus dari daftar Stok Gudang ${units.kode} ${units.nama}${Number(r.stokDihapus) > 0 ? `, stok ${gudangFmt(Number(r.stokDihapus), units)} ikut dihapus` : ""}`);
+    return { ok: true as const };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Tandai mutasi sudah dicek Admin (nilai=false membatalkan tanda). */
+export async function gudangCek(data: { logIds: number[]; nilai?: boolean }) {
+  const me = await requireGudangAdmin();
+  const ids = (Array.isArray(data?.logIds) ? data.logIds : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+  if (!ids.length) throw new Error("Pilih catatan yang akan ditandai.");
+  const nilai = data?.nilai !== false;
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_cek($1::jsonb) as r`, [
+      JSON.stringify({ logIds: ids, nilai, actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ jumlah: number }>(row?.r);
+    if (Number(r?.jumlah) > 0) await audit(me, `Stok Gudang: ${nilai ? "tandai sudah dicek" : "batalkan tanda dicek"} ${r.jumlah} mutasi`);
+    return { ok: true as const, jumlah: Number(r?.jumlah ?? 0) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Stok Opname gudang (Admin): hasil hitung fisik dibandingkan dengan stok sistem; selisih langsung menyesuaikan stok gudang. */
+export async function gudangOpname(data: { productId: number; qty: number; unit: "base" | "alt"; expected: number; catatan?: string }) {
+  const me = await requireGudangAdmin();
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  const expected = Number(data?.expected);
+  if (!Number.isInteger(expected) || expected < 0) throw new Error("Data pemeriksaan tidak lengkap. Muat ulang halaman.");
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_opname($1::jsonb) as r`, [
+      JSON.stringify({ productId: c.productId, fisik: c.jumlah, expectedStok: expected, catatan: String(data?.catatan ?? ""), actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; stokSebelum?: number; stokFisik?: number; selisih?: number }>(row?.r);
+    if (!r?.ok) {
+      if (r?.alasan === "berubah") throw new Error(`Stok gudang berubah saat Anda menghitung (sekarang ${gudangFmt(Number(r.sisa ?? 0), c.units)}). Hitung ulang.`);
+      throw new Error("Opname tidak dapat disimpan.");
+    }
+    const selisih = Number(r.selisih ?? 0);
+    await audit(
+      me,
+      `Stok Opname Gudang ${c.units.kode} ${c.units.nama}: sistem ${gudangFmt(Number(r.stokSebelum), c.units)}, fisik ${gudangFmt(Number(r.stokFisik), c.units)}, selisih ${selisih > 0 ? "+" : ""}${selisih}`,
+    );
+    return { ok: true as const, stokSebelum: Number(r.stokSebelum), stokFisik: Number(r.stokFisik), selisih };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
 }

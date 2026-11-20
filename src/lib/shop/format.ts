@@ -66,3 +66,27 @@ export function when(value: string | null | undefined) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+/** Satuan besar hanya berlaku bila namanya ada dan isinya lebih dari 1. */
+export function hasAltUnit(satuanAlt: string, isi: number) {
+  return Boolean(String(satuanAlt ?? "").trim()) && Number(isi) > 1;
+}
+
+/** Ubah jumlah + satuan pilihan (dasar/besar) menjadi satuan dasar. */
+export function toBaseQty(qty: number, unit: "base" | "alt", isi: number) {
+  return unit === "alt" ? qty * Math.max(1, Number(isi) || 1) : qty;
+}
+
+/** Tampilkan jumlah satuan dasar sebagai mis. "10 Dus 4 Pcs", "10 Dus", atau "48 Pcs". */
+export function formatQtyPack(base: number, satuan: string, satuanAlt: string, isi: number) {
+  const n = Math.trunc(Number(base) || 0);
+  const dasar = String(satuan ?? "").trim() || "Pcs";
+  if (!hasAltUnit(satuanAlt, isi)) return `${n.toLocaleString("id-ID")} ${dasar}`;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const besar = Math.floor(abs / Number(isi));
+  const sisa = abs % Number(isi);
+  if (besar === 0) return `${sign}${sisa.toLocaleString("id-ID")} ${dasar}`;
+  if (sisa === 0) return `${sign}${besar.toLocaleString("id-ID")} ${satuanAlt}`;
+  return `${sign}${besar.toLocaleString("id-ID")} ${satuanAlt} ${sisa.toLocaleString("id-ID")} ${dasar}`;
+}

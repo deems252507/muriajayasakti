@@ -17,7 +17,7 @@ function isLainnya(jenis: string) {
   return jenis.trim().toLowerCase() === "lainnya";
 }
 
-const emptyAccount = { username: "", name: "", role: "Kasir", shift: "", password: "", status: "Aktif", photo: "", existing: false, canManageStaff: false };
+const emptyAccount = { username: "", name: "", role: "Kasir", shift: "", password: "", status: "Aktif", photo: "", existing: false, canManageStaff: false, canGudang: false };
 
 function SettingsPage() {
   const me = Route.useRouteContext().me;
@@ -350,7 +350,7 @@ function SettingsPage() {
                       </div>
                     </td>
                     <td>{item.username}</td>
-                    <td>{item.role}{item.canManageStaff ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">Admin 1</span> : null}</td>
+                    <td>{item.role}{item.canManageStaff ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">Admin 1</span> : null}{item.role !== "Admin" && item.role !== "Owner" && item.canGudang ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Gudang</span> : null}</td>
                     <td>{item.shift || "-"}</td>
                     <td>{item.status}</td>
                     <td className="whitespace-nowrap">
@@ -359,7 +359,7 @@ function SettingsPage() {
                       ) : null}
                       <button type="button" className="inline-grid size-8 place-items-center rounded-lg text-accent hover:bg-blue-50" aria-label={item.username in shownPw ? `Sembunyikan password ${item.username}` : `Lihat password ${item.username}`} title={item.username in shownPw ? "Sembunyikan password" : "Lihat password"} onClick={() => togglePassword(item.username)}>{item.username in shownPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
                     </td>
-                    <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true, canManageStaff: Boolean(item.canManageStaff) }); setAccountOpen(true); }} /></ExpandGroup></td>
+                    <td><ExpandGroup align="end"><ExpandButton icon={<Pencil />} label="Edit Akun" onClick={() => { setAccount({ username: item.username, name: item.name, role: item.role, shift: item.shift, password: "", status: item.status, photo: item.photo || "", existing: true, canManageStaff: Boolean(item.canManageStaff), canGudang: Boolean(item.canGudang) }); setAccountOpen(true); }} /></ExpandGroup></td>
                   </tr>
                 ))}
               </tbody>
@@ -427,7 +427,13 @@ function SettingsPage() {
                 </select>
               </Field>
             ) : null}
-            {account.role === "Staf" ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Staf hanya bisa melihat Daftar Sparepart (tanpa harga beli, hanya tombol Detail) dan memakai Chat Staff.</p> : null}
+            {account.role === "Staf" ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Staf hanya bisa melihat Daftar Sparepart (tanpa harga beli, hanya tombol Detail) dan Stok Gudang (lihat saja kecuali diberi izin di bawah), serta memakai Chat Staff.</p> : null}
+            {account.role === "Kasir" || account.role === "Staf" ? (
+              <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={account.canGudang} onChange={(e) => setAccount({ ...account, canGudang: e.target.checked })} />
+                <span><b>Boleh kelola Stok Gudang</b> — tambah barang/stok gudang dan ambil barang dari gudang ke toko<span className="block text-xs text-muted">Tanpa centang, akun ini hanya bisa melihat stok gudang. Edit, hapus, sesuaikan, dan opname gudang tetap hanya untuk Admin.</span></span>
+              </label>
+            ) : null}
             {account.role === "Admin" ? (
               <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={account.canManageStaff} onChange={(e) => setAccount({ ...account, canManageStaff: e.target.checked })} />

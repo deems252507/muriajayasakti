@@ -10,6 +10,8 @@ export type Staff = {
   mustChange?: boolean;
   /** Hanya Admin tertentu (Admin 1) yang boleh menambah dan mengatur akun lain. */
   canManageStaff?: boolean;
+  /** Boleh menambah barang/stok gudang dan mengambil barang dari gudang (Admin selalu; Kasir/Staf bila dipilih Admin). */
+  canGudang?: boolean;
 };
 
 export type Product = {
@@ -225,3 +227,70 @@ export type OpnameSaveResult =
 export type OpnameConfirmResult =
   | OpnameSaveResult
   | { ok: false; peringatan: true; jumlahMutasi: number; netMutasi: number; stokSekarang: number; total: number };
+
+/* ===== Stok Gudang ===== */
+export type GudangTipe = "MASUK" | "PINDAH" | "KOREKSI" | "OPNAME";
+
+export type GudangItem = {
+  productId: number;
+  kode: string;
+  partNumber: string;
+  partNumbersAlt: string;
+  nama: string;
+  kategori: string;
+  merek: string;
+  kodePajak: string;
+  satuan: string;
+  satuanAlt: string;
+  isiSatuanAlt: number;
+  /** Stok gudang dan stok toko dalam satuan dasar. */
+  stokGudang: number;
+  stokToko: number;
+  /** Opname gudang terakhir (null = belum pernah) dan selisihnya. */
+  opnamePada: string | null;
+  opnameSelisih: number | null;
+};
+
+export type GudangLog = {
+  id: number;
+  productId: number;
+  kode: string;
+  nama: string;
+  partNumber: string;
+  satuan: string;
+  satuanAlt: string;
+  isiSatuanAlt: number;
+  tipe: GudangTipe;
+  jumlah: number;
+  qtyInput: number;
+  satuanInput: "base" | "alt";
+  catatan: string;
+  oleh: string;
+  olehNama: string;
+  tanggal: string;
+  dicek: boolean;
+  dicekNama: string;
+  dicekPada: string | null;
+  diubahNama: string;
+  diubahPada: string | null;
+  /** Barang masih ada di daftar gudang, jadi entri ini masih bisa diedit/dihapus. */
+  itemAda: boolean;
+};
+
+export type GudangPickItem = {
+  productId: number;
+  kode: string;
+  partNumber: string;
+  partNumbersAlt: string;
+  nama: string;
+  kategori: string;
+  merek: string;
+  kodePajak: string;
+  satuan: string;
+  satuanAlt: string;
+  isiSatuanAlt: number;
+  stokToko: number;
+  sudahDiGudang: boolean;
+};
+
+export type GudangResult = { ok: true; stokGudang: number; stokToko?: number; baru?: boolean; logId?: number } | { ok: false; pesan: string };

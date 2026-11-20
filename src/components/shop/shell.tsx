@@ -19,6 +19,7 @@ import {
   Undo2,
   Users,
   Wallet,
+  Warehouse,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -53,6 +54,7 @@ const ADMIN = [
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
       { to: "/pemasok", label: "Barang Masuk Pemasok", icon: PackagePlus },
+      { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
       { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
     ],
   },
@@ -99,6 +101,7 @@ const OWNER = [
     label: "Data (lihat saja)",
     items: [
       { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
       { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
       { to: "/mitra", label: "Pelanggan & Supplier", icon: Users },
       { to: "/jejak", label: "Riwayat Aktivitas", icon: ScrollText },
@@ -107,9 +110,15 @@ const OWNER = [
   { label: "Akun", items: [{ to: "/pengaturan", label: "Pengaturan", icon: Settings }] },
 ] as const;
 
-// Staf = karyawan pengecek barang: hanya melihat Daftar Sparepart dan chat.
+// Staf = karyawan pengecek barang: hanya melihat Daftar Sparepart, Stok Gudang (lihat saja kecuali diberi izin), dan chat.
 const STAF = [
-  { label: "Barang", items: [{ to: "/barang", label: "Daftar Sparepart", icon: Package }] },
+  {
+    label: "Barang",
+    items: [
+      { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
+    ],
+  },
   { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
   { label: "Akun", items: [{ to: "/pengaturan", label: "Pengaturan", icon: Settings }] },
 ] as const;
@@ -131,6 +140,7 @@ const KASIR = [
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
     ],
   },
+  { label: "Gudang", items: [{ to: "/gudang", label: "Stok Gudang", icon: Warehouse }] },
   { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
 ] as const;
 

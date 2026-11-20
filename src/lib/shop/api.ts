@@ -532,8 +532,9 @@ export const listStaff = createServerFn({ method: "GET" })
   });
 
 export const saveStaff = createServerFn({ method: "POST" })
-  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string; photo?: string; canManageStaff?: boolean }) => ({
+  .validator((input: { username: string; name: string; role: string; shift: string; password: string; status: string; photo?: string; canManageStaff?: boolean; canGudang?: boolean }) => ({
     canManageStaff: Boolean(input?.canManageStaff),
+    canGudang: Boolean(input?.canGudang),
     username: String(input?.username ?? ""),
     name: String(input?.name ?? ""),
     role: String(input?.role ?? "Kasir"),
@@ -1082,4 +1083,118 @@ export const opnameResetUndo = createServerFn({ method: "POST" })
   .handler(async () => {
     const { opnameResetUndo: run } = await import("./logic.server");
     return run();
+  });
+
+/* ===== Stok Gudang ===== */
+type GudangQtyInput = { productId: number; qty: number; unit: "base" | "alt"; catatan?: string };
+const gudangQtyInput = (input: GudangQtyInput) => ({
+  productId: Number(input?.productId),
+  qty: Number(input?.qty),
+  unit: (input?.unit === "alt" ? "alt" : "base") as "base" | "alt",
+  catatan: String(input?.catatan ?? ""),
+});
+
+export const gudangList = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; kategori?: string; hanyaStok?: boolean; page?: number }) => ({
+    q: String(input?.q ?? "").trim(),
+    kategori: String(input?.kategori ?? "").trim(),
+    hanyaStok: Boolean(input?.hanyaStok),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangSearchMaster = createServerFn({ method: "GET" })
+  .validator((input: { q: string; limit?: number }) => ({
+    q: String(input?.q ?? "").trim(),
+    limit: Math.min(Number(input?.limit ?? 12) || 12, 30),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangSearchMaster: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangTambah = createServerFn({ method: "POST" })
+  .validator(gudangQtyInput)
+  .handler(async ({ data }) => {
+    const { gudangTambah: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangPindah = createServerFn({ method: "POST" })
+  .validator(gudangQtyInput)
+  .handler(async ({ data }) => {
+    const { gudangPindah: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangLogs = createServerFn({ method: "GET" })
+  .validator((input: { q?: string; tipe?: string; belumDicek?: boolean; productId?: number | null; page?: number }) => ({
+    q: String(input?.q ?? "").trim(),
+    tipe: String(input?.tipe ?? ""),
+    belumDicek: Boolean(input?.belumDicek),
+    productId: input?.productId == null ? null : Number(input.productId),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangLogs: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangEdit = createServerFn({ method: "POST" })
+  .validator((input: { logId: number; qty: number; unit: "base" | "alt"; catatan?: string }) => ({
+    logId: Number(input?.logId),
+    qty: Number(input?.qty),
+    unit: (input?.unit === "alt" ? "alt" : "base") as "base" | "alt",
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangEdit: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangHapusLog = createServerFn({ method: "POST" })
+  .validator((input: { logId: number }) => ({ logId: Number(input?.logId) }))
+  .handler(async ({ data }) => {
+    const { gudangHapusLog: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangSesuaikan = createServerFn({ method: "POST" })
+  .validator(gudangQtyInput)
+  .handler(async ({ data }) => {
+    const { gudangSesuaikan: run } = await import("./logic.server");
+    return run({ ...data, catatan: data.catatan });
+  });
+
+export const gudangHapusItem = createServerFn({ method: "POST" })
+  .validator((input: { productId: number; force?: boolean }) => ({ productId: Number(input?.productId), force: Boolean(input?.force) }))
+  .handler(async ({ data }) => {
+    const { gudangHapusItem: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangCek = createServerFn({ method: "POST" })
+  .validator((input: { logIds: number[]; nilai?: boolean }) => ({
+    logIds: Array.isArray(input?.logIds) ? input.logIds.map(Number) : [],
+    nilai: input?.nilai !== false,
+  }))
+  .handler(async ({ data }) => {
+    const { gudangCek: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangOpname = createServerFn({ method: "POST" })
+  .validator((input: { productId: number; qty: number; unit: "base" | "alt"; expected: number; catatan?: string }) => ({
+    productId: Number(input?.productId),
+    qty: Number(input?.qty),
+    unit: (input?.unit === "alt" ? "alt" : "base") as "base" | "alt",
+    expected: Number(input?.expected),
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { gudangOpname: run } = await import("./logic.server");
+    return run(data);
   });
