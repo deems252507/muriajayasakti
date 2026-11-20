@@ -2,7 +2,7 @@ import { Search, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, MarkWords, PrimaryButton, inputClass } from "@/components/shop/shell";
-import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah } from "@/lib/shop/api";
+import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah, listKategoriBarang } from "@/lib/shop/api";
 import { formatQtyPack, hasAltUnit, toBaseQty } from "@/lib/shop/format";
 import type { GudangItem, GudangLog, GudangPickItem } from "@/lib/shop/types";
 
@@ -150,10 +150,18 @@ function StokPair({ item }: { item: GudangPickItem }) {
 /** Satu hasil pencarian: kata yang cocok disorot kuning seperti di Daftar Sparepart. */
 function PickRow({ row, q, onPick }: { row: GudangPickItem; q: string; onPick: () => void }) {
   return (
-    <button
-      type="button"
+    // Bukan <button>: styles.css memberi semua <button> tata letak flex rata tengah yang merusak susunan kartu.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onPick}
-      className={`block w-full rounded-xl border border-l-4 border-slate-200 bg-white p-3 text-left transition hover:border-accent active:bg-slate-50 ${row.sudahDiGudang ? "border-l-emerald-500" : "border-l-slate-300"}`}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onPick();
+        }
+      }}
+      className={`block w-full cursor-pointer rounded-xl border border-l-4 border-slate-200 bg-white p-3 text-left transition hover:border-accent active:bg-slate-50 ${row.sudahDiGudang ? "border-l-emerald-500" : "border-l-slate-300"}`}
     >
       <p className="break-words text-[15px] font-extrabold leading-snug text-slate-900">
         <MarkWords text={row.nama} q={q} />
@@ -170,15 +178,17 @@ function PickRow({ row, q, onPick }: { row: GudangPickItem; q: string; onPick: (
         {row.partNumbersAlt ? <span className="text-slate-500"> · Alt: <MarkWords text={row.partNumbersAlt} q={q} /></span> : null}
       </p>
       <StokPair item={row} />
-    </button>
+    </div>
   );
 }
 
-export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onClose: () => void; onDone: () => void }) {
+export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: GudangItem; onClose: () => void; onDone: () => void; onExisting?: (row: GudangPickItem) => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<GudangPickItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [limit, setLimit] = useState(40);
+  const [kategori, setKategori] = useState("");
+  const [kategoriList, setKategoriList] = useState<string[]>([]);
   const [picked, setPicked] = useState<GudangPickItem | null>(
     item
       ? {
@@ -206,13 +216,18 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (item) return;
+    void listKategoriBarang().then(setKategoriList).catch(() => undefined);
+  }, [item]);
+
+  useEffect(() => {
     if (picked) return;
     const term = q.trim();
     let alive = true;
     setSearching(true);
     // Tanpa kata kunci langsung memuat semua barang; saat mengetik, tunggu sebentar supaya tidak menembak server tiap huruf.
     const timer = window.setTimeout(() => {
-      void gudangSearchMaster({ data: { q: term, limit } })
+      void gudangSearchMaster({ data: { q: term, limit, kategori } })
         .then((rows) => alive && (setResults(rows), setError("")))
         .catch((err: Error) => alive && setError(err.message))
         .finally(() => alive && setSearching(false));
@@ -221,9 +236,14 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [q, picked, limit]);
+  }, [q, picked, limit, kategori]);
 
   function pick(row: GudangPickItem) {
+    // Barang yang sudah ada di gudang tidak didaftarkan lagi: arahkan ke kartunya di daftar Stok Gudang.
+    if (row.sudahDiGudang && !item && onExisting) {
+      onExisting(row);
+      return;
+    }
     setPicked(row);
     setUnit(defaultUnit(row));
     setError("");
@@ -254,18 +274,31 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
       {!picked ? (
         <div>
           <p className="mb-2 text-xs text-slate-600">Pilih barang dari Daftar Sparepart. Barang yang belum ada di sana ditambahkan dulu di Daftar Sparepart.</p>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
-            <input
-              autoFocus
-              type="search"
-              enterKeyHint="search"
-              className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100"
-              placeholder="Ketik untuk menyaring: nama, part number, kode pajak, kategori"
-              aria-label="Cari barang"
-              value={q}
-              onChange={(event) => { setLimit(40); setQ(event.target.value); }}
-            />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+              <input
+                autoFocus
+                type="search"
+                enterKeyHint="search"
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100"
+                placeholder="Ketik: nama, part number, kode pajak"
+                aria-label="Cari barang"
+                value={q}
+                onChange={(event) => { setLimit(40); setQ(event.target.value); }}
+              />
+            </div>
+            <select
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100 sm:w-52"
+              aria-label="Kategori"
+              value={kategori}
+              onChange={(event) => { setLimit(40); setKategori(event.target.value); }}
+            >
+              <option value="">Semua kategori</option>
+              {kategoriList.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
           <ErrorLine text={error} />
           <p className="mt-2 text-xs font-medium text-slate-500" aria-live="polite">
@@ -273,15 +306,35 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
               ? "Memuat..."
               : q.trim()
                 ? `${results.length}${results.length >= limit ? "+" : ""} barang cocok. Ketuk untuk memilih.`
-                : `${results.length}${results.length >= limit ? "+" : ""} barang, urut kategori. Ketik untuk menyaring, atau ketuk untuk memilih.`}
+                : kategori
+                  ? `${results.length}${results.length >= limit ? "+" : ""} barang kategori ${kategori}. Ketuk untuk memilih.`
+                  : `${results.length}${results.length >= limit ? "+" : ""} barang, urut kategori. Pilih kategori atau ketik untuk menyaring.`}
           </p>
           <div className="mt-2 max-h-[55dvh] space-y-2 overflow-y-auto overscroll-contain sm:max-h-[50vh]">
             {!searching && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">{q.trim() ? "Barang tidak ditemukan di Daftar Sparepart." : "Daftar Sparepart masih kosong."}</p> : null}
             {results.map((row, index) => {
-              const showKategori = !q.trim() && (index === 0 || (results[index - 1].kategori || "").toLowerCase() !== (row.kategori || "").toLowerCase());
+              const showKategori = !q.trim() && !kategori && (index === 0 || (results[index - 1].kategori || "").toLowerCase() !== (row.kategori || "").toLowerCase());
               return (
                 <Fragment key={row.productId}>
-                  {showKategori ? <p className="sticky top-0 z-10 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-extrabold tracking-wide text-blue-900">{(row.kategori || "TANPA KATEGORI").toUpperCase()}</p> : null}
+                  {showKategori ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      title="Tampilkan hanya kategori ini"
+                      onClick={() => row.kategori && (setLimit(40), setKategori(row.kategori))}
+                      onKeyDown={(event) => {
+                        if ((event.key === "Enter" || event.key === " ") && row.kategori) {
+                          event.preventDefault();
+                          setLimit(40);
+                          setKategori(row.kategori);
+                        }
+                      }}
+                      className="sticky top-0 z-10 flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900"
+                    >
+                      <span>{(row.kategori || "TANPA KATEGORI").toUpperCase()}</span>
+                      {row.kategori ? <span className="shrink-0 text-[10px] font-bold text-blue-700">Hanya kategori ini</span> : null}
+                    </div>
+                  ) : null}
                   <PickRow row={row} q={q} onPick={() => pick(row)} />
                 </Fragment>
               );

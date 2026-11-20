@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRightLeft, Check, ClipboardCheck, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, TambahDialog } from "@/components/shop/gudang-dialogs";
+import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
 import { GudangHitungDialog } from "@/components/shop/gudang-hitung";
 import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
@@ -97,9 +97,20 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
   const [dialog, setDialog] = useState<{ kind: "tambah-barang" } | { kind: "tambah" | "ambil" | "sesuaikan" | "opname"; item: GudangItem } | null>(null);
+  const [focusId, setFocusId] = useState<number | null>(null);
   const dq = useDebounced(q.trim());
 
   useEffect(() => setPage(1), [dq, kategori, hanyaStok]);
+
+  // Barang yang dipilih di "Tambah barang ke gudang" tetapi sudah ada di gudang: tampilkan kartunya dan sorot sebentar.
+  function goToExisting(row: { productId: number; nama: string; satuan: string; satuanAlt: string; isiSatuanAlt: number; stokGudang?: number | null }) {
+    setDialog(null);
+    setKategori("");
+    setHanyaStok(false);
+    setQ(row.nama);
+    setFocusId(row.productId);
+    toast.info("Barang sudah ada di gudang", { description: `${row.nama}: stok gudang ${fmt(row.stokGudang ?? 0, row)}. Pakai tombol Tambah stok pada kartunya.` });
+  }
 
   const load = useCallback(() => setTick((n) => n + 1), []);
 
@@ -123,6 +134,15 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
     setDialog(null);
     load();
   };
+
+  useEffect(() => {
+    if (focusId == null || !data || loading) return;
+    const el = document.getElementById(`gudang-item-${focusId}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    const timer = window.setTimeout(() => setFocusId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [focusId, data, loading]);
 
   async function removeItem(item: GudangItem) {
     if (!(await confirmDialog(`Hapus "${item.nama}" dari daftar gudang? Data di Daftar Sparepart tidak ikut terhapus.`, { title: "Hapus dari daftar gudang", confirmText: "Hapus" }))) return;
@@ -194,7 +214,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
 
       <div className={`grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 ${loading ? "opacity-60" : ""}`}>
         {data?.items.map((item) => (
-          <article key={item.productId} className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <article key={item.productId} id={`gudang-item-${item.productId}`} className={`flex flex-col rounded-xl border bg-white p-3 shadow-sm transition ${focusId === item.productId ? "border-amber-400 ring-2 ring-amber-300" : "border-slate-200"}`}>
             <ItemIdentity item={item} />
             <div className="mt-2.5 grid grid-cols-2 gap-2 text-center">
               <div className={`rounded-lg p-2 ${item.stokGudang > 0 ? "bg-emerald-50" : "bg-slate-100"}`}>
@@ -248,7 +268,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
       </div>
       {data ? <Pager page={data.page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
 
-      {dialog?.kind === "tambah-barang" ? <TambahDialog onClose={() => setDialog(null)} onDone={done} /> : null}
+      {dialog?.kind === "tambah-barang" ? <TambahDialog onClose={() => setDialog(null)} onDone={done} onExisting={goToExisting} /> : null}
       {dialog?.kind === "tambah" ? <TambahDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "ambil" ? <AmbilDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "sesuaikan" ? <SesuaikanDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
