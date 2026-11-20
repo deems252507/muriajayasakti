@@ -506,7 +506,7 @@ export function OpnameCek({
                   maxLength={40}
                   disabled={saving || draftBusy}
                   onChange={(e) => setLokasi(e.target.value)}
-                  placeholder="Contoh: Etalase, Rak 1, Toko"
+                  placeholder="Contoh: Toko, Etalase, Rak 1"
                   className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-blue-100"
                 />
                 <datalist id="opname-lokasi-list">

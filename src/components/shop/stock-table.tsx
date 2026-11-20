@@ -1,6 +1,6 @@
 import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { Mark } from "@/components/shop/shell";
-import { formatQtyPack, rupiah } from "@/lib/shop/format";
+import { rupiah } from "@/lib/shop/format";
 import type { Product } from "@/lib/shop/types";
 
 export type StockLevel = "HABIS" | "MENIPIS" | "AMAN";
@@ -49,7 +49,7 @@ export function StockTable({
             <th className={th}>Nama Barang</th>
             <th className={th}>Kategori</th>
             <th className={th}>Part Number</th>
-            <th className={`${th} text-center`}>Stok Akhir <span className="block text-[10px] font-semibold normal-case tracking-normal text-slate-500">toko · gudang</span></th>
+            <th className={`${th} text-center`}>Stok Akhir</th>
             <th className={`${th} text-right`}>Harga Jual</th>
             <th className={`${th} text-center`}>Status Stok</th>
             <th className={`${th} text-center`}>Aksi</th>
@@ -90,17 +90,33 @@ export function StockTable({
                     <div className="whitespace-nowrap font-mono text-xs"><Mark text={item.partNumber || item.kode || "-"} q={q} /></div>
                     {item.partNumbersAlt ? <div className="mt-0.5 break-words font-mono text-[11px] text-slate-500">Alt: <Mark text={item.partNumbersAlt} q={q} /></div> : null}
                   </td>
-                  <td className={`${td} whitespace-nowrap text-center`}>
-                    <div className={`num font-bold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok} {item.satuan}</div>
-                    {dus ? (
-                      <div className="text-[11px] font-medium text-blue-700">{dusQty} {item.satuanAlt}{variant === "barang" && sisa ? ` + ${sisa} ${item.satuan}` : ""}</div>
-                    ) : null}
+                  <td className={`${td} whitespace-nowrap`}>
                     {item.stokGudang != null ? (
-                      <div className="mt-1 border-t border-slate-100 pt-1 text-[11px] font-semibold text-violet-800" title="Stok di gudang (info). Stok Akhir di atas adalah stok toko.">
-                        Gudang: {item.stokGudang.toLocaleString("id-ID")} {item.satuan}
-                        {dus && item.stokGudang >= item.isiSatuanAlt ? <span className="font-medium text-violet-700"> ({formatQtyPack(item.stokGudang, item.satuan, item.satuanAlt, item.isiSatuanAlt)})</span> : null}
+                      <div className="mx-auto grid w-fit min-w-[150px] grid-cols-[4.25rem_1fr] items-start gap-x-3 text-left" title="Toko = stok yang dijual lewat Kasir. Gudang = stok di gudang (info).">
+                        <span className="mt-0.5 inline-flex h-5 items-center justify-center rounded bg-slate-100 px-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">Toko</span>
+                        <div>
+                          <div className={`num font-bold leading-5 ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok.toLocaleString("id-ID")} {item.satuan}</div>
+                          {dus ? <div className="text-[11px] font-medium leading-4 text-blue-700">{dusQty} {item.satuanAlt}{variant === "barang" && sisa ? ` + ${sisa} ${item.satuan}` : ""}</div> : null}
+                        </div>
+                        <span className="mt-2 inline-flex h-5 items-center justify-center rounded bg-violet-100 px-1.5 text-[10px] font-bold uppercase tracking-wide text-violet-800">Gudang</span>
+                        <div className="mt-2 border-t border-dashed border-slate-200 pt-1.5">
+                          <div className="num font-bold leading-5 text-violet-900">{item.stokGudang.toLocaleString("id-ID")} {item.satuan}</div>
+                          {dus && item.stokGudang >= item.isiSatuanAlt ? (
+                            <div className="text-[11px] font-medium leading-4 text-violet-700">
+                              {Math.floor(item.stokGudang / item.isiSatuanAlt)} {item.satuanAlt}
+                              {variant === "barang" && item.stokGudang % item.isiSatuanAlt ? ` + ${item.stokGudang % item.isiSatuanAlt} ${item.satuan}` : ""}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="text-center">
+                        <div className={`num font-bold ${level === "HABIS" ? "text-red-700" : level === "MENIPIS" ? "text-amber-700" : "text-slate-900"}`}>{item.stok.toLocaleString("id-ID")} {item.satuan}</div>
+                        {dus ? (
+                          <div className="text-[11px] font-medium text-blue-700">{dusQty} {item.satuanAlt}{variant === "barang" && sisa ? ` + ${sisa} ${item.satuan}` : ""}</div>
+                        ) : null}
+                      </div>
+                    )}
                   </td>
                   <td className={`${td} num whitespace-nowrap text-right font-semibold`}>
                     {rupiah(item.hargaJual)}

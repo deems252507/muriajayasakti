@@ -5265,7 +5265,7 @@ export async function gudangOpnameItem(data: { productId: number }) {
 export async function gudangDraftSave(data: { productId: number; lokasi: string; qty: number; unit: "base" | "alt"; catatan?: string }) {
   const me = await requireGudangOps();
   const lokasi = String(data?.lokasi ?? "").trim();
-  if (/^toko$/i.test(lokasi)) throw new Error("Hitungan toko dilakukan di Stok Opname pilihan Toko. Di sini isi lokasi di dalam gudang, misalnya Rak A.");
+  if (/^(toko|etalase)$/i.test(lokasi)) throw new Error("Hitungan toko dilakukan di Stok Opname pilihan Toko. Di sini isi lokasi di dalam gudang, misalnya Rak A.");
   const c = await gudangQty(data?.productId, data?.qty, data?.unit);
   const db = await sql();
   try {
