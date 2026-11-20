@@ -292,6 +292,8 @@ export type GudangPickItem = {
   satuanAlt: string;
   isiSatuanAlt: number;
   stokToko: number;
+  /** Stok gudang saat ini; null bila barang belum terdaftar di gudang. */
+  stokGudang?: number | null;
   sudahDiGudang: boolean;
 };
 

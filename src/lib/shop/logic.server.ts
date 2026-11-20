@@ -4792,7 +4792,8 @@ export async function gudangSearchMaster(data: { q: string; limit?: number }): P
   const rows = await db.query<Record<string, unknown>>(
     `select p.id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
             p.satuan, p.satuan_alt, p.isi_satuan_alt, p.stok,
-            exists (select 1 from gudang_items g where g.product_id = p.id) as sudah
+            exists (select 1 from gudang_items g where g.product_id = p.id) as sudah,
+            (select g.stok from gudang_items g where g.product_id = p.id) as stok_gudang
      from products p
      where p.nama ilike $1 or p.part_number ilike $1 or p.part_numbers_alt ilike $1
         or p.kode ilike $1 or p.merek ilike $1 or p.kode_pajak ilike $1
@@ -4813,6 +4814,7 @@ export async function gudangSearchMaster(data: { q: string; limit?: number }): P
     satuanAlt: String(row.satuan_alt ?? ""),
     isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
     stokToko: Number(row.stok ?? 0),
+    stokGudang: row.stok_gudang == null ? null : Number(row.stok_gudang),
     sudahDiGudang: Boolean(row.sudah),
   }));
 }

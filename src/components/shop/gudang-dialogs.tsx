@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Field, PrimaryButton, inputClass } from "@/components/shop/shell";
+import { Field, MarkWords, PrimaryButton, inputClass } from "@/components/shop/shell";
 import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah } from "@/lib/shop/api";
 import { formatQtyPack, hasAltUnit, toBaseQty } from "@/lib/shop/format";
 import type { GudangItem, GudangLog, GudangPickItem } from "@/lib/shop/types";
@@ -37,7 +37,7 @@ export function ItemIdentity({ item }: { item: { nama: string; kode: string; par
   );
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children, sheet = false }: { title: string; onClose: () => void; children: React.ReactNode; sheet?: boolean }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -46,8 +46,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="my-6 w-full max-w-lg rounded-2xl bg-panel p-4 shadow-xl">
+    <div className={`fixed inset-0 z-50 grid overflow-y-auto bg-ink/40 ${sheet ? "place-items-end p-0 sm:place-items-center sm:p-4" : "place-items-center p-4"}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`w-full max-w-lg bg-panel p-4 shadow-xl ${sheet ? "max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:my-6 sm:rounded-2xl" : "my-6 rounded-2xl"}`}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="font-extrabold text-slate-900">{title}</h3>
           <button type="button" aria-label="Tutup" onClick={onClose} className="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100">
@@ -130,6 +130,50 @@ export function ErrorLine({ text }: { text: string }) {
 }
 
 /** Tambah barang ke daftar gudang (pilih dari Master Data) dan/atau tambah stok gudang. */
+/** Dua kotak stok berdampingan: Gudang dulu, baru Toko (sesuai alur barang). */
+function StokPair({ item }: { item: GudangPickItem }) {
+  const terdaftar = item.sudahDiGudang;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+      <div className={`rounded-lg px-2.5 py-1.5 ${terdaftar ? "bg-violet-50" : "border border-dashed border-slate-300 bg-white"}`}>
+        <span className="block text-[10px] font-bold uppercase tracking-wide text-violet-800">Gudang</span>
+        <b className={`num text-sm ${terdaftar ? "text-violet-900" : "text-slate-400"}`}>{terdaftar ? fmt(item.stokGudang ?? 0, item) : "Belum di gudang"}</b>
+      </div>
+      <div className="rounded-lg bg-slate-100 px-2.5 py-1.5">
+        <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-600">Toko</span>
+        <b className="num text-sm text-slate-900">{fmt(item.stokToko, item)}</b>
+      </div>
+    </div>
+  );
+}
+
+/** Satu hasil pencarian: kata yang cocok disorot kuning seperti di Daftar Sparepart. */
+function PickRow({ row, q, onPick }: { row: GudangPickItem; q: string; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={`block w-full rounded-xl border border-l-4 border-slate-200 bg-white p-3 text-left transition hover:border-accent active:bg-slate-50 ${row.sudahDiGudang ? "border-l-emerald-500" : "border-l-slate-300"}`}
+    >
+      <p className="break-words text-[15px] font-extrabold leading-snug text-slate-900">
+        <MarkWords text={row.nama} q={q} />
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {row.merek ? <span className="rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800"><MarkWords text={row.merek} q={q} /></span> : null}
+        {row.kodePajak ? <span className="rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[<MarkWords text={row.kodePajak} q={q} />]</span> : null}
+        {row.kategori ? <span className="text-[11px] font-semibold text-slate-500">{row.kategori}</span> : null}
+        {row.sudahDiGudang ? <span className="rounded-full bg-emerald-100 px-2 py-px text-[10px] font-bold text-emerald-800">Sudah di gudang</span> : null}
+      </div>
+      <p className="mt-1 break-words font-mono text-xs text-slate-700">
+        <span className="font-sans text-slate-500">PN </span>
+        <MarkWords text={row.partNumber || row.kode} q={q} />
+        {row.partNumbersAlt ? <span className="text-slate-500"> · Alt: <MarkWords text={row.partNumbersAlt} q={q} /></span> : null}
+      </p>
+      <StokPair item={row} />
+    </button>
+  );
+}
+
 export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<GudangPickItem[]>([]);
@@ -149,6 +193,7 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
           satuanAlt: item.satuanAlt,
           isiSatuanAlt: item.isiSatuanAlt,
           stokToko: item.stokToko,
+          stokGudang: item.stokGudang,
           sudahDiGudang: true,
         }
       : null,
@@ -207,27 +252,35 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
 
   const title = item ? "Tambah stok gudang" : "Tambah barang ke gudang";
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} sheet>
       {!picked ? (
         <div>
           <p className="mb-2 text-xs text-slate-600">Pilih barang dari Daftar Sparepart. Barang yang belum ada di sana ditambahkan dulu di Daftar Sparepart.</p>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input autoFocus className={`${inputClass} pl-9`} placeholder="Cari nama, part number, atau kode pajak" aria-label="Cari barang" value={q} onChange={(event) => setQ(event.target.value)} />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              type="search"
+              enterKeyHint="search"
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100"
+              placeholder="Cari nama, part number, atau kode pajak"
+              aria-label="Cari barang"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+            />
           </div>
           <ErrorLine text={error} />
-          <div className="mt-2 max-h-[50vh] space-y-1.5 overflow-y-auto">
-            {searching && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">Mencari...</p> : null}
+          <p className="mt-2 text-xs font-medium text-slate-500" aria-live="polite">
+            {!q.trim() ? "Ketik nama barang, part number, atau kode pajak." : searching && results.length === 0 ? "Mencari..." : `${results.length} barang ditemukan. Ketuk untuk memilih.`}
+          </p>
+          <div className="mt-2 max-h-[55dvh] space-y-2 overflow-y-auto overscroll-contain sm:max-h-[50vh]">
             {!searching && q.trim() && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">Barang tidak ditemukan di Daftar Sparepart.</p> : null}
             {results.map((row) => (
-              <button key={row.productId} type="button" onClick={() => pick(row)} className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-left hover:border-accent">
-                <ItemIdentity item={row} />
-                {row.sudahDiGudang ? <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Sudah di gudang</span> : null}
-              </button>
+              <PickRow key={row.productId} row={row} q={q} onPick={() => pick(row)} />
             ))}
           </div>
           <div className="mt-4 flex justify-end">
-            <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
+            <button type="button" onClick={onClose} className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 sm:h-11 sm:w-auto">
               Batal
             </button>
           </div>
@@ -236,6 +289,7 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
         <form onSubmit={(event) => void submit(event)}>
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <ItemIdentity item={picked} />
+            <StokPair item={picked} />
             {!item ? (
               <button type="button" className="mt-2 text-xs font-bold text-accent" onClick={() => { setPicked(null); setQty(""); setError(""); }}>
                 Ganti barang
