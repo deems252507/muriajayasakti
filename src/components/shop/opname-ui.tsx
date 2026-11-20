@@ -111,13 +111,19 @@ export function ItemTitle({ item, q = "", className = "" }: { item: Pick<Product
     <>
       <div className={`font-semibold leading-snug text-slate-900 ${className}`}>
         <MarkWords text={item.nama} q={q} />
-        {item.kodePajak ? <> (<MarkWords text={item.kodePajak} q={q} />)</> : null}
       </div>
-      {item.merek ? (
-        <div className="mt-0.5">
-          <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">
-            <MarkWords text={item.merek} q={q} />
-          </span>
+      {item.merek || item.kodePajak ? (
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+          {item.merek ? (
+            <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">
+              <MarkWords text={item.merek} q={q} />
+            </span>
+          ) : null}
+          {item.kodePajak ? (
+            <span className="inline-block rounded bg-slate-100 px-1.5 py-px font-mono text-[11px] font-bold text-slate-700">
+              <MarkWords text={item.kodePajak} q={q} />
+            </span>
+          ) : null}
         </div>
       ) : null}
     </>

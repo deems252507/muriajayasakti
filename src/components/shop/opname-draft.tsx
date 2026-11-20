@@ -188,7 +188,6 @@ export function OpnameDraft({ categories, canSave, onOpen, onChanged }: { catego
                     <MetaLine label="Kategori" value={item.kategori} />
                     <MetaLine label="Part Number" value={item.partNumber || item.kode} mono />
                     <MetaLine label="Part Number Alt" value={item.partNumbersAlt} mono />
-                    {item.kodePajak ? <MetaLine label="Kode Pajak" value={item.kodePajak} /> : null}
                   </div>
                 </div>
               </div>

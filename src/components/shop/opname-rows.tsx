@@ -80,7 +80,6 @@ export function OpnameRows({
                 <MetaLine label="Kategori" value={item.kategori} q={q} />
                 <MetaLine label="Part Number" value={item.partNumber || item.kode} q={q} mono />
                 <MetaLine label="Part Number Alt" value={item.partNumbersAlt} q={q} mono />
-                {item.kodePajak ? <MetaLine label="Kode Pajak" value={item.kodePajak} q={q} /> : null}
               </div>
               <DraftTag item={item} />
               <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">

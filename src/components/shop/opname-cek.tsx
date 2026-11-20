@@ -391,7 +391,6 @@ export function OpnameCek({
                   <MetaLine label="Kategori" value={item.kategori} />
                   <MetaLine label="Part Number" value={item.partNumber || item.kode} mono />
                   <MetaLine label="Part Number Alt" value={item.partNumbersAlt} mono />
-                  <MetaLine label="Kode Pajak" value={item.kodePajak} />
                 </div>
               </div>
               <div className="shrink-0 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-center">

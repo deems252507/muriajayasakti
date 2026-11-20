@@ -77,9 +77,13 @@ export function StockTable({
                   <td className={`${td} min-w-[220px] max-w-[320px]`}>
                     <div className="font-semibold leading-snug text-slate-900">
                       <Mark text={item.nama} q={q} />
-                      {item.kodePajak ? <> (<Mark text={item.kodePajak} q={q} />)</> : null}
                     </div>
-                    {item.merek ? <div className="mt-0.5"><span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span></div> : null}
+                    {item.merek || item.kodePajak ? (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                        {item.merek ? <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800"><Mark text={item.merek} q={q} /></span> : null}
+                        {item.kodePajak ? <span className="inline-block rounded bg-slate-100 px-1.5 py-px font-mono text-[11px] font-bold text-slate-700"><Mark text={item.kodePajak} q={q} /></span> : null}
+                      </div>
+                    ) : null}
                   </td>
                   <td className={`${td} text-xs font-semibold text-slate-700`}><Mark text={item.kategori || "-"} q={q} /></td>
                   <td className={`${td} min-w-[150px]`}>

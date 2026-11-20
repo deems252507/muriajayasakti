@@ -124,7 +124,6 @@ export function OpnameHistory({
                   <MetaLine label="Kategori" value={itemInfo.kategori} />
                   <MetaLine label="Part Number" value={itemInfo.partNumber || itemInfo.kode} mono />
                   <MetaLine label="Part Number Alt" value={itemInfo.partNumbersAlt} mono />
-                  <MetaLine label="Kode Pajak" value={itemInfo.kodePajak} />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={itemInfo.statusCek} />
