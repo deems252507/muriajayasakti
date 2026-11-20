@@ -107,7 +107,21 @@ export type OpnameStatus = "BELUM_DICEK" | "SUDAH_DICEK" | "PERLU_CEK_ULANG";
 /** Hasil pemeriksaan terakhir (hanya ada jika barang pernah diperiksa). */
 export type OpnameHasil = "SESUAI" | "SELISIH" | "FISIK_HABIS" | "STOK_SISTEM_0";
 
-export type OpnameFilter = "semua" | "belum" | "sudah" | "selisih" | "ulang" | "habis" | "sistem0";
+export type OpnameFilter = "semua" | "belum" | "sudah" | "selisih" | "ulang" | "habis" | "sistem0" | "draft";
+
+/** Hitungan sementara satu lokasi (belum mengubah stok sistem). */
+export type OpnameDraftEntry = {
+  id?: number;
+  lokasi: string;
+  /** Dalam satuan dasar barang. */
+  jumlah: number;
+  /** Seperti yang diketik petugas (mis. 10 Dus). */
+  qty: number;
+  satuan: string;
+  petugas?: string;
+  diubah?: string;
+  catatan?: string;
+};
 
 /** Barang dari Master Data (Daftar Sparepart) + pemeriksaan terakhirnya. */
 export type OpnameItem = Product & {
@@ -120,6 +134,18 @@ export type OpnameItem = Product & {
   dicekPada: string | null;
   petugas: string;
   catatan: string;
+  draftTotal: number;
+  draft: OpnameDraftEntry[];
+};
+
+/** Barang yang punya hitungan sementara (tab Hitungan Sementara). */
+export type OpnameDraftItem = Product & {
+  total: number;
+  jumlahLokasi: number;
+  tertua: string | null;
+  rincian: OpnameDraftEntry[];
+  mutasiN: number;
+  mutasiNet: number;
 };
 
 export type OpnameSummary = {
@@ -130,6 +156,8 @@ export type OpnameSummary = {
   selisih: number;
   habis: number;
   sistem0: number;
+  /** Barang yang sedang dihitung (punya hitungan sementara). */
+  draft: number;
   /** Persen barang yang sudah dicek dan masih berlaku (0-100, dibulatkan ke bawah). */
   progress: number;
 };
@@ -162,6 +190,8 @@ export type OpnameLog = {
   /** Pemeriksaan terakhir yang belum diterapkan ke stok dan stok belum berubah: bisa diterapkan. */
   bisaTerapkan: boolean;
   diterapkanPada: string | null;
+  /** Rincian hitungan per lokasi bila pemeriksaan ini dari Hitungan Sementara. */
+  rincian: OpnameDraftEntry[] | null;
 };
 
 export type OpnameSaveResult =
@@ -177,6 +207,7 @@ export type OpnameSaveResult =
       disesuaikan: boolean;
       dicekPada: string;
       petugas: string;
+      rincian?: OpnameDraftEntry[];
     }
   | {
       ok: false;
@@ -186,3 +217,8 @@ export type OpnameSaveResult =
       jumlahMutasi: number;
       netMutasi: number;
     };
+
+/** Hasil konfirmasi hitungan sementara: sama seperti simpan biasa, ditambah peringatan bila stok berubah sejak hitungan pertama. */
+export type OpnameConfirmResult =
+  | OpnameSaveResult
+  | { ok: false; peringatan: true; jumlahMutasi: number; netMutasi: number; stokSekarang: number; total: number };

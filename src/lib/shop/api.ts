@@ -1008,3 +1008,52 @@ export const opnameApply = createServerFn({ method: "POST" })
     const { opnameApply: run } = await import("./logic.server");
     return run(data);
   });
+
+export const opnameDraftSave = createServerFn({ method: "POST" })
+  .validator((input: { productId: number; lokasi: string; qty: number; unit: "base" | "alt"; catatan?: string }) => ({
+    productId: Number(input?.productId),
+    lokasi: String(input?.lokasi ?? ""),
+    qty: Number(input?.qty),
+    unit: input?.unit === "alt" ? ("alt" as const) : ("base" as const),
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameDraftSave: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameDraftDelete = createServerFn({ method: "POST" })
+  .validator((input: { draftId?: number | null; productId?: number | null; lokasi?: string }) => ({
+    draftId: input?.draftId == null ? null : Number(input.draftId),
+    productId: input?.productId == null ? null : Number(input.productId),
+    lokasi: String(input?.lokasi ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameDraftDelete: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameDraftList = createServerFn({ method: "GET" })
+  .validator((input: { lokasi?: string; q?: string; kategori?: string[]; page?: number; all?: boolean }) => ({
+    lokasi: String(input?.lokasi ?? ""),
+    q: String(input?.q ?? "").trim(),
+    kategori: opnameCats(input?.kategori),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+    all: Boolean(input?.all),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameDraftList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const opnameDraftConfirm = createServerFn({ method: "POST" })
+  .validator((input: { items: Array<{ productId: number; expectedStok: number; token: string }>; force?: boolean; catatan?: string; openedAt?: string }) => ({
+    items: (Array.isArray(input?.items) ? input.items : []).map((it) => ({ productId: Number(it?.productId), expectedStok: Number(it?.expectedStok), token: String(it?.token ?? "") })),
+    force: Boolean(input?.force),
+    catatan: String(input?.catatan ?? ""),
+    openedAt: String(input?.openedAt ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { opnameDraftConfirm: run } = await import("./logic.server");
+    return run(data);
+  });

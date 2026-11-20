@@ -1,7 +1,7 @@
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { HasilBadge, ItemTitle, MetaLine, Pager, StatusBadge, TONE, hasilTone, selisihClass, selisihText, waktuText } from "@/components/shop/opname-ui";
+import { HasilBadge, ItemTitle, draftEntryText, MetaLine, Pager, StatusBadge, TONE, hasilTone, selisihClass, selisihText, waktuText } from "@/components/shop/opname-ui";
 import { confirmDialog } from "@/lib/confirm";
 import { MarkWords, inputClass } from "@/components/shop/shell";
 import { KategoriPicker } from "@/components/shop/opname-kategori";
@@ -121,7 +121,6 @@ export function OpnameHistory({
               <div className="min-w-0 flex-1 basis-60">
                 <ItemTitle item={itemInfo} className="text-base" />
                 <div className="mt-1.5 space-y-0.5">
-                  <MetaLine label="Kode" value={itemInfo.kode} mono />
                   <MetaLine label="Kategori" value={itemInfo.kategori} />
                   <MetaLine label="Part Number" value={itemInfo.partNumber || itemInfo.kode} mono />
                   <MetaLine label="Part Number Alt" value={itemInfo.partNumbersAlt} mono />
@@ -195,7 +194,6 @@ export function OpnameHistory({
               <HasilBadge hasil={row.hasil} />
             </div>
             <div className="mt-1.5 space-y-0.5">
-              <MetaLine label="Kode" value={row.kode} q={q} mono />
               <MetaLine label="Part Number" value={row.partNumber || row.kode} q={q} mono />
               {row.partNumbersAlt ? <MetaLine label="Part Number Alt" value={row.partNumbersAlt} q={q} mono /> : null}
             </div>
@@ -206,6 +204,7 @@ export function OpnameHistory({
               <Mini label="Sesudah" value={`${row.stokSesudah}`} />
             </div>
             <p className="mt-2 text-[11px] text-slate-500">{waktuText(row.dicekPada)} · {row.petugas || "-"} · {row.satuan}{row.disesuaikan ? " · stok disesuaikan" : ""}</p>
+            {row.rincian?.length ? <p className="mt-0.5 break-words text-xs text-violet-800">Rincian: {row.rincian.map(draftEntryText).join(" + ")}</p> : null}
             {row.catatan ? <p className="mt-0.5 break-words text-xs text-slate-700">Catatan: {row.catatan}</p> : null}
             {!row.disesuaikan && row.selisih !== 0 ? (
               <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">Belum diterapkan ke stok (stok tetap {row.stokSesudah} {row.satuan})</p>
@@ -263,7 +262,7 @@ export function OpnameHistory({
                   ) : null}
                   <td className={`${td} min-w-[220px] max-w-[320px]`}>
                     <ItemTitle item={row} q={q} />
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-500"><MarkWords text={row.kode} q={q} /> · <MarkWords text={row.partNumber || "-"} q={q} /></div>
+                    <div className="mt-0.5 font-mono text-[11px] text-slate-500"><MarkWords text={row.partNumber || row.kode || "-"} q={q} /></div>
                   </td>
                   <td className={`${td} whitespace-nowrap text-center`}>{row.stokSebelum} {row.satuan}</td>
                   <td className={`${td} whitespace-nowrap text-center font-semibold`}>{row.stokFisik} {row.satuan}</td>
@@ -276,7 +275,10 @@ export function OpnameHistory({
                   <td className={`${td} whitespace-nowrap text-xs`}>{dateFmt(row.dicekPada)}</td>
                   <td className={`${td} whitespace-nowrap text-xs`}>{timeFmt(row.dicekPada)}</td>
                   <td className={`${td} text-xs`}>{row.petugas || "-"}</td>
-                  <td className={`${td} max-w-[220px] break-words text-xs text-slate-600`}>{row.catatan || "-"}</td>
+                  <td className={`${td} max-w-[220px] break-words text-xs text-slate-600`}>
+                    {row.rincian?.length ? <div className="font-semibold text-violet-800">Rincian: {row.rincian.map(draftEntryText).join(" + ")}</div> : null}
+                    {row.catatan || (row.rincian?.length ? "" : "-")}
+                  </td>
                   {canDelete ? (
                     <td className="whitespace-nowrap px-2 py-2.5 text-center">
                       <div className="inline-flex items-center gap-1">

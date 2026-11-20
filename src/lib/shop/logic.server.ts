@@ -3,7 +3,7 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { packFromName } from "@/lib/shop/format";
-import type { Bank, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
+import type { Bank, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
 
@@ -3893,6 +3893,9 @@ const OPNAME_BASE = `
     l.id as log_id, l.stok_fisik, l.selisih as log_selisih, l.hasil,
     l.stok_sebelum as log_sebelum, l.stok_sesudah as log_sesudah,
     l.dicek_pada, l.petugas_nama as log_petugas, l.catatan as log_catatan,
+    (select count(*)::int from stock_opname_draft d where d.product_id = p.id) as draft_n,
+    (select coalesce(sum(d.jumlah), 0)::int from stock_opname_draft d where d.product_id = p.id) as draft_total,
+    (select jsonb_agg(jsonb_build_object('lokasi', d.lokasi, 'jumlah', d.jumlah, 'qty', d.qty_input, 'satuan', d.satuan_input) order by d.lokasi) from stock_opname_draft d where d.product_id = p.id) as draft_rincian,
     case
       when l.id is null then 'BELUM_DICEK'
       when p.stok <> l.stok_sesudah then 'PERLU_CEK_ULANG'
@@ -3912,7 +3915,26 @@ const OPNAME_FILTER_SQL: Record<string, string> = {
   ulang: `t.status_cek = 'PERLU_CEK_ULANG'`,
   habis: `t.status_cek = 'SUDAH_DICEK' and t.hasil = 'FISIK_HABIS'`,
   sistem0: `t.stok <= 0`,
+  draft: `t.draft_n > 0`,
 };
+
+const opJson = (value: unknown): Array<Record<string, unknown>> => {
+  try {
+    const v = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(v) ? (v as Array<Record<string, unknown>>) : [];
+  } catch {
+    return [];
+  }
+};
+const opEntry = (r: Record<string, unknown>) => ({
+  id: r.id == null ? undefined : Number(r.id),
+  lokasi: String(r.lokasi ?? ""),
+  jumlah: Number(r.jumlah ?? 0),
+  qty: Number(r.qty ?? 0),
+  satuan: String(r.satuan ?? ""),
+  petugas: r.petugas == null ? undefined : String(r.petugas),
+  diubah: r.diubah == null ? undefined : (opIso(r.diubah) ?? undefined),
+});
 
 const opDate = (value: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? "")) ? String(value) : "");
 const opIso = (value: unknown) => {
@@ -3970,6 +3992,8 @@ function mapOpnameItem(row: Record<string, unknown>): OpnameItem {
     dicekPada: log ? opIso(row.dicek_pada) : null,
     petugas: String(row.log_petugas ?? ""),
     catatan: String(row.log_catatan ?? ""),
+    draftTotal: Number(row.draft_total ?? 0),
+    draft: opJson(row.draft_rincian).map(opEntry),
   };
 }
 
@@ -3987,7 +4011,8 @@ export async function opnameSummary(data: { kategori?: unknown }): Promise<Opnam
        count(*) filter (where t.status_cek = 'PERLU_CEK_ULANG')::int as ulang,
        count(*) filter (where t.status_cek = 'SUDAH_DICEK' and t.hasil <> 'SESUAI')::int as selisih,
        count(*) filter (where t.status_cek = 'SUDAH_DICEK' and t.hasil = 'FISIK_HABIS')::int as habis,
-       count(*) filter (where t.stok <= 0)::int as sistem0
+       count(*) filter (where t.stok <= 0)::int as sistem0,
+       count(*) filter (where t.draft_n > 0)::int as draft
      from (${OPNAME_BASE}) t ${where.length ? `where ${where.join(" and ")}` : ""}`,
     params,
   );
@@ -4001,6 +4026,7 @@ export async function opnameSummary(data: { kategori?: unknown }): Promise<Opnam
     selisih: Number(row?.selisih ?? 0),
     habis: Number(row?.habis ?? 0),
     sistem0: Number(row?.sistem0 ?? 0),
+    draft: Number(row?.draft ?? 0),
     progress: total > 0 ? Math.floor((sudah * 100) / total) : 0,
   };
 }
@@ -4054,8 +4080,27 @@ export async function opnameGetItem(data: { productId: number }) {
      from stock_opname_logs where product_id = $1 order by dicek_pada desc, id desc limit 5`,
     [id],
   );
+  const drafts = await db.query<Record<string, unknown>>(
+    `select id, lokasi, jumlah, qty_input as qty, satuan_input as satuan, petugas_nama as petugas, diubah_pada as diubah, catatan
+     from stock_opname_draft where product_id = $1 order by lokasi`,
+    [id],
+  );
+  const [mut] = drafts.length
+    ? await db.query<{ n: number; net: number }>(
+        `select count(*)::int as n, coalesce(sum(selisih), 0)::int as net from stock_opname_mutasi
+         where product_id = $1 and tanggal >= (select min(diubah_pada) from stock_opname_draft where product_id = $1)`,
+        [id],
+      )
+    : [{ n: 0, net: 0 }];
+  const lokasiRows = await db.query<{ lokasi: string }>(
+    `select lokasi from stock_opname_draft group by lokasi order by max(diubah_pada) desc limit 20`,
+  );
+  const lokasiList = [...new Set([...lokasiRows.map((r) => String(r.lokasi)), "Gudang", "Toko"])];
   return {
     item,
+    drafts: drafts.map((r) => ({ ...opEntry(r), catatan: String(r.catatan ?? "") })),
+    draftMutasi: { n: Number(mut?.n ?? 0), net: Number(mut?.net ?? 0) },
+    lokasiList,
     openedAt: new Date().toISOString(),
     recent: logs.map((r) => ({
       id: Number(r.id),
@@ -4235,6 +4280,7 @@ export async function opnameHistory(data: {
     bisaKembali: Boolean(r.bisa_kembali),
     bisaTerapkan: Boolean(r.bisa_terapkan),
     diterapkanPada: opIso(r.diterapkan_pada),
+    rincian: r.rincian == null ? null : opJson(r.rincian).map(opEntry),
   }));
   return { total: Number(countRow?.n ?? 0), page, perPage, items };
 }
@@ -4322,4 +4368,162 @@ export async function opnameApply(data: { logIds: number[] }) {
     }
   }
   return { berhasil, gagal };
+}
+
+/* ----- Hitungan Sementara (draft per lokasi) ----- */
+
+export async function opnameDraftSave(data: { productId: number; lokasi: string; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const productId = Number(data?.productId);
+  const qty = Number(data?.qty);
+  if (!Number.isInteger(productId) || productId <= 0) throw new Error("Barang tidak valid.");
+  if (!Number.isInteger(qty) || qty < 0) throw new Error("Jumlah fisik harus bilangan bulat 0 atau lebih.");
+  const db = await sql();
+  const rows = await db.query<Record<string, unknown>>(`select * from products where id = $1`, [productId]);
+  if (!rows[0]) throw new Error("Barang tidak ditemukan.");
+  const product = mapProduct(rows[0]);
+  const useAlt = data?.unit === "alt" && Boolean(product.satuanAlt) && product.isiSatuanAlt > 0;
+  const jumlah = qty * (useAlt ? product.isiSatuanAlt : 1);
+  if (jumlah > 999_999_999) throw new Error("Jumlah fisik terlalu besar.");
+  try {
+    await db.query(`select shop_opname_draft_save($1::jsonb)`, [
+      JSON.stringify({
+        productId,
+        lokasi: String(data?.lokasi ?? ""),
+        jumlah,
+        qty,
+        satuanInput: useAlt ? product.satuanAlt : product.satuan,
+        catatan: String(data?.catatan ?? ""),
+        actor: me.username,
+        actorName: me.name,
+      }),
+    ]);
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+  return { ok: true };
+}
+
+/** Hapus hitungan sementara: satu entri (draftId), semua lokasi satu barang (productId), atau satu lokasi untuk semua barang (lokasi). Stok tidak berubah. */
+export async function opnameDraftDelete(data: { draftId?: number | null; productId?: number | null; lokasi?: string }) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const draftId = Number(data?.draftId);
+  const productId = Number(data?.productId);
+  const lokasi = String(data?.lokasi ?? "").replace(/\s+/g, " ").trim();
+  let deleted: Array<{ id: number }> = [];
+  if (Number.isInteger(draftId) && draftId > 0) {
+    deleted = await db.query<{ id: number }>(`delete from stock_opname_draft where id = $1 returning id`, [draftId]);
+  } else if (Number.isInteger(productId) && productId > 0) {
+    deleted = await db.query<{ id: number }>(`delete from stock_opname_draft where product_id = $1 returning id`, [productId]);
+  } else if (lokasi) {
+    deleted = await db.query<{ id: number }>(`delete from stock_opname_draft where lokasi_key = $1 returning id`, [lokasi.toLowerCase()]);
+    await audit(me, `Hapus semua hitungan sementara lokasi ${lokasi} (${deleted.length} barang)`);
+  } else {
+    throw new Error("Pilih hitungan yang akan dihapus.");
+  }
+  return { dihapus: deleted.length };
+}
+
+const DRAFT_BASE = `
+  select p.*, d.total, d.jumlah_lokasi, d.tertua, d.rincian,
+    (select count(*)::int from stock_opname_mutasi m where m.product_id = p.id and m.tanggal >= d.tertua) as mutasi_n,
+    (select coalesce(sum(m.selisih), 0)::int from stock_opname_mutasi m where m.product_id = p.id and m.tanggal >= d.tertua) as mutasi_net
+  from products p
+  join (
+    select product_id, sum(jumlah)::int as total, count(*)::int as jumlah_lokasi, min(diubah_pada) as tertua,
+      jsonb_agg(jsonb_build_object('id', id, 'lokasi', lokasi, 'jumlah', jumlah, 'qty', qty_input, 'satuan', satuan_input,
+        'petugas', petugas_nama, 'diubah', diubah_pada) order by lokasi) as rincian
+    from stock_opname_draft group by product_id
+  ) d on d.product_id = p.id`;
+
+export async function opnameDraftList(data: { lokasi?: unknown; q?: unknown; kategori?: unknown; page?: unknown; all?: unknown }) {
+  const me = await requireStaff();
+  assertOpnameView(me);
+  const db = await sql();
+  const params: unknown[] = [];
+  const where = opnameWhere({ q: data?.q, kategori: data?.kategori }, params, { skipFilter: true, skipDate: true });
+  const lokasi = String(data?.lokasi ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (lokasi) {
+    params.push(lokasi);
+    where.push(`exists (select 1 from stock_opname_draft x where x.product_id = t.id and x.lokasi_key = $${params.length})`);
+  }
+  const clause = where.length ? `where ${where.join(" and ")}` : "";
+  const page = Math.max(1, Number(data?.page ?? 1) || 1);
+  const perPage = data?.all ? 100000 : OPNAME_PER_PAGE;
+  const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from (${DRAFT_BASE}) t ${clause}`, params);
+  const rows = await db.query<Record<string, unknown>>(
+    `select t.* from (${DRAFT_BASE}) t ${clause} order by ${OPNAME_ORDER} limit ${perPage} offset ${(page - 1) * perPage}`,
+    params,
+  );
+  const lokasiRows = await db.query<{ lokasi: string; n: number }>(
+    `select min(lokasi) as lokasi, count(distinct product_id)::int as n from stock_opname_draft group by lokasi_key order by min(lokasi)`,
+  );
+  const items: OpnameDraftItem[] = rows.map((row) => ({
+    ...mapProduct(row),
+    total: Number(row.total ?? 0),
+    jumlahLokasi: Number(row.jumlah_lokasi ?? 0),
+    tertua: opIso(row.tertua),
+    rincian: opJson(row.rincian).map(opEntry),
+    mutasiN: Number(row.mutasi_n ?? 0),
+    mutasiNet: Number(row.mutasi_net ?? 0),
+  }));
+  return {
+    total: Number(countRow?.n ?? 0),
+    page,
+    perPage,
+    lokasi: lokasiRows.map((r) => ({ lokasi: String(r.lokasi), n: Number(r.n) })),
+    items,
+  };
+}
+
+/** Konfirmasi total: tiap barang diproses sendiri-sendiri (atomik). Yang gagal tidak menghentikan yang lain. */
+export async function opnameDraftConfirm(data: {
+  items: Array<{ productId: number; expectedStok: number; token: string }>;
+  force?: boolean;
+  catatan?: string;
+  openedAt?: string;
+}) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const list = (Array.isArray(data?.items) ? data.items : []).slice(0, 200);
+  if (!list.length) throw new Error("Pilih barang yang akan dikonfirmasi.");
+  const db = await sql();
+  const out: Array<{ productId: number; nama: string; r: OpnameConfirmResult | null; error?: string }> = [];
+  for (const it of list) {
+    const productId = Number(it?.productId);
+    const expected = Number(it?.expectedStok);
+    const token = String(it?.token ?? "").trim();
+    let nama = `Barang #${productId}`;
+    try {
+      if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(expected) || !token || token.length > 100) throw new Error("Data tidak valid. Muat ulang halaman.");
+      const [prod] = await db.query<{ kode: string; nama: string }>(`select kode, nama from products where id = $1`, [productId]);
+      if (prod?.nama) nama = prod.nama;
+      const [row] = await db.query<{ r: OpnameConfirmResult | string }>(`select shop_opname_draft_confirm($1::jsonb) as r`, [
+        JSON.stringify({
+          productId,
+          token,
+          expectedStok: expected,
+          force: Boolean(data?.force),
+          catatan: String(data?.catatan ?? ""),
+          openedAt: opIso(data?.openedAt) ?? "",
+          actor: me.username,
+          actorName: me.name,
+        }),
+      ]);
+      const r = (typeof row?.r === "string" ? JSON.parse(row.r) : row?.r) as OpnameConfirmResult;
+      if (r && r.ok && !("duplikat" in r && r.duplikat)) {
+        await audit(
+          me,
+          `Stok Opname (hitungan sementara) ${prod?.kode ?? `#${productId}`} ${nama}: sistem ${r.stokSebelum}, fisik ${r.stokFisik}, selisih ${r.selisih}${r.disesuaikan ? `, stok jadi ${r.stokSesudah}` : ""}`.trim(),
+        );
+      }
+      out.push({ productId, nama, r });
+    } catch (error) {
+      out.push({ productId, nama, r: null, error: cleanError(error) });
+    }
+  }
+  return { items: out };
 }

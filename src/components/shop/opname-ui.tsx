@@ -1,8 +1,8 @@
 import { MarkWords } from "@/components/shop/shell";
-import type { OpnameHasil, OpnameItem, OpnameStatus, Product } from "@/lib/shop/types";
+import type { OpnameDraftEntry, OpnameHasil, OpnameItem, OpnameStatus, Product } from "@/lib/shop/types";
 
 /** Warna sesuai permintaan: abu = belum dicek, hijau = sesuai, oranye = selisih, merah = fisik habis, biru = stok sistem 0, kuning = perlu cek ulang. */
-export type OpnameTone = "gray" | "green" | "orange" | "red" | "blue" | "yellow";
+export type OpnameTone = "gray" | "green" | "orange" | "red" | "blue" | "yellow" | "purple";
 
 export const TONE: Record<OpnameTone, { badge: string; edge: string; panel: string; dot: string }> = {
   gray: { badge: "bg-slate-100 text-slate-700 ring-slate-200", edge: "border-l-slate-400", panel: "border-slate-200 bg-slate-50 text-slate-700", dot: "bg-slate-400" },
@@ -11,6 +11,7 @@ export const TONE: Record<OpnameTone, { badge: string; edge: string; panel: stri
   red: { badge: "bg-red-100 text-red-700 ring-red-200", edge: "border-l-red-500", panel: "border-red-200 bg-red-50 text-red-700", dot: "bg-red-500" },
   blue: { badge: "bg-sky-100 text-sky-800 ring-sky-200", edge: "border-l-sky-500", panel: "border-sky-200 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
   yellow: { badge: "bg-yellow-100 text-yellow-800 ring-yellow-300", edge: "border-l-yellow-500", panel: "border-yellow-300 bg-yellow-50 text-yellow-800", dot: "bg-yellow-500" },
+  purple: { badge: "bg-violet-100 text-violet-800 ring-violet-200", edge: "border-l-violet-500", panel: "border-violet-200 bg-violet-50 text-violet-800", dot: "bg-violet-500" },
 };
 
 export const STATUS_LABEL: Record<OpnameStatus, string> = {
@@ -145,7 +146,7 @@ export function newToken() {
   return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-export type OpnameFilterKey = "semua" | "belum" | "sudah" | "selisih" | "ulang" | "habis" | "sistem0";
+export type OpnameFilterKey = "semua" | "belum" | "sudah" | "selisih" | "ulang" | "habis" | "sistem0" | "draft";
 
 export const FILTER_OPTIONS: Array<{ key: OpnameFilterKey; label: string }> = [
   { key: "semua", label: "Semua Barang" },
@@ -153,6 +154,7 @@ export const FILTER_OPTIONS: Array<{ key: OpnameFilterKey; label: string }> = [
   { key: "sudah", label: "Sudah Dicek" },
   { key: "selisih", label: "Ada Selisih" },
   { key: "ulang", label: "Perlu Cek Ulang" },
+  { key: "draft", label: "Sedang Dihitung" },
   { key: "habis", label: "Fisik Habis" },
   { key: "sistem0", label: "Stok Sistem 0" },
 ];
@@ -176,4 +178,27 @@ export function Pager({ page, total, perPage, onPage }: { page: number; total: n
       </button>
     </div>
   );
+}
+
+export function draftEntryText(entry: Pick<OpnameDraftEntry, "lokasi" | "qty" | "satuan">) {
+  return `${entry.lokasi} ${entry.qty.toLocaleString("id-ID")} ${entry.satuan}`.trim();
+}
+
+/** Penanda barang yang sedang dihitung di beberapa lokasi (belum mengubah stok sistem). */
+export function DraftTag({ item }: { item: Pick<OpnameItem, "draft" | "draftTotal" | "satuan"> }) {
+  if (!item.draft?.length) return null;
+  return (
+    <div className="mt-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] leading-4 text-violet-900">
+      <b>Sedang Dihitung</b> · {item.draft.map(draftEntryText).join(", ")} · total {item.draftTotal.toLocaleString("id-ID")} {item.satuan}
+    </div>
+  );
+}
+
+/** Umur hitungan sementara dalam hari (null jika kurang dari 1 hari). */
+export function umurHari(iso: string | null | undefined) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  return days >= 1 ? days : null;
 }

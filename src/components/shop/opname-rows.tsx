@@ -1,6 +1,7 @@
 import { ChevronRight, History } from "lucide-react";
 import { MarkWords } from "@/components/shop/shell";
 import {
+  DraftTag,
   HasilBadge,
   ItemTitle,
   MetaLine,
@@ -67,12 +68,12 @@ export function OpnameRows({
                 <StatusBadge status={item.statusCek} />
               </div>
               <div className="mt-1.5 space-y-0.5">
-                <MetaLine label="Kode" value={item.kode} q={q} mono />
                 <MetaLine label="Kategori" value={item.kategori} q={q} />
                 <MetaLine label="Part Number" value={item.partNumber || item.kode} q={q} mono />
                 <MetaLine label="Part Number Alt" value={item.partNumbersAlt} q={q} mono />
                 {item.kodePajak ? <MetaLine label="Kode Pajak" value={item.kodePajak} q={q} /> : null}
               </div>
+              <DraftTag item={item} />
               <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
                 <Cell label="Stok Sistem" value={`${item.stok} ${item.satuan}`} />
                 <Cell label="Stok Fisik" value={checked ? `${item.stokFisik} ${item.satuan}` : "-"} dim={stale} />
@@ -112,7 +113,6 @@ export function OpnameRows({
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-b border-slate-300 bg-slate-100">
             <tr>
-              <th className={th}>Kode Barang</th>
               <th className={th}>Nama Barang</th>
               <th className={th}>Kategori</th>
               <th className={th}>Part Number</th>
@@ -137,8 +137,10 @@ export function OpnameRows({
                   onClick={readOnly ? undefined : () => onOpen?.(item.id)}
                   title={readOnly ? undefined : "Klik baris untuk membuka"}
                 >
-                  <td className={`${td} whitespace-nowrap font-mono text-xs`}><MarkWords text={item.kode} q={q} /></td>
-                  <td className={`${td} min-w-[220px] max-w-[320px]`}><ItemTitle item={item} q={q} /></td>
+                  <td className={`${td} min-w-[220px] max-w-[320px]`}>
+                    <ItemTitle item={item} q={q} />
+                    <DraftTag item={item} />
+                  </td>
                   <td className={`${td} text-xs font-semibold text-slate-700`}><MarkWords text={item.kategori || "-"} q={q} /></td>
                   <td className={`${td} min-w-[150px]`}>
                     <div className="whitespace-nowrap font-mono text-xs"><MarkWords text={item.partNumber || item.kode || "-"} q={q} /></div>

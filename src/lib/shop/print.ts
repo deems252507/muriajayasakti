@@ -975,7 +975,7 @@ export function printOpnameReport(
       const tone = item.hasil === "SESUAI" ? "pos" : item.hasil ? "neg" : "";
       return `<tr>
         <td class="center">${index + 1}</td>
-        <td><b>${esc(item.nama)}${item.kodePajak ? ` (${esc(item.kodePajak)})` : ""}</b>${item.merek ? `<span class="sub">${esc(item.merek)}</span>` : ""}<span class="sub mono">${esc(item.kode)}</span></td>
+        <td><b>${esc(item.nama)}${item.kodePajak ? ` (${esc(item.kodePajak)})` : ""}</b>${item.merek ? `<span class="sub">${esc(item.merek)}</span>` : ""}</td>
         <td>${esc(item.kategori || "-")}</td>
         <td class="mono">${esc(item.partNumber || item.kode || "-")}${item.partNumbersAlt ? `<span class="sub">Alt: ${esc(item.partNumbersAlt)}</span>` : ""}</td>
         <td class="center">${item.stok} ${esc(item.satuan)}</td>

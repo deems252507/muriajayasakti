@@ -3,6 +3,7 @@ import { ClipboardCheck, RotateCcw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { KategoriPicker } from "@/components/shop/opname-kategori";
+import { OpnameDraft } from "@/components/shop/opname-draft";
 import { OpnameCek } from "@/components/shop/opname-cek";
 import { OpnameHistory } from "@/components/shop/opname-history";
 import { OpnameReport } from "@/components/shop/opname-report";
@@ -13,7 +14,7 @@ import { usePersistedState } from "@/lib/persist";
 import { listKategoriBarang, opnameList, opnameSaveSettings, opnameSettings, opnameSummary } from "@/lib/shop/api";
 import type { OpnameItem, OpnameSummary } from "@/lib/shop/types";
 
-type Tab = "daftar" | "riwayat" | "laporan";
+type Tab = "daftar" | "sementara" | "riwayat" | "laporan";
 
 const asId = (value: unknown) => {
   const n = Number(value);
@@ -22,8 +23,8 @@ const asId = (value: unknown) => {
 
 export const Route = createFileRoute("/_shop/opname")({
   // ?cek=ID membuka halaman Cek Barang; ?tab=riwayat|laporan membuka tab itu; ?hid=ID menyaring riwayat satu barang.
-  validateSearch: (search: Record<string, unknown>): { tab?: "riwayat" | "laporan"; cek?: number; hid?: number } => ({
-    tab: search.tab === "riwayat" || search.tab === "laporan" ? search.tab : undefined,
+  validateSearch: (search: Record<string, unknown>): { tab?: "sementara" | "riwayat" | "laporan"; cek?: number; hid?: number } => ({
+    tab: search.tab === "sementara" || search.tab === "riwayat" || search.tab === "laporan" ? search.tab : undefined,
     cek: asId(search.cek),
     hid: asId(search.hid),
   }),
@@ -79,6 +80,7 @@ function OpnamePage() {
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: "daftar", label: "Daftar Barang" },
+    { key: "sementara", label: "Hitungan Sementara" },
     { key: "riwayat", label: "Riwayat" },
     { key: "laporan", label: "Laporan" },
   ];
@@ -95,7 +97,7 @@ function OpnamePage() {
             <p className="text-xs text-slate-600">Cek stok barang kapan saja. Status pemeriksaan setiap barang selalu tersimpan.</p>
           </div>
         </div>
-        <div role="tablist" aria-label="Menu Stok Opname" className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+        <div role="tablist" aria-label="Menu Stok Opname" className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -126,6 +128,11 @@ function OpnamePage() {
           onOpen={(id) => openCek(id)}
           onHistory={(id) => void navigate({ to: "/opname", search: { tab: "riwayat", hid: id } })}
         />
+      ) : null}
+      {tab === "sementara" ? (
+        <Panel>
+          <OpnameDraft categories={categories} canSave={canSave} onOpen={(id) => openCek(id)} onChanged={() => setSummaryTick((n) => n + 1)} />
+        </Panel>
       ) : null}
       {tab === "riwayat" ? (
         <Panel>
@@ -232,12 +239,13 @@ function Daftar({
     { key: "belum", label: "Belum Dicek", value: summary?.belum ?? null, tone: "gray" },
     { key: "selisih", label: "Ada Selisih", value: summary?.selisih ?? null, tone: "orange" },
     { key: "ulang", label: "Perlu Cek Ulang", value: summary?.ulang ?? null, tone: "yellow" },
+    { key: "draft", label: "Sedang Dihitung", value: summary?.draft ?? null, tone: "purple" },
   ];
 
   return (
     <>
       <Panel>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           {cards.map((card) => {
             const tone = TONE[card.tone];
             const active = filter === card.key;

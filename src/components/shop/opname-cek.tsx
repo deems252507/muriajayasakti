@@ -1,11 +1,14 @@
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, History, Info, Minus, PackageX, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, History, Info, Minus, PackageX, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/lib/confirm";
-import { opnameGetItem, opnameNext, opnameSave, opnameSettings } from "@/lib/shop/api";
-import type { OpnameItem, OpnameLog, OpnameSaveResult } from "@/lib/shop/types";
+import { usePersistedState } from "@/lib/persist";
+import { opnameDraftConfirm, opnameDraftDelete, opnameDraftSave, opnameGetItem, opnameNext, opnameSave, opnameSettings } from "@/lib/shop/api";
+import type { OpnameDraftEntry, OpnameItem, OpnameLog, OpnameSaveResult } from "@/lib/shop/types";
 import {
   HASIL_LABEL,
+  draftEntryText,
+  umurHari,
   HasilBadge,
   ItemTitle,
   MetaLine,
@@ -33,7 +36,15 @@ type Recent = {
   dicekPada: string;
 };
 
-type Loaded = { item: OpnameItem; openedAt: string; expected: number; recent: Recent[] };
+type Loaded = {
+  item: OpnameItem;
+  openedAt: string;
+  expected: number;
+  recent: Recent[];
+  drafts: OpnameDraftEntry[];
+  draftMutasi: { n: number; net: number };
+  lokasiList: string[];
+};
 type Done = Extract<OpnameSaveResult, { ok: true }>;
 type Conflict = Extract<OpnameSaveResult, { ok: false }>;
 
@@ -63,6 +74,8 @@ export function OpnameCek({
   const [fisikText, setFisikText] = useState("");
   const [unit, setUnit] = useState<"base" | "alt">("base");
   const [catatan, setCatatan] = useState("");
+  const [lokasi, setLokasi] = usePersistedState("opname:lokasi", "");
+  const [draftBusy, setDraftBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moving, setMoving] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
@@ -74,7 +87,7 @@ export function OpnameCek({
 
   async function fetchItem(): Promise<Loaded> {
     const res = await opnameGetItem({ data: { productId } });
-    return { item: res.item, openedAt: res.openedAt, expected: res.item.stok, recent: res.recent };
+    return { item: res.item, openedAt: res.openedAt, expected: res.item.stok, recent: res.recent, drafts: res.drafts, draftMutasi: res.draftMutasi, lokasiList: res.lokasiList };
   }
 
   useEffect(() => {
@@ -186,6 +199,113 @@ export function OpnameCek({
     }
   }
 
+  const draftTotal = data ? data.drafts.reduce((sum, d) => sum + d.jumlah, 0) : 0;
+
+  async function saveDraft() {
+    if (!data || !item || !canSave || draftBusy || savingRef.current) return;
+    if (!lokasi.trim()) {
+      toast.error("Isi lokasi hitungan, misalnya Gudang atau Toko.");
+      return;
+    }
+    if (qty == null) {
+      toast.error("Isi jumlah fisik terlebih dahulu.");
+      inputRef.current?.focus();
+      return;
+    }
+    setDraftBusy(true);
+    try {
+      await opnameDraftSave({ data: { productId: item.id, lokasi: lokasi.trim(), qty, unit, catatan: catatan.trim() } });
+      toast.success(`Hitungan ${lokasi.trim()} disimpan sementara`, { description: "Stok sistem belum berubah." });
+      setFisikText("");
+      setCatatan("");
+      setConflict(null);
+      setData(await fetchItem());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Hitungan sementara gagal disimpan.");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function removeDraft(entry: OpnameDraftEntry) {
+    if (!entry.id || draftBusy) return;
+    const ok = await confirmDialog(`Hapus hitungan ${entry.lokasi} (${entry.qty} ${entry.satuan})? Stok sistem tidak berubah.`, { title: "Hapus hitungan sementara?", confirmText: "Hapus" });
+    if (!ok) return;
+    setDraftBusy(true);
+    try {
+      await opnameDraftDelete({ data: { draftId: entry.id } });
+      setData(await fetchItem());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus hitungan.");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  function editDraft(entry: OpnameDraftEntry) {
+    setLokasi(entry.lokasi);
+    setUnit(hasAlt && item && entry.satuan === item.satuanAlt ? "alt" : "base");
+    setFisikText(String(entry.qty));
+    inputRef.current?.focus();
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Konfirmasi total semua lokasi: stok sistem baru berubah di sini. */
+  async function confirmTotal(force = false): Promise<void> {
+    if (!data || !item || !canSave || savingRef.current || data.drafts.length === 0) return;
+    const hasil = hitungHasil(expected, draftTotal);
+    if (!force && hasil !== "SESUAI" && autoSync) {
+      const ok = await confirmDialog(`Total semua lokasi ${draftTotal} ${satuan}. Jumlah di sistem akan disesuaikan dari ${expected} menjadi ${draftTotal} ${satuan}. Konfirmasi?`, {
+        title: "Konfirmasi total?",
+        confirmText: "Ya, konfirmasi",
+      });
+      if (!ok) return;
+    }
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    const key = `${item.id}|${expected}|draft|${data.drafts.map((d) => `${d.id}:${d.jumlah}`).join(",")}|${catatan.trim()}`;
+    if (attempt.current?.key !== key) attempt.current = { key, token: newToken() };
+    let retryForce = false;
+    try {
+      const res = await opnameDraftConfirm({
+        data: { items: [{ productId: item.id, expectedStok: expected, token: attempt.current.token }], force, catatan: catatan.trim(), openedAt: data.openedAt },
+      });
+      const entry = res.items[0];
+      if (!entry || entry.error || !entry.r) {
+        toast.error(entry?.error || "Konfirmasi gagal. Coba lagi.");
+      } else if (entry.r.ok) {
+        setDone(entry.r);
+        setConflict(null);
+        attempt.current = null;
+        onSaved();
+        toast.success("Total hitungan dikonfirmasi", { description: item.nama });
+      } else if ("peringatan" in entry.r) {
+        const w = entry.r;
+        const ok = await confirmDialog(
+          `Sejak hitungan pertama ada ${w.jumlahMutasi} perubahan stok (total ${selisihText(w.netMutasi)} ${satuan}), misalnya penjualan. Total hitungan mungkin sudah tidak pas dengan keadaan sekarang. Tetap konfirmasi total ${w.total} ${satuan}?`,
+          { title: "Stok berubah saat dihitung", confirmText: "Tetap konfirmasi" },
+        );
+        retryForce = ok;
+      } else {
+        setConflict(entry.r);
+        attempt.current = null;
+        try {
+          setData(await fetchItem());
+        } catch {
+          /* tampilan lama tetap dipakai */
+        }
+        toast.warning("Jumlah di sistem berubah. Periksa lagi, lalu konfirmasi ulang.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Konfirmasi gagal. Coba lagi.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+    if (retryForce) await confirmTotal(true);
+  }
+
   async function next() {
     if (moving) return;
     setMoving(true);
@@ -255,7 +375,6 @@ export function OpnameCek({
               <div className="min-w-0 flex-1">
                 <ItemTitle item={item} className="text-base" />
                 <div className="mt-2 space-y-0.5">
-                  <MetaLine label="Kode" value={item.kode} mono />
                   <MetaLine label="Kategori" value={item.kategori} />
                   <MetaLine label="Part Number" value={item.partNumber || item.kode} mono />
                   <MetaLine label="Part Number Alt" value={item.partNumbersAlt} mono />
@@ -298,6 +417,21 @@ export function OpnameCek({
             </section>
           ) : null}
 
+          {!done && data.drafts.length > 0 ? (
+            <DraftPanel
+              drafts={data.drafts}
+              satuan={satuan}
+              expected={expected}
+              total={draftTotal}
+              mutasi={data.draftMutasi}
+              canSave={canSave}
+              busy={draftBusy || saving}
+              item={item}
+              onEdit={editDraft}
+              onRemove={(e) => void removeDraft(e)}
+            />
+          ) : null}
+
           {done ? (
             <>
               <section className={`rounded-2xl border p-4 ${TONE[hasilTone(done.hasil)].panel}`}>
@@ -317,6 +451,7 @@ export function OpnameCek({
                   <Row label="Jumlah di sistem sekarang" value={`${done.stokSesudah} ${satuan}${done.disesuaikan ? " (sudah disesuaikan)" : done.selisih !== 0 ? " (tidak diubah)" : ""}`} />
                   <Row label="Tanggal dan jam" value={waktuText(done.dicekPada)} />
                   <Row label="Petugas" value={done.petugas || "-"} />
+                  {done.rincian?.length ? <Row label="Rincian lokasi" value={done.rincian.map(draftEntryText).join(" + ")} /> : null}
                 </dl>
               </section>
               <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:-mx-6 md:px-6">
@@ -338,7 +473,22 @@ export function OpnameCek({
           ) : canSave ? (
             <>
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <label htmlFor="opname-fisik" className="text-sm font-extrabold text-slate-900">Masukkan Jumlah Fisik</label>
+                <label htmlFor="opname-lokasi" className="text-sm font-extrabold text-slate-900">Lokasi hitungan <span className="font-medium text-slate-500">(opsional)</span></label>
+                <input
+                  id="opname-lokasi"
+                  list="opname-lokasi-list"
+                  value={lokasi}
+                  maxLength={40}
+                  disabled={saving || draftBusy}
+                  onChange={(e) => setLokasi(e.target.value)}
+                  placeholder="Contoh: Gudang, Toko"
+                  className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none focus:border-accent focus:ring-2 focus:ring-blue-100"
+                />
+                <datalist id="opname-lokasi-list">
+                  {data.lokasiList.map((l) => <option key={l} value={l} />)}
+                </datalist>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">Barang ada di beberapa tempat? Isi lokasi lalu pilih “Simpan Hitungan Sementara”. Stok sistem baru berubah saat Anda konfirmasi total.</p>
+                <label htmlFor="opname-fisik" className="mt-3 block text-sm font-extrabold text-slate-900">Masukkan Jumlah Fisik</label>
                 {hasAlt ? (
                   <div role="group" aria-label="Satuan pemeriksaan" className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
                     <button type="button" aria-label={`Hitung dalam ${satuan}`} aria-pressed={unit === "base"} disabled={saving} onClick={() => pickUnit("base")} className={`h-11 rounded-lg text-sm font-bold ${unit === "base" ? "bg-white text-accent shadow-sm" : "text-slate-600"}`}>
@@ -382,7 +532,7 @@ export function OpnameCek({
                 {fisik != null && unit === "alt" ? <p className="mt-2 text-center text-xs font-semibold text-blue-700">{qty} {unitName} = {fisik.toLocaleString("id-ID")} {satuan}</p> : null}
                 {fisik != null && unit === "base" && dusText(item, fisik) ? <p className="mt-2 text-center text-xs font-medium text-blue-700">{fisik} {satuan} = {dusText(item, fisik)}</p> : null}
 
-                {preview ? (
+                {preview && data.drafts.length === 0 ? (
                   <div className={`mt-3 flex items-start gap-2 rounded-xl border p-3 ${TONE[hasilTone(preview)].panel}`} aria-live="polite">
                     {preview === "SESUAI" ? <CheckCircle2 className="mt-0.5 size-5 shrink-0" /> : preview === "FISIK_HABIS" ? <PackageX className="mt-0.5 size-5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-5 shrink-0" />}
                     <div className="min-w-0 text-sm">
@@ -390,7 +540,7 @@ export function OpnameCek({
                       <p className="text-xs leading-5">{hasilPesan(preview, expected, fisik ?? 0, satuan, autoSync)}</p>
                     </div>
                   </div>
-                ) : (
+                ) : data.drafts.length > 0 ? null : (
                   <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                     <Info className="mt-0.5 size-4 shrink-0" /> Isi jumlah fisik untuk melihat hasilnya.
                   </div>
@@ -411,21 +561,36 @@ export function OpnameCek({
                 />
               </section>
 
-              <section className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-                <Trio label="Stok Sistem" value={`${expected}`} unit={satuan} />
-                <Trio label="Stok Fisik" value={fisik == null ? "-" : `${fisik}`} unit={fisik == null ? "" : satuan} />
-                <Trio label="Selisih" value={selisihText(selisih)} unit={selisih == null ? "" : satuan} valueClass={selisihClass(selisih)} />
-              </section>
+              {data.drafts.length === 0 ? (
+                <section className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-center shadow-sm">
+                  <Trio label="Stok Sistem" value={`${expected}`} unit={satuan} />
+                  <Trio label="Stok Fisik" value={fisik == null ? "-" : `${fisik}`} unit={fisik == null ? "" : satuan} />
+                  <Trio label="Selisih" value={selisihText(selisih)} unit={selisih == null ? "" : satuan} valueClass={selisihClass(selisih)} />
+                </section>
+              ) : null}
 
               <RecentList rows={data.recent} satuan={satuan} />
 
               <div className="sticky bottom-0 z-10 -mx-3 border-t border-slate-200 bg-white/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur md:-mx-6 md:px-6">
                 <div className="mx-auto max-w-xl">
-                  <button type="button" aria-label="Simpan pemeriksaan" disabled={saving || fisik == null} onClick={() => void save()} className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-accent text-base font-extrabold text-white shadow-sm active:scale-[.99] disabled:opacity-50">
-                    <Check className="size-5" /> {saving ? "Menyimpan..." : "Simpan Pemeriksaan"}
+                  {data.drafts.length > 0 ? (
+                    <button type="button" aria-label="Konfirmasi total semua lokasi" disabled={saving || draftBusy} onClick={() => void confirmTotal()} className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-accent text-base font-extrabold text-white shadow-sm active:scale-[.99] disabled:opacity-50">
+                      <Check className="size-5" /> {saving ? "Menyimpan..." : `Konfirmasi Total (${draftTotal.toLocaleString("id-ID")} ${satuan})`}
+                    </button>
+                  ) : (
+                    <button type="button" aria-label="Simpan pemeriksaan" disabled={saving || draftBusy || fisik == null} onClick={() => void save()} className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-accent text-base font-extrabold text-white shadow-sm active:scale-[.99] disabled:opacity-50">
+                      <Check className="size-5" /> {saving ? "Menyimpan..." : "Simpan Pemeriksaan"}
+                    </button>
+                  )}
+                  <button type="button" aria-label="Simpan hitungan sementara" disabled={saving || draftBusy || fisik == null || !lokasi.trim()} onClick={() => void saveDraft()} className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-xl border border-violet-300 bg-violet-50 text-sm font-extrabold text-violet-900 disabled:opacity-50">
+                    {draftBusy ? "Menyimpan..." : "Simpan Hitungan Sementara"}
                   </button>
                   <p className="mt-1.5 text-center text-[11px] text-slate-500">
-                    {autoSync ? "Setelah disimpan, status menjadi Sudah Dicek dan jumlah di sistem disesuaikan." : "Setelah disimpan, status menjadi Sudah Dicek. Jumlah di sistem tidak diubah."}
+                    {data.drafts.length > 0
+                      ? "Hitungan sementara belum mengubah stok. Stok sistem berubah saat Konfirmasi Total."
+                      : autoSync
+                        ? "Setelah disimpan, status menjadi Sudah Dicek dan jumlah di sistem disesuaikan."
+                        : "Setelah disimpan, status menjadi Sudah Dicek. Jumlah di sistem tidak diubah."}
                   </p>
                 </div>
               </div>
@@ -498,6 +663,69 @@ function RecentList({ rows, satuan }: { rows: Recent[]; satuan: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function DraftPanel({
+  drafts,
+  satuan,
+  expected,
+  total,
+  mutasi,
+  canSave,
+  busy,
+  item,
+  onEdit,
+  onRemove,
+}: {
+  drafts: OpnameDraftEntry[];
+  satuan: string;
+  expected: number;
+  total: number;
+  mutasi: { n: number; net: number };
+  canSave: boolean;
+  busy: boolean;
+  item: OpnameItem;
+  onEdit: (e: OpnameDraftEntry) => void;
+  onRemove: (e: OpnameDraftEntry) => void;
+}) {
+  const hasil = hitungHasil(expected, total);
+  const tone = TONE[hasilTone(hasil)];
+  const tertua = drafts.map((d) => d.diubah).filter(Boolean).sort()[0] ?? null;
+  const umur = umurHari(tertua);
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+      <p className="text-sm font-extrabold text-violet-900">Hitungan Sementara</p>
+      <p className="text-[11px] text-violet-800">Belum mengubah stok sistem. Stok berubah saat Konfirmasi Total.</p>
+      <ul className="mt-2 divide-y divide-violet-100 rounded-xl bg-white">
+        {drafts.map((d) => (
+          <li key={d.id ?? d.lokasi} className="flex items-center gap-2 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">{d.lokasi}: {d.qty.toLocaleString("id-ID")} {d.satuan}{d.satuan !== satuan ? ` = ${d.jumlah.toLocaleString("id-ID")} ${satuan}` : ""}</p>
+              <p className="text-[11px] text-slate-500">{d.petugas || "-"} · {waktuText(d.diubah)}</p>
+            </div>
+            {canSave ? (
+              <>
+                <button type="button" aria-label={`Ubah hitungan ${d.lokasi}`} disabled={busy} onClick={() => onEdit(d)} className="grid size-10 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-slate-700"><Pencil className="size-4" /></button>
+                <button type="button" aria-label={`Hapus hitungan ${d.lokasi}`} disabled={busy} onClick={() => onRemove(d)} className="grid size-10 shrink-0 place-items-center rounded-xl border border-red-200 bg-red-50 text-danger"><Trash2 className="size-4" /></button>
+              </>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <div className={`mt-2 rounded-xl border p-3 text-sm ${tone.panel}`}>
+        <p className="font-extrabold">Total semua lokasi: {total.toLocaleString("id-ID")} {satuan}{dusText(item, total) ? ` (${dusText(item, total)})` : ""}</p>
+        <p className="text-xs leading-5">
+          Stok sistem sekarang {expected.toLocaleString("id-ID")} {satuan} · Selisih {selisihText(total - expected)} · {HASIL_LABEL[hasil]}
+        </p>
+      </div>
+      {umur ? <p className="mt-2 rounded-lg bg-yellow-100 px-2 py-1 text-[11px] font-semibold text-yellow-900">Hitungan pertama sudah {umur} hari lalu. Pastikan angkanya masih benar.</p> : null}
+      {mutasi.n > 0 ? (
+        <p className="mt-2 rounded-lg bg-yellow-100 px-2 py-1 text-[11px] font-semibold text-yellow-900">
+          Sejak hitungan pertama ada {mutasi.n} perubahan stok (total {selisihText(mutasi.net)} {satuan}). Total di atas mungkin sudah tidak pas.
+        </p>
+      ) : null}
     </section>
   );
 }
