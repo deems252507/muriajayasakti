@@ -4786,20 +4786,33 @@ export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaS
 export async function gudangSearchMaster(data: { q: string; limit?: number }): Promise<GudangPickItem[]> {
   await requireGudangOps();
   const q = String(data?.q ?? "").trim();
-  if (!q) return [];
   const db = await sql();
-  const like = `%${q}%`;
+  const limit = Math.min(Math.max(Number(data?.limit ?? 40) || 40, 1), 200);
+  // Tanpa kata kunci: tampilkan semua barang (urut kategori, nama). Dengan kata kunci: tiap kata harus cocok
+  // di salah satu kolom, urutannya bebas ("meditran 6x4l" menemukan "MEDITRAN SX 15W-40 6X4L").
+  const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
+  const params: unknown[] = [];
+  const conds = words.map((word) => {
+    params.push(`%${word}%`);
+    const n = params.length;
+    return `(p.nama ilike $${n} or p.part_number ilike $${n} or p.part_numbers_alt ilike $${n} or p.kode ilike $${n} or p.merek ilike $${n} or p.kode_pajak ilike $${n} or p.kategori ilike $${n})`;
+  });
+  let orderBy = "lower(p.kategori), lower(p.nama)";
+  if (q) {
+    params.push(q);
+    orderBy = `case when lower(p.part_number) = lower($${params.length}::text) or lower(p.kode) = lower($${params.length}::text) then 0 else 1 end, lower(p.nama)`;
+  }
+  params.push(limit);
   const rows = await db.query<Record<string, unknown>>(
     `select p.id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
             p.satuan, p.satuan_alt, p.isi_satuan_alt, p.stok,
             exists (select 1 from gudang_items g where g.product_id = p.id) as sudah,
             (select g.stok from gudang_items g where g.product_id = p.id) as stok_gudang
      from products p
-     where p.nama ilike $1 or p.part_number ilike $1 or p.part_numbers_alt ilike $1
-        or p.kode ilike $1 or p.merek ilike $1 or p.kode_pajak ilike $1
-     order by case when lower(p.part_number) = lower($2) or lower(p.kode) = lower($2) then 0 else 1 end, lower(p.nama)
-     limit $3`,
-    [like, q, Math.min(Number(data?.limit ?? 12) || 12, 30)],
+     where ${conds.length ? conds.join(" and ") : "true"}
+     order by ${orderBy}
+     limit $${params.length}`,
+    params,
   );
   return rows.map((row) => ({
     productId: Number(row.id),

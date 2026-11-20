@@ -1111,7 +1111,7 @@ export const gudangList = createServerFn({ method: "GET" })
 export const gudangSearchMaster = createServerFn({ method: "GET" })
   .validator((input: { q: string; limit?: number }) => ({
     q: String(input?.q ?? "").trim(),
-    limit: Math.min(Number(input?.limit ?? 12) || 12, 30),
+    limit: Math.min(Math.max(Number(input?.limit ?? 40) || 40, 1), 200),
   }))
   .handler(async ({ data }) => {
     const { gudangSearchMaster: run } = await import("./logic.server");

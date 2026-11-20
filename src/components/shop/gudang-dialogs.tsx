@@ -1,5 +1,5 @@
 import { Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Field, MarkWords, PrimaryButton, inputClass } from "@/components/shop/shell";
 import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah } from "@/lib/shop/api";
@@ -161,7 +161,7 @@ function PickRow({ row, q, onPick }: { row: GudangPickItem; q: string; onPick: (
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {row.merek ? <span className="rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800"><MarkWords text={row.merek} q={q} /></span> : null}
         {row.kodePajak ? <span className="rounded bg-slate-200 px-1.5 py-px font-mono text-[11px] font-bold text-slate-800">[<MarkWords text={row.kodePajak} q={q} />]</span> : null}
-        {row.kategori ? <span className="text-[11px] font-semibold text-slate-500">{row.kategori}</span> : null}
+        {row.kategori ? <span className="text-[11px] font-semibold text-slate-500"><MarkWords text={row.kategori} q={q} /></span> : null}
         {row.sudahDiGudang ? <span className="rounded-full bg-emerald-100 px-2 py-px text-[10px] font-bold text-emerald-800">Sudah di gudang</span> : null}
       </div>
       <p className="mt-1 break-words font-mono text-xs text-slate-700">
@@ -178,6 +178,7 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
   const [q, setQ] = useState("");
   const [results, setResults] = useState<GudangPickItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [limit, setLimit] = useState(40);
   const [picked, setPicked] = useState<GudangPickItem | null>(
     item
       ? {
@@ -207,23 +208,20 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
   useEffect(() => {
     if (picked) return;
     const term = q.trim();
-    if (!term) {
-      setResults([]);
-      return;
-    }
     let alive = true;
     setSearching(true);
+    // Tanpa kata kunci langsung memuat semua barang; saat mengetik, tunggu sebentar supaya tidak menembak server tiap huruf.
     const timer = window.setTimeout(() => {
-      void gudangSearchMaster({ data: { q: term, limit: 12 } })
-        .then((rows) => alive && setResults(rows))
+      void gudangSearchMaster({ data: { q: term, limit } })
+        .then((rows) => alive && (setResults(rows), setError("")))
         .catch((err: Error) => alive && setError(err.message))
         .finally(() => alive && setSearching(false));
-    }, 300);
+    }, term ? 250 : 0);
     return () => {
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [q, picked]);
+  }, [q, picked, limit]);
 
   function pick(row: GudangPickItem) {
     setPicked(row);
@@ -263,21 +261,36 @@ export function TambahDialog({ item, onClose, onDone }: { item?: GudangItem; onC
               type="search"
               enterKeyHint="search"
               className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-blue-100"
-              placeholder="Cari nama, part number, atau kode pajak"
+              placeholder="Ketik untuk menyaring: nama, part number, kode pajak, kategori"
               aria-label="Cari barang"
               value={q}
-              onChange={(event) => setQ(event.target.value)}
+              onChange={(event) => { setLimit(40); setQ(event.target.value); }}
             />
           </div>
           <ErrorLine text={error} />
           <p className="mt-2 text-xs font-medium text-slate-500" aria-live="polite">
-            {!q.trim() ? "Ketik nama barang, part number, atau kode pajak." : searching && results.length === 0 ? "Mencari..." : `${results.length} barang ditemukan. Ketuk untuk memilih.`}
+            {searching && results.length === 0
+              ? "Memuat..."
+              : q.trim()
+                ? `${results.length}${results.length >= limit ? "+" : ""} barang cocok. Ketuk untuk memilih.`
+                : `${results.length}${results.length >= limit ? "+" : ""} barang, urut kategori. Ketik untuk menyaring, atau ketuk untuk memilih.`}
           </p>
           <div className="mt-2 max-h-[55dvh] space-y-2 overflow-y-auto overscroll-contain sm:max-h-[50vh]">
-            {!searching && q.trim() && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">Barang tidak ditemukan di Daftar Sparepart.</p> : null}
-            {results.map((row) => (
-              <PickRow key={row.productId} row={row} q={q} onPick={() => pick(row)} />
-            ))}
+            {!searching && results.length === 0 ? <p className="p-3 text-center text-sm text-slate-500">{q.trim() ? "Barang tidak ditemukan di Daftar Sparepart." : "Daftar Sparepart masih kosong."}</p> : null}
+            {results.map((row, index) => {
+              const showKategori = !q.trim() && (index === 0 || (results[index - 1].kategori || "").toLowerCase() !== (row.kategori || "").toLowerCase());
+              return (
+                <Fragment key={row.productId}>
+                  {showKategori ? <p className="sticky top-0 z-10 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-extrabold tracking-wide text-blue-900">{(row.kategori || "TANPA KATEGORI").toUpperCase()}</p> : null}
+                  <PickRow row={row} q={q} onPick={() => pick(row)} />
+                </Fragment>
+              );
+            })}
+            {results.length >= limit ? (
+              <button type="button" onClick={() => setLimit((current) => current + 40)} className="h-11 w-full rounded-xl border border-slate-300 bg-white text-sm font-bold text-slate-700">
+                Tampilkan lebih banyak
+              </button>
+            ) : null}
           </div>
           <div className="mt-4 flex justify-end">
             <button type="button" onClick={onClose} className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 sm:h-11 sm:w-auto">
