@@ -198,7 +198,7 @@ export function filterLabel(key: string) {
 }
 
 /** Penomoran halaman: Sebelumnya / Halaman X dari Y / Berikutnya. */
-export function Pager({ page, total, perPage, onPage }: { page: number; total: number; perPage: number; onPage: (page: number) => void }) {
+export function Pager({ page, total, perPage, onPage, ringkas = false }: { page: number; total: number; perPage: number; onPage: (page: number) => void; ringkas?: boolean }) {
   const pages = Math.max(1, Math.ceil(total / Math.max(1, perPage)));
   if (pages <= 1) return null;
   return (
@@ -206,7 +206,7 @@ export function Pager({ page, total, perPage, onPage }: { page: number; total: n
       <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => onPage(page - 1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-40">
         Sebelumnya
       </button>
-      <span className="text-xs font-semibold text-slate-600">Halaman {page} dari {pages}</span>
+      <span className="text-xs font-semibold text-slate-600">{ringkas ? `Hal ${page}/${pages}` : `Halaman ${page} dari ${pages}`}</span>
       <button type="button" aria-label="Halaman berikutnya" disabled={page >= pages} onClick={() => onPage(page + 1)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-40">
         Berikutnya
       </button>
