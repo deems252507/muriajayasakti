@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, ClipboardCheck, FileText, Pencil, Search, Store, Trash2, Undo2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { PageBar, useIsWide } from "@/components/shop/page-bar";
+import { Pager } from "@/components/shop/opname-ui";
 import { StatusBadge } from "@/components/shop/alokasi-badge";
 import { Panel, inputClass } from "@/components/shop/shell";
 import { confirmDialog } from "@/lib/confirm";
@@ -41,42 +41,11 @@ function tellChanged() {
   window.dispatchEvent(new CustomEvent("mjs-alokasi-changed"));
 }
 
-const TH = "whitespace-nowrap px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-600";
-const TD = "px-3 py-2.5 align-middle";
-
-/** Alur satu faktur dari dicatat sampai selesai, dengan jumlah faktur di tiap tahap. */
-function AlurFaktur({ counts }: { counts: ListData["counts"] }) {
-  const steps = [
-    { key: "perlu_alokasi", title: "Perlu alokasi", hint: "Faktur baru. Atur berapa ke gudang.", n: counts.perlu_alokasi, cls: "border-red-200 bg-red-50 text-red-800" },
-    { key: "menunggu_cek", title: "Menunggu cek", hint: "Staf sudah alokasi. Admin memeriksa.", n: counts.menunggu_cek, cls: "border-amber-200 bg-amber-50 text-amber-900" },
-    { key: "dikembalikan", title: "Dikembalikan", hint: "Admin minta staf mengoreksi.", n: counts.dikembalikan, cls: "border-orange-200 bg-orange-50 text-orange-900" },
-    { key: "selesai", title: "Selesai", hint: "Stok toko dan gudang sudah sesuai.", n: counts.selesai, cls: "border-emerald-200 bg-emerald-50 text-emerald-900" },
-  ];
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-      {steps.map((st) => (
-        <div key={st.key} className={`rounded-xl border px-3 py-2 ${st.cls}`}>
-          <p className="flex items-baseline justify-between gap-2 text-xs font-extrabold"><span>{st.title}</span><span className="num text-base">{st.n.toLocaleString("id-ID")}</span></p>
-          <p className="mt-0.5 text-[11px] leading-snug opacity-90">{st.hint}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TujuanChip({ nGudang }: { nGudang: number }) {
-  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold ${nGudang > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>{nGudang > 0 ? `Ke gudang: ${nGudang}` : "Semua di toko"}</span>;
-}
-
 function AlokasiPage() {
   const { faktur, filter: filterParam } = Route.useSearch();
   const navigate = useNavigate();
-  const wide = useIsWide();
   const [filter, setFilter] = useState<Filter>(filterParam ?? "tindakan");
   const [q, setQ] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,23 +53,20 @@ function AlokasiPage() {
   const [tick, setTick] = useState(0);
   const [openId, setOpenId] = useState<number | null>(faktur ?? null);
   const dq = useDebounced(q.trim());
-  const rangeSalah = Boolean(start && end && start > end);
-  const filterAktif = Boolean(dq || supplierId || start || end);
 
-  useEffect(() => setPage(1), [dq, filter, supplierId, start, end]);
+  useEffect(() => setPage(1), [dq, filter]);
   // Notifikasi diklik saat halaman ini sudah terbuka: buka faktur yang dimaksud.
   useEffect(() => { if (faktur) setOpenId(faktur); }, [faktur]);
 
   useEffect(() => {
-    if (rangeSalah) return;
     let alive = true;
     setLoading(true);
-    void alokasiList({ data: { filter, q: dq, page, supplierId: supplierId ? Number(supplierId) : 0, start, end } })
+    void alokasiList({ data: { filter, q: dq, page } })
       .then((res) => { if (alive) { setData(res); setError(""); } })
       .catch((err: Error) => alive && setError(err.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [filter, dq, page, supplierId, start, end, rangeSalah, tick]);
+  }, [filter, dq, page, tick]);
 
   // Daftar ikut segar saat ada perubahan dari notifikasi / perangkat lain (lencana menu memicu ini).
   useEffect(() => {
@@ -121,20 +87,15 @@ function AlokasiPage() {
     tellChanged();
   };
 
-  function resetFilter() {
-    setQ(""); setSupplierId(""); setStart(""); setEnd(""); setPage(1);
-  }
-
   const tabs: Array<{ key: Filter; label: string }> = [
     { key: "tindakan", label: "Perlu tindakan" },
     { key: "semua", label: "Semua" },
     { key: "selesai", label: "Selesai" },
     { key: "selisih", label: "Ada selisih" },
   ];
-  const items = data?.items ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-3">
+    <div className="mx-auto w-full max-w-4xl space-y-3">
       <Panel>
         <div className="flex items-center gap-3">
           <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
@@ -145,7 +106,6 @@ function AlokasiPage() {
             <p className="text-xs text-slate-600">Atur berapa barang dari tiap faktur yang masuk ke gudang. Sisanya otomatis tetap di toko.</p>
           </div>
         </div>
-        {data ? <AlurFaktur counts={data.counts} /> : null}
         <div role="tablist" aria-label="Filter faktur" className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4">
           {tabs.map((t) => (
             <button
@@ -157,123 +117,58 @@ function AlokasiPage() {
               className={`h-11 rounded-lg text-sm font-bold transition ${filter === t.key ? "bg-white text-accent shadow-sm" : "bg-transparent text-slate-600 hover:text-slate-900"}`}
             >
               {t.label}
-              {t.key === "tindakan" && data && data.counts.tindakan > 0 ? <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">{data.counts.tindakan}</span> : null}
             </button>
           ))}
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input className={`${inputClass} pl-9`} aria-label="Cari faktur" placeholder="Cari nomor faktur, pemasok, atau barang" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <select className={inputClass} aria-label="Filter pemasok" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">Semua pemasok</option>
-            {(data?.suppliers ?? []).map((sp) => <option key={sp.id} value={sp.id}>{sp.nama}</option>)}
-          </select>
-          <label className="text-[11px] font-semibold text-slate-600">Dari tanggal
-            <input type="date" className={`${inputClass} mt-0.5`} value={start} max={end || undefined} onChange={(e) => setStart(e.target.value)} />
-          </label>
-          <label className="text-[11px] font-semibold text-slate-600">Sampai tanggal
-            <input type="date" className={`${inputClass} mt-0.5`} value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} />
-          </label>
-          <button type="button" onClick={resetFilter} disabled={!filterAktif} className="h-11 self-end rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-40">Reset</button>
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input className={`${inputClass} pl-9`} placeholder="Cari nomor faktur, pemasok, atau barang" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        {rangeSalah ? <p role="alert" className="mt-2 text-xs font-semibold text-red-700">Tanggal awal lebih besar dari tanggal akhir. Perbaiki dulu supaya daftar tampil.</p> : null}
       </Panel>
 
       {error ? <Panel><p className="text-sm font-semibold text-red-700">{error}</p></Panel> : null}
-      {loading && !data ? <Panel><p className="py-6 text-center text-sm text-slate-600">Memuat…</p></Panel> : null}
 
-      {data && items.length === 0 ? (
-        <Panel>
-          <p className="py-6 text-center text-sm text-slate-600">
-            {filterAktif ? "Tidak ada faktur sesuai filter. Coba ubah pemasok atau tanggalnya." : filter === "tindakan" ? "Tidak ada faktur yang perlu ditindaklanjuti. Semua sudah beres." : "Tidak ada faktur di tab ini."}
-          </p>
-        </Panel>
-      ) : null}
-
-      {items.length > 0 && wide ? (
-        <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white ${loading ? "opacity-60" : ""}`}>
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-300 bg-slate-100">
-              <tr>
-                <th className={TH}>Tanggal</th>
-                <th className={TH}>No. Faktur</th>
-                <th className={TH}>Pemasok</th>
-                <th className={TH}>Barang</th>
-                <th className={TH}>Tujuan</th>
-                <th className={TH}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr
-                  key={row.id}
-                  tabIndex={0}
-                  onClick={() => setOpenId(row.id)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(row.id); } }}
-                  className="cursor-pointer border-b border-slate-100 bg-white transition-colors hover:bg-blue-50/70"
-                  title="Klik untuk membuka faktur"
-                >
-                  <td className={`${TD} whitespace-nowrap text-xs text-slate-700`}>{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
-                  <td className={`${TD} whitespace-nowrap font-mono text-sm font-extrabold text-slate-900`}>{row.invoiceNo}</td>
-                  <td className={`${TD} min-w-[160px] font-semibold text-slate-800`}>{row.supplierName}</td>
-                  <td className={`${TD} min-w-[200px] text-xs text-slate-700`}>
-                    <span className="line-clamp-1 font-semibold text-slate-900">{row.barangPertama || "-"}</span>
-                    {row.nItem > 1 ? <span className="text-slate-500">+{row.nItem - 1} barang lainnya</span> : null}
-                    {row.nSelisih > 0 ? <b className="ml-1 text-amber-800">· {row.nSelisih} selisih</b> : null}
-                  </td>
-                  <td className={TD}><TujuanChip nGudang={row.nGudang} /></td>
-                  <td className={TD}>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <StatusBadge status={row.status} />
-                      {row.terlambat ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white">Terlambat</span> : null}
-                    </span>
-                    {row.status === "dikembalikan" && row.catatanKembali ? <p className="mt-1 max-w-xs text-[11px] font-semibold text-orange-900">Catatan Admin: {row.catatanKembali}</p> : null}
-                    {row.status === "menunggu_cek" && row.alokasiNama ? <p className="mt-1 text-[11px] text-slate-600">Oleh {row.alokasiNama}, {when(row.alokasiPada)}</p> : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {items.length > 0 && !wide ? (
-        <div className={`space-y-2 ${loading ? "opacity-60" : ""}`}>
-          {items.map((row) => (
-            <div
-              key={row.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setOpenId(row.id)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(row.id); } }}
-              className="block w-full cursor-pointer rounded-2xl border border-white/80 bg-panel p-4 text-left shadow-[0_8px_30px_rgba(15,23,42,0.05)] transition hover:border-accent"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-mono text-sm font-extrabold text-slate-900">{row.invoiceNo}</p>
-                <span className="flex items-center gap-1.5">
-                  {row.terlambat ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white">Terlambat</span> : null}
-                  <StatusBadge status={row.status} />
-                </span>
-              </div>
-              <p className="mt-1 text-sm font-semibold text-slate-800">{row.supplierName}</p>
-              <p className="mt-0.5 text-xs text-slate-600">
-                {new Date(row.receivedAt).toLocaleDateString("id-ID")} · {row.nItem} barang · <TujuanChip nGudang={row.nGudang} />
-                {row.nSelisih > 0 ? <b className="text-amber-800"> · {row.nSelisih} selisih</b> : null}
-              </p>
-              {row.status === "dikembalikan" && row.catatanKembali ? (
-                <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">Catatan Admin: {row.catatanKembali}</p>
-              ) : null}
-              {row.status === "menunggu_cek" && row.alokasiNama ? (
-                <p className="mt-1 text-xs text-slate-600">Dialokasikan oleh {row.alokasiNama}, {when(row.alokasiPada)}</p>
-              ) : null}
+      <div className="space-y-2">
+        {!loading && data && data.items.length === 0 ? (
+          <Panel>
+            <p className="py-6 text-center text-sm text-slate-600">
+              {filter === "tindakan" ? "Tidak ada faktur yang perlu ditindaklanjuti. Semua sudah beres." : "Tidak ada faktur sesuai pencarian."}
+            </p>
+          </Panel>
+        ) : null}
+        {(data?.items ?? []).map((row) => (
+          <div
+            key={row.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setOpenId(row.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(row.id); } }}
+            className="block w-full cursor-pointer rounded-2xl border border-white/80 bg-panel p-4 text-left shadow-[0_8px_30px_rgba(15,23,42,0.05)] transition hover:border-accent"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-sm font-extrabold text-slate-900">{row.invoiceNo}</p>
+              <span className="flex items-center gap-1.5">
+                {row.terlambat ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white">Terlambat</span> : null}
+                <StatusBadge status={row.status} />
+              </span>
             </div>
-          ))}
-        </div>
-      ) : null}
-
-      {data && data.total > 0 ? <PageBar page={page} total={data.total} perPage={data.perPage} unit="faktur" onPage={setPage} /> : null}
+            <p className="mt-1 text-sm font-semibold text-slate-800">{row.supplierName}</p>
+            <p className="mt-0.5 text-xs text-slate-600">
+              {new Date(row.receivedAt).toLocaleDateString("id-ID")} · {row.nItem} barang ·{" "}
+              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${row.nGudang > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>{row.nGudang > 0 ? `Ke gudang: ${row.nGudang}` : "Semua di toko"}</span>
+              {row.nSelisih > 0 ? <b className="text-amber-800"> · {row.nSelisih} barang ada selisih</b> : null}
+            </p>
+            {row.status === "dikembalikan" && row.catatanKembali ? (
+              <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">Catatan Admin: {row.catatanKembali}</p>
+            ) : null}
+            {row.status === "menunggu_cek" && row.alokasiNama ? (
+              <p className="mt-1 text-xs text-slate-600">Dialokasikan oleh {row.alokasiNama}, {when(row.alokasiPada)}</p>
+            ) : null}
+          </div>
+        ))}
+        {loading && !data ? <Panel><p className="py-6 text-center text-sm text-slate-600">Memuat…</p></Panel> : null}
+      </div>
+      {data ? <Pager page={page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
 
       {openId ? <FakturDialog id={openId} onClose={closeDialog} onDone={done} /> : null}
     </div>
