@@ -654,46 +654,94 @@ async function printBarcode(item: Product, opt: LabelOptions) {
     return `<section class="label">${head ? `<div class="head">${head}</div>` : ""}${f.barcode ? `<div class="bar">${make(code, f.kodeBarcode)}</div>` : ""}${price}</section>`;
   };
   const labels = plan.map(label);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Label ${esc(item.nama)}</title><style>
-    @page { margin: 3mm; }
+  const u = opt.ukuran;
+  const data = JSON.stringify({ labels, ukuran: u }).replace(/</g, "\\u003c");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Label ${esc(item.nama)}</title>
+  <style id="pg"></style>
+  <style>
     * { box-sizing: border-box; }
+    :root { --s: 1; --w: 70mm; --bar: 20mm; }
     body { margin: 0; font-family: "Segoe UI", Arial, Helvetica, sans-serif; color: #111; background: #e5e7eb; }
-    .bar-top { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #d1d5db; font-size: 12px; color: #475569; }
+    .bar-top { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 12px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #d1d5db; font-size: 12px; color: #475569; }
+    .bar-top .info { flex: 1 1 100%; }
+    .ctl { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+    .ctl label { display: grid; gap: 2px; font-size: 11px; font-weight: 600; color: #334155; }
+    .ctl input[type=number] { width: 64px; padding: 4px 6px; font: inherit; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px; }
+    .ctl .chk { display: flex; align-items: center; gap: 4px; padding-bottom: 5px; }
     .bar-top button { font: inherit; font-weight: 700; padding: 6px 14px; border: 0; border-radius: 8px; background: #1d4ed8; color: #fff; cursor: pointer; }
     .sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 14px; }
-    .label { width: 70mm; background: #fff; padding: 3.5mm 4mm; text-align: center; border-radius: 2mm; box-shadow: 0 1px 4px rgba(0,0,0,.18); break-inside: avoid; page-break-inside: avoid; }
-    .head { padding-bottom: 1.6mm; }
-    .nama { font-size: 14px; font-weight: 800; line-height: 1.22; letter-spacing: .1px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    .sub { margin-top: 1mm; font-size: 10.5px; line-height: 1.3; color: #374151; }
+    .label { width: var(--w); background: #fff; padding: 2.5mm 3mm; text-align: center; border-radius: 1.5mm; box-shadow: 0 1px 4px rgba(0,0,0,.18); break-inside: avoid; page-break-inside: avoid; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+    .label.kotak { border: .35mm solid #111; box-shadow: none; }
+    .head { padding-bottom: calc(1.4mm * var(--s)); }
+    .nama { font-size: calc(14px * var(--s)); font-weight: 800; line-height: 1.22; letter-spacing: .1px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .sub { margin-top: 1mm; font-size: calc(10.5px * var(--s)); line-height: 1.3; color: #374151; }
     .meta { margin-top: 1.2mm; }
-    .pajak { display: inline-block; padding: .2mm 2mm; border: .3mm solid #111; border-radius: 1mm; font: 700 10px Consolas, "Courier New", monospace; letter-spacing: .4px; }
-    .bar { padding-top: .5mm; }
-    .harga { font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: .2px; }
-    .harga:not(:first-child) { margin-top: 1mm; padding-top: 1.4mm; border-top: .3mm solid #111; }
+    .pajak { display: inline-block; padding: .2mm 2mm; border: .3mm solid #111; border-radius: 1mm; font: 700 calc(10px * var(--s)) Consolas, "Courier New", monospace; letter-spacing: .4px; }
+    .bar { padding-top: .5mm; min-height: 0; }
+    .bar svg { max-height: var(--bar) !important; }
+    .harga { font-size: calc(22px * var(--s)); font-weight: 800; line-height: 1.1; letter-spacing: .2px; }
+    .harga:not(:first-child) { margin-top: 1mm; padding-top: 1.2mm; border-top: .3mm solid #111; }
     .head:last-child { padding-bottom: 0; }
     .label > .bar:first-child { padding-top: 0; }
-    .label > .head:only-child .nama:only-child { font-size: 16px; }
-    .harga .rp { margin-right: 1mm; font-size: 13px; font-weight: 700; }
-    .harga .satuan { margin-left: 1.5mm; font-size: 10.5px; font-weight: 600; color: #4b5563; }
+    .label > .head:only-child .nama:only-child { font-size: calc(16px * var(--s)); }
+    .harga .rp { margin-right: 1mm; font-size: calc(13px * var(--s)); font-weight: 700; }
+    .harga .satuan { margin-left: 1.5mm; font-size: calc(10.5px * var(--s)); font-weight: 600; color: #4b5563; }
     @media print {
       body { background: #fff; }
       .bar-top { display: none; }
       .sheet { display: block; padding: 0; }
-      .label { box-shadow: none; border-radius: 0; margin: 0 auto; break-after: page; page-break-after: always; }
+      .label { box-shadow: none !important; border-radius: 0; margin: 0 auto; break-after: page; page-break-after: always; }
       .label:last-child { break-after: auto; page-break-after: auto; }
+      .label.kotak { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style></head><body>
-    <div class="bar-top"><span>${labels.length > 1 ? "2 label (per satuan)" : "1 label"} · tiap label dicetak di halaman sendiri</span><button onclick="window.print()">Cetak</button></div>
-    <main class="sheet">${labels.join("")}</main>
+    <div class="bar-top">
+      <span class="info" id="info"></span>
+      <div class="ctl">
+        <label>Lebar (mm)<input type="number" id="w" min="20" max="210"></label>
+        <label>Tinggi (mm)<input type="number" id="h" min="0" max="297" title="0 = otomatis"></label>
+        <label>Teks (%)<input type="number" id="s" min="50" max="250"></label>
+        <label>Jumlah<input type="number" id="n" min="1" max="200"></label>
+        <label class="chk"><input type="checkbox" id="k"> Kotak</label>
+      </div>
+      <button onclick="window.print()">Cetak</button>
+    </div>
+    <main class="sheet" id="sheet"></main>
+    <script>
+      var D = ${data};
+      var el = function (id) { return document.getElementById(id); };
+      var num = function (id, lo, hi, def) { var v = Math.round(Number(el(id).value)); return isFinite(v) && el(id).value !== "" ? Math.min(hi, Math.max(lo, v)) : def; };
+      el("w").value = D.ukuran.lebar; el("h").value = D.ukuran.tinggi; el("s").value = D.ukuran.skala; el("n").value = D.ukuran.jumlah; el("k").checked = D.ukuran.kotak;
+      function render() {
+        var w = num("w", 20, 210, 70), h = num("h", 0, 297, 0), s = num("s", 50, 250, 100), n = num("n", 1, 200, 1), k = el("k").checked;
+        if (h > 0 && h < 15) h = 15;
+        var root = document.documentElement.style;
+        root.setProperty("--s", String(s / 100));
+        root.setProperty("--w", w + "mm");
+        root.setProperty("--bar", (h > 0 ? Math.max(6, h * 0.38) : 20 * s / 100) + "mm");
+        // Tinggi diisi: kertas dicetak persis seukuran label (cocok untuk printer label). Kosong/0: kertas ikut printer, label di tengah.
+        el("pg").textContent = h > 0
+          ? "@page { size: " + w + "mm " + h + "mm; margin: 0; } @media print { .label { width: " + (w - 1) + "mm !important; height: " + (h - 1) + "mm !important; margin: .5mm !important; } }"
+          : "@page { margin: 3mm; }";
+        var html = "";
+        for (var i = 0; i < D.labels.length; i++) {
+          for (var j = 0; j < n; j++) html += D.labels[i].replace('class="label"', 'class="label' + (k ? " kotak" : "") + '"' + (h > 0 ? ' style="height:' + h + 'mm"' : ""));
+        }
+        el("sheet").innerHTML = html;
+        el("info").textContent = (D.labels.length * n) + " label (" + n + " salinan x " + D.labels.length + " satuan) \u00b7 tiap label dicetak di halaman sendiri";
+      }
+      ["w", "h", "s", "n", "k"].forEach(function (id) { el(id).addEventListener("input", render); el(id).addEventListener("change", render); });
+      render();
+    </script>
   </body></html>`;
-  const win = window.open("", "_blank", "width=460,height=680");
+  const win = window.open("", "_blank", "width=620,height=700");
   if (!win) {
     toast.error("Popup diblokir. Izinkan popup untuk mencetak barcode.");
     return;
   }
   win.document.write(html);
   win.document.close();
-  setTimeout(() => win.print(), 400);
+  // Cetak otomatis dihapus: admin perlu sempat mengatur ukuran & jumlah di jendela pratinjau, lalu tekan Cetak.
 }
 
 type OriginData = {

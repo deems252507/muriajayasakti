@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Panel, PrimaryButton } from "@/components/shop/shell";
 import { getLabelBarcode, saveLabelBarcode } from "@/lib/shop/api";
-import { FIELDS_DEFAULTS, FIELDS_NAMA_HARGA, LABEL_DEFAULTS, LABEL_FIELDS, cleanLabelOptions, labelAdaIsi, type LabelFields, type LabelOptions, type LabelUnit } from "@/lib/shop/label-settings";
+import { FIELDS_DEFAULTS, FIELDS_NAMA_HARGA, LABEL_DEFAULTS, LABEL_FIELDS, cleanLabelOptions, labelAdaIsi, type LabelFields, type LabelOptions, type LabelSize, type LabelUnit, SIZE_DEFAULTS } from "@/lib/shop/label-settings";
 
 /** Satu set pilihan untuk satu jenis label (Pcs atau Dus), lengkap dengan contoh tampilannya. */
 function UnitBox({ title, sub, value, onChange }: { title: string; sub: string; value: LabelFields; onChange: (next: LabelFields) => void }) {
@@ -56,6 +56,41 @@ function UnitBox({ title, sub, value, onChange }: { title: string; sub: string; 
   );
 }
 
+function NumField({ label, hint, value, onChange }: { label: string; hint?: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <label className="block text-sm font-semibold">
+      {label}
+      <input type="number" inputMode="numeric" className="mt-1 h-10 w-full rounded-lg border border-line px-2.5 font-normal" value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      {hint ? <span className="block text-[11px] font-normal text-muted">{hint}</span> : null}
+    </label>
+  );
+}
+
+/** Ukuran kertas label, ukuran teks, kotak, dan jumlah salinan bawaan. Saat mencetak masih bisa diubah lagi di jendela pratinjau. */
+function SizeBox({ value, onChange }: { value: LabelSize; onChange: (next: LabelSize) => void }) {
+  const set = (patch: Partial<LabelSize>) => onChange({ ...value, ...patch });
+  return (
+    <div className="mt-3 rounded-xl border border-line p-3">
+      <p className="text-sm font-extrabold">Ukuran &amp; Jumlah</p>
+      <p className="text-[11px] text-muted">Nilai bawaan. Di jendela cetak, ukuran dan jumlah masih bisa diubah per barang (kecil/besar) sebelum dicetak.</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <NumField label="Lebar (mm)" value={value.lebar} onChange={(n) => set({ lebar: n })} />
+        <NumField label="Tinggi (mm)" hint="0 = otomatis mengikuti isi" value={value.tinggi} onChange={(n) => set({ tinggi: n })} />
+        <NumField label="Ukuran teks (%)" hint="100 = normal" value={value.skala} onChange={(n) => set({ skala: n })} />
+        <NumField label="Jumlah salinan" hint="Label sama yang dicetak" value={value.jumlah} onChange={(n) => set({ jumlah: n })} />
+      </div>
+      <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold">
+        <input type="checkbox" className="size-4" checked={value.kotak} onChange={() => set({ kotak: !value.kotak })} />
+        Cetak dengan garis kotak
+      </label>
+      <div className="mt-2 flex gap-3 text-xs">
+        <button type="button" className="btn-inline text-accent" onClick={() => onChange({ ...SIZE_DEFAULTS })}>Kembalikan bawaan</button>
+        <button type="button" className="btn-inline text-slate-600" onClick={() => onChange({ ...SIZE_DEFAULTS, lebar: 40, tinggi: 25, skala: 70 })}>Contoh label kecil (40×25)</button>
+      </div>
+    </div>
+  );
+}
+
 /** Pengaturan isi label barcode: label Pcs dan label Dus diatur sendiri-sendiri, lalu Simpan. Berlaku untuk semua akun. */
 export function LabelBarcodePanel() {
   const [opt, setOpt] = useState<LabelOptions>(LABEL_DEFAULTS);
@@ -84,6 +119,7 @@ export function LabelBarcodePanel() {
         <UnitBox title="Label Pcs" sub="Satuan dasar / kecil" value={opt.pcs} onChange={(next) => set("pcs", next)} />
         <UnitBox title="Label Dus" sub="Satuan besar, hanya untuk barang yang punya Dus" value={opt.dus} onChange={(next) => set("dus", next)} />
       </div>
+      <SizeBox value={opt.ukuran} onChange={(next) => setOpt((prev) => ({ ...prev, ukuran: next }))} />
       {tidakAdaYangTercetak ? <p role="alert" className="mt-2 text-xs font-semibold text-red-700">Tidak ada label yang akan tercetak. Aktifkan dan centang minimal satu isi.</p> : null}
       <div className="mt-3">
         <PrimaryButton type="button" disabled={busy || !berubah || tidakAdaYangTercetak} onClick={simpan}>{busy ? "Menyimpan..." : "Simpan Isi Label"}</PrimaryButton>

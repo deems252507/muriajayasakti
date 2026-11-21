@@ -12,7 +12,30 @@ export type LabelFields = {
 };
 
 /** Label satuan kecil (Pcs) dan satuan besar (Dus) diatur sendiri-sendiri. */
-export type LabelOptions = { pcs: LabelFields; dus: LabelFields };
+export type LabelOptions = { pcs: LabelFields; dus: LabelFields; ukuran: LabelSize };
+
+/** Ukuran kertas label. Tinggi 0 = otomatis mengikuti isi. Skala teks dalam persen. */
+export type LabelSize = { lebar: number; tinggi: number; skala: number; kotak: boolean; jumlah: number };
+export const SIZE_DEFAULTS: LabelSize = { lebar: 70, tinggi: 0, skala: 100, kotak: true, jumlah: 1 };
+export const SIZE_LIMITS = { lebar: [20, 210], tinggi: [0, 297], skala: [50, 250], jumlah: [1, 200] } as const;
+
+const clampInt = (v: unknown, [min, max]: readonly [number, number], fallback: number) => {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+};
+
+export function cleanLabelSize(raw: unknown): LabelSize {
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  let tinggi = clampInt(src.tinggi, SIZE_LIMITS.tinggi, SIZE_DEFAULTS.tinggi);
+  if (tinggi > 0 && tinggi < 15) tinggi = 15;
+  return {
+    lebar: clampInt(src.lebar, SIZE_LIMITS.lebar, SIZE_DEFAULTS.lebar),
+    tinggi,
+    skala: clampInt(src.skala, SIZE_LIMITS.skala, SIZE_DEFAULTS.skala),
+    kotak: typeof src.kotak === "boolean" ? src.kotak : SIZE_DEFAULTS.kotak,
+    jumlah: clampInt(src.jumlah, SIZE_LIMITS.jumlah, SIZE_DEFAULTS.jumlah),
+  };
+}
 export type LabelUnit = keyof LabelOptions;
 
 export const LABEL_FIELDS: Array<{ key: Exclude<keyof LabelFields, "aktif">; label: string; hint?: string }> = [
@@ -28,7 +51,7 @@ export const LABEL_FIELDS: Array<{ key: Exclude<keyof LabelFields, "aktif">; lab
 const FIELD_KEYS = ["aktif", ...LABEL_FIELDS.map((f) => f.key)] as Array<keyof LabelFields>;
 
 export const FIELDS_DEFAULTS: LabelFields = { aktif: true, nama: true, merek: true, partNumber: true, kodePajak: true, barcode: true, kodeBarcode: true, harga: true };
-export const LABEL_DEFAULTS: LabelOptions = { pcs: { ...FIELDS_DEFAULTS }, dus: { ...FIELDS_DEFAULTS } };
+export const LABEL_DEFAULTS: LabelOptions = { pcs: { ...FIELDS_DEFAULTS }, dus: { ...FIELDS_DEFAULTS }, ukuran: { ...SIZE_DEFAULTS } };
 
 /** Hanya nama + harga. */
 export const FIELDS_NAMA_HARGA: LabelFields = { aktif: true, nama: true, merek: false, partNumber: false, kodePajak: false, barcode: false, kodeBarcode: false, harga: true };
@@ -46,10 +69,10 @@ function cleanFields(raw: unknown): LabelFields {
  */
 export function cleanLabelOptions(raw: unknown): LabelOptions {
   const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  if (src.pcs || src.dus) return { pcs: cleanFields(src.pcs), dus: cleanFields(src.dus) };
+  if (src.pcs || src.dus) return { pcs: cleanFields(src.pcs), dus: cleanFields(src.dus), ukuran: cleanLabelSize(src.ukuran) };
   const pcs = cleanFields(src);
   const dus = { ...pcs, harga: typeof src.hargaAlt === "boolean" ? src.hargaAlt : pcs.harga };
-  return { pcs, dus };
+  return { pcs, dus, ukuran: cleanLabelSize(src.ukuran) };
 }
 
 /** Apakah label ini punya isi untuk dicetak? */

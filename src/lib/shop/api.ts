@@ -194,7 +194,7 @@ export const getLabelBarcode = createServerFn({ method: "GET" }).handler(async (
 });
 
 export const saveLabelBarcode = createServerFn({ method: "POST" })
-  .validator((input: LabelOptions) => ({ pcs: input?.pcs, dus: input?.dus }))
+  .validator((input: LabelOptions) => ({ pcs: input?.pcs, dus: input?.dus, ukuran: input?.ukuran }))
   .handler(async ({ data }) => {
     const { saveLabelBarcode: run } = await import("./logic.server");
     return run(data);
