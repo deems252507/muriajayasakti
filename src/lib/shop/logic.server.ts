@@ -4754,39 +4754,7 @@ function gudangFail(r: { alasan?: string; sisa?: number }, u: GudangUnits) {
   return "Perubahan tidak dapat diproses.";
 }
 
-/** Rentang tanggal untuk filter daftar (zona WITA). dari/sampai berformat YYYY-MM-DD; kosong = tidak dibatasi. */
-function tanggalRentang(col: string, dari: unknown, sampai: unknown, params: unknown[]) {
-  const out: string[] = [];
-  const ok = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-  if (ok(dari)) {
-    params.push(String(dari));
-    out.push(`${col} >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
-  }
-  if (ok(sampai)) {
-    params.push(String(sampai));
-    out.push(`${col} < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
-  }
-  return out;
-}
-
-const idPositif = (v: unknown) => {
-  const n = Number(v);
-  return Number.isInteger(n) && n > 0 ? n : 0;
-};
-
-/** Pilihan filter Pemasok untuk Stok Gudang: pemasok yang pernah memasok barang yang ada di gudang. */
-async function gudangPemasokOpsi(db: Awaited<ReturnType<typeof sql>>) {
-  const rows = await db.query<{ id: number; nama: string }>(
-    `select distinct pt.id, pt.nama from gudang_items g
-     join supplier_receipt_lines sl on sl.product_id = g.product_id
-     join supplier_receipts sr on sr.id = sl.receipt_id
-     join partners pt on pt.id = sr.supplier_id
-     order by pt.nama, pt.id`,
-  );
-  return rows.map((r) => ({ id: Number(r.id), nama: String(r.nama ?? "") }));
-}
-
-function gudangWhere(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown; pemasokId?: unknown; dari?: unknown; sampai?: unknown }, params: unknown[]) {
+function gudangWhere(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown }, params: unknown[]) {
   const where: string[] = [];
   const q = String(data?.q ?? "").trim();
   if (q) {
@@ -4800,20 +4768,12 @@ function gudangWhere(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknow
     where.push(`lower(btrim(p.kategori)) = $${params.length}`);
   }
   if (data?.hanyaStok) where.push(`g.stok > 0`);
-  const pemasokId = idPositif(data?.pemasokId);
-  if (pemasokId) {
-    params.push(pemasokId);
-    where.push(`exists (select 1 from supplier_receipt_lines sl join supplier_receipts sr on sr.id = sl.receipt_id where sl.product_id = p.id and sr.supplier_id = $${params.length})`);
-  }
-  // Tanggal = ada mutasi/stok masuk gudang untuk barang itu pada rentang tersebut.
-  const rentang = tanggalRentang("l.tanggal", data?.dari, data?.sampai, params);
-  if (rentang.length) where.push(`exists (select 1 from gudang_log l where l.product_id = g.product_id and ${rentang.join(" and ")})`);
   return where;
 }
 
-const GUDANG_PER_PAGE = 12;
+const GUDANG_PER_PAGE = 30;
 
-export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown; pemasokId?: unknown; dari?: unknown; sampai?: unknown; page?: unknown }) {
+export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaStok?: unknown; page?: unknown }) {
   const me = await requireGudangView();
   const db = await sql();
   const params: unknown[] = [];
@@ -4864,7 +4824,6 @@ export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaS
     page,
     perPage: GUDANG_PER_PAGE,
     kategori: cats.map((c) => String(c.kategori)).filter(Boolean),
-    pemasok: await gudangPemasokOpsi(db),
     bisaUbah: Boolean(me.canGudang),
     admin: me.role === "Admin",
   };
@@ -5012,9 +4971,9 @@ export async function gudangSetor(data: { productId: number; qty: number; unit: 
   }
 }
 
-const GUDANG_LOG_PER_PAGE = 15;
+const GUDANG_LOG_PER_PAGE = 30;
 
-export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek?: unknown; productId?: unknown; kategori?: unknown; pemasokId?: unknown; dari?: unknown; sampai?: unknown; page?: unknown }) {
+export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek?: unknown; productId?: unknown; page?: unknown }) {
   const me = await requireGudangView();
   if (!gudangRiwayatAllowed(me)) throw new Error("Riwayat mutasi gudang hanya untuk Admin, Owner, dan staf yang diberi izin Stok Gudang.");
   const db = await sql();
@@ -5037,17 +4996,6 @@ export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek
     params.push(productId);
     where.push(`l.product_id = $${params.length}`);
   }
-  const kategori = String(data?.kategori ?? "").trim();
-  if (kategori) {
-    params.push(kategori.toLowerCase());
-    where.push(`lower(btrim(p.kategori)) = $${params.length}`);
-  }
-  const pemasokId = idPositif(data?.pemasokId);
-  if (pemasokId) {
-    params.push(pemasokId);
-    where.push(`exists (select 1 from supplier_receipt_lines sl join supplier_receipts sr on sr.id = sl.receipt_id where sl.product_id = l.product_id and sr.supplier_id = $${params.length})`);
-  }
-  where.push(...tanggalRentang("l.tanggal", data?.dari, data?.sampai, params));
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const page = Math.max(1, Number(data?.page ?? 1) || 1);
   const [count] = await db.query<{ n: number; belum: number }>(
@@ -5096,13 +5044,6 @@ export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek
     items,
     total: Number(count?.n ?? 0),
     belumDicek: Number(count?.belum ?? 0),
-    kategori: (
-      await db.query<{ kategori: string }>(
-        `select distinct btrim(p.kategori) as kategori from gudang_items g join products p on p.id = g.product_id
-         where btrim(coalesce(p.kategori, '')) <> '' order by 1`,
-      )
-    ).map((c) => String(c.kategori)),
-    pemasok: await gudangPemasokOpsi(db),
     page,
     perPage: GUDANG_LOG_PER_PAGE,
     admin: me.role === "Admin",
@@ -5580,6 +5521,7 @@ function alokasiRow(row: Record<string, unknown>) {
     invoiceNo: String(row.invoice_no ?? ""),
     receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : "",
     supplierName: String(row.supplier_name ?? ""),
+    barangPertama: String(row.barang_pertama ?? ""),
     status: String(row.alokasi_status ?? "selesai") as AlokasiStatus,
     statusDiubah: row.status_diubah ? new Date(String(row.status_diubah)).toISOString() : "",
     alokasiOleh: String(row.alokasi_oleh ?? ""),
@@ -5598,7 +5540,7 @@ function alokasiRow(row: Record<string, unknown>) {
 }
 
 /** Daftar faktur untuk menu Alokasi Faktur (tanpa harga). filter: tindakan (butuh saya), semua, selesai. */
-export async function alokasiList(data: { filter?: string; q?: string; kategori?: string; pemasokId?: number; dari?: string; sampai?: string; page?: number }) {
+export async function alokasiList(data: { filter?: string; q?: string; page?: number; supplierId?: number; start?: string; end?: string }) {
   const me = await requireAlokasi();
   const db = await sql();
   const filter = data?.filter === "semua" || data?.filter === "selesai" || data?.filter === "selisih" ? data.filter : "tindakan";
@@ -5613,19 +5555,23 @@ export async function alokasiList(data: { filter?: string; q?: string; kategori?
     const n = params.length;
     where.push(`(r.invoice_no ilike $${n} or p.nama ilike $${n} or exists (select 1 from supplier_receipt_lines lq join products pq on pq.id = lq.product_id where lq.receipt_id = r.id and (pq.nama ilike $${n} or pq.part_number ilike $${n})))`);
   }
-  const pemasokId = idPositif(data?.pemasokId);
-  if (pemasokId) {
-    params.push(pemasokId);
+  const supplierId = Number(data?.supplierId);
+  if (Number.isInteger(supplierId) && supplierId > 0) {
+    params.push(supplierId);
     where.push(`r.supplier_id = $${params.length}`);
   }
-  const kategori = String(data?.kategori ?? "").trim();
-  if (kategori) {
-    params.push(kategori.toLowerCase());
-    where.push(`exists (select 1 from supplier_receipt_lines lk join products pk on pk.id = lk.product_id where lk.receipt_id = r.id and lower(btrim(pk.kategori)) = $${params.length})`);
+  const start = String(data?.start ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    params.push(start);
+    where.push(`r.received_at >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
   }
-  where.push(...tanggalRentang("r.received_at", data?.dari, data?.sampai, params));
+  const end = String(data?.end ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    params.push(end);
+    where.push(`r.received_at < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
   const clause = where.join(" and ");
-  const perPage = 10;
+  const perPage = 20;
   const page = Math.max(1, Number(data?.page ?? 1) || 1);
   const [count] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r join partners p on p.id = r.supplier_id where ${clause}`, params);
   const rows = await db.query<Record<string, unknown>>(
@@ -5633,28 +5579,36 @@ export async function alokasiList(data: { filter?: string; q?: string; kategori?
             r.alokasi_catatan, r.cek_nama, r.cek_pada, r.catatan_kembali, p.nama as supplier_name,
             (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id) as n_item,
             (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
-            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.selisih > 0) as n_selisih
+            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.selisih > 0) as n_selisih,
+            (select pr.nama from supplier_receipt_lines l join products pr on pr.id = l.product_id where l.receipt_id = r.id order by l.id limit 1) as barang_pertama
      from supplier_receipts r join partners p on p.id = r.supplier_id
      where ${clause}
      order by (r.alokasi_status = 'selesai') asc, r.received_at desc, r.id desc
      limit ${perPage} offset ${(page - 1) * perPage}`,
     params,
   );
-  const kategoriRows = await db.query<{ kategori: string }>(
-    `select distinct btrim(pk.kategori) as kategori from supplier_receipt_lines lk join products pk on pk.id = lk.product_id
-     where btrim(coalesce(pk.kategori, '')) <> '' order by 1`,
+  // Pemasok untuk filter, jumlah faktur per tahap alur, dan jumlah yang perlu ditindak akun ini (tidak terpengaruh filter).
+  const suppliers = await db.query<{ id: number; nama: string }>(
+    `select distinct p.id, p.nama from supplier_receipts r join partners p on p.id = r.supplier_id order by p.nama`,
   );
-  const pemasokRows = await db.query<{ id: number; nama: string }>(
-    `select distinct pt.id, pt.nama from supplier_receipts sr join partners pt on pt.id = sr.supplier_id order by pt.nama, pt.id`,
-  );
+  const statusRows = await db.query<{ s: string; n: number }>(`select alokasi_status as s, count(*)::int as n from supplier_receipts group by 1`);
+  const byStatus = Object.fromEntries(statusRows.map((r) => [String(r.s), Number(r.n)])) as Record<string, number>;
+  const tp: unknown[] = [];
+  const [tind] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r where ${alokasiTindakanSql(me, tp)}`, tp);
   return {
     total: Number(count?.n ?? 0),
     page,
     perPage,
     isAdmin: me.role === "Admin",
-    kategori: kategoriRows.map((c) => String(c.kategori)),
-    pemasok: pemasokRows.map((r) => ({ id: Number(r.id), nama: String(r.nama ?? "") })),
     items: rows.map(alokasiRow),
+    suppliers: suppliers.map((r) => ({ id: Number(r.id), nama: String(r.nama) })),
+    counts: {
+      perlu_alokasi: byStatus.perlu_alokasi ?? 0,
+      menunggu_cek: byStatus.menunggu_cek ?? 0,
+      dikembalikan: byStatus.dikembalikan ?? 0,
+      selesai: byStatus.selesai ?? 0,
+      tindakan: Number(tind?.n ?? 0),
+    },
   };
 }
 
@@ -5831,7 +5785,7 @@ export async function alokasiInbox() {
 /* ===== Perlu diambil dari gudang ===== */
 /** Barang yang stok tokonya sudah di bawah (atau sama dengan) stok minimum tetapi masih ada di gudang.
  *  Saran jumlah: isi toko sampai 2x stok minimum, paling banyak sebesar stok gudang (satuan dasar). */
-export async function gudangPerluDiambil(data: { q?: string; kategori?: string; pemasokId?: number; page?: number }) {
+export async function gudangPerluDiambil(data: { q?: string }) {
   const me = await requireGudangView();
   const db = await sql();
   const params: unknown[] = [];
@@ -5840,44 +5794,18 @@ export async function gudangPerluDiambil(data: { q?: string; kategori?: string; 
     const n = params.length;
     return `(p.nama ilike $${n} or p.part_number ilike $${n} or p.part_numbers_alt ilike $${n} or p.kode ilike $${n} or p.merek ilike $${n} or p.kode_pajak ilike $${n} or p.kategori ilike $${n})`;
   });
-  const kategori = String(data?.kategori ?? "").trim();
-  if (kategori) {
-    params.push(kategori.toLowerCase());
-    conds.push(`lower(btrim(p.kategori)) = $${params.length}`);
-  }
-  const pemasokId = idPositif(data?.pemasokId);
-  if (pemasokId) {
-    params.push(pemasokId);
-    conds.push(`exists (select 1 from supplier_receipt_lines sl join supplier_receipts sr on sr.id = sl.receipt_id where sl.product_id = p.id and sr.supplier_id = $${params.length})`);
-  }
   const extra = conds.length ? ` and ${conds.join(" and ")}` : "";
-  const perPage = 10;
-  const page = Math.max(1, Number(data?.page ?? 1) || 1);
-  const [count] = await db.query<{ n: number }>(
-    `select count(*)::int as n from gudang_items g join products p on p.id = g.product_id
-     where g.stok > 0 and p.stok_min > 0 and p.stok <= p.stok_min${extra}`,
-    params,
-  );
-  const kategoriRows = await db.query<{ kategori: string }>(
-    `select distinct btrim(p.kategori) as kategori from gudang_items g join products p on p.id = g.product_id
-     where g.stok > 0 and p.stok_min > 0 and p.stok <= p.stok_min and btrim(coalesce(p.kategori, '')) <> '' order by 1`,
-  );
   const rows = await db.query<Record<string, unknown>>(
     `select p.id as product_id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
             p.satuan, p.satuan_alt, p.isi_satuan_alt, p.stok as stok_toko, p.stok_min, g.stok as stok_gudang
      from gudang_items g join products p on p.id = g.product_id
      where g.stok > 0 and p.stok_min > 0 and p.stok <= p.stok_min${extra}
      order by (p.stok <= 0) desc, (p.stok::float / p.stok_min) asc, lower(p.nama) asc
-     limit ${perPage} offset ${(page - 1) * perPage}`,
+     limit 200`,
     params,
   );
   return {
     bisaUbah: Boolean(me.canGudang),
-    total: Number(count?.n ?? 0),
-    page,
-    perPage,
-    kategori: kategoriRows.map((c) => String(c.kategori)),
-    pemasok: await gudangPemasokOpsi(db),
     items: rows.map((row) => {
       const stokToko = Number(row.stok_toko ?? 0);
       const stokMin = Number(row.stok_min ?? 0);
