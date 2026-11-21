@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRightLeft, Check, Store, ClipboardCheck, FileText, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, SetorDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
 import { GudangHitungDialog } from "@/components/shop/gudang-hitung";
+import { PageBar, useIsWide } from "@/components/shop/page-bar";
 import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
 import { confirmDialog } from "@/lib/confirm";
@@ -166,6 +167,40 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
 
   const bisaUbah = Boolean(data?.bisaUbah);
   const admin = Boolean(data?.admin);
+  const wide = useIsWide();
+  /** Tombol selain Ambil/Simpan: Tambah stok, Hitung, Riwayat, Sesuaikan, Hapus. compact=false dipakai di tabel (ikon saja). */
+  const lainnya = (item: GudangItem, kartu = false) => {
+    const kecil = kartu ? "h-10" : "h-9";
+    return (
+      <>
+        {bisaUbah ? (
+          <button type="button" aria-label="Tambah stok gudang" title="Tambah stok gudang (barang baru dari luar, bukan pindahan dari toko)" onClick={() => setDialog({ kind: "tambah", item })} className={`${kecil} ${kartu ? "flex flex-1 items-center justify-center gap-1.5 px-3 text-sm" : "grid w-9 place-items-center"} rounded-lg border border-slate-300 bg-white font-bold text-slate-800`}>
+            <Plus className="size-4" />{kartu ? " Tambah stok" : null}
+          </button>
+        ) : null}
+        {bisaUbah ? (
+          <button type="button" aria-label="Hitung stok gudang" title="Hitung stok gudang (hitungan sementara)" onClick={() => setDialog({ kind: "opname", item })} className={`${kecil} ${kartu ? "flex items-center justify-center gap-1.5 px-3 text-sm" : "grid w-9 place-items-center"} rounded-lg border border-violet-300 bg-violet-50 font-bold text-violet-900`}>
+            <ClipboardCheck className="size-4" />{kartu ? " Hitung" : null}
+          </button>
+        ) : null}
+        {canHistory ? (
+          <button type="button" aria-label="Riwayat barang" title="Riwayat mutasi barang ini" onClick={() => onHistory(item.productId)} className={`${kecil} grid ${kartu ? "size-10" : "w-9"} place-items-center rounded-lg border border-slate-300 bg-white text-slate-700`}>
+            <History className="size-4" />
+          </button>
+        ) : null}
+        {admin ? (
+          <>
+            <button type="button" aria-label="Sesuaikan stok" title="Sesuaikan stok" onClick={() => setDialog({ kind: "sesuaikan", item })} className={`${kecil} grid ${kartu ? "size-10" : "w-9"} place-items-center rounded-lg border border-slate-300 bg-white text-slate-700`}>
+              <SlidersHorizontal className="size-4" />
+            </button>
+            <button type="button" aria-label="Hapus dari gudang" title="Hapus dari daftar gudang" onClick={() => void removeItem(item)} className={`${kecil} grid ${kartu ? "size-10" : "w-9"} place-items-center rounded-lg border border-red-200 bg-white text-red-600`}>
+              <Trash2 className="size-4" />
+            </button>
+          </>
+        ) : null}
+      </>
+    );
+  };
 
   return (
     <>
@@ -214,66 +249,122 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
         </div>
       ) : null}
 
-      <div className={`grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 ${loading ? "opacity-60" : ""}`}>
-        {data?.items.map((item) => (
-          <article key={item.productId} id={`gudang-item-${item.productId}`} className={`flex flex-col rounded-xl border bg-white p-3 shadow-sm transition ${focusId === item.productId ? "border-amber-400 ring-2 ring-amber-300" : "border-slate-200"}`}>
-            <ItemIdentity item={item} />
-            <div className="mt-2.5 grid grid-cols-2 gap-2 text-center">
-              <div className={`rounded-lg p-2 ${item.stokGudang > 0 ? "bg-emerald-50" : "bg-slate-100"}`}>
-                <p className="text-[11px] font-semibold text-slate-600">Stok gudang</p>
-                <p className="text-base font-extrabold text-slate-900">{fmtItem(item.stokGudang, item)}</p>
-              </div>
-              <div className="rounded-lg bg-slate-100 p-2">
-                <p className="text-[11px] font-semibold text-slate-600">Stok toko</p>
-                <p className="text-base font-extrabold text-slate-900">{fmtItem(item.stokToko, item)}</p>
-              </div>
-            </div>
-            {admin ? (
-              <p className="mt-1.5 text-[11px] text-slate-500">
-                {item.opnamePada ? `Opname terakhir ${when(item.opnamePada)}, ${item.opnameSelisih === 0 ? "cocok" : `selisih ${(item.opnameSelisih ?? 0) > 0 ? "+" : "-"}${fmtItem(Math.abs(item.opnameSelisih ?? 0), item)}`}` : "Belum pernah di-opname"}
-              </p>
-            ) : null}
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {bisaUbah ? (
-                <div className="grid w-full grid-cols-2 gap-1.5">
-                  <button type="button" disabled={item.stokGudang <= 0} title="Pindahkan dari gudang ke toko" onClick={() => setDialog({ kind: "ambil", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-bold text-white disabled:opacity-40">
-                    <Store className="size-4" /> Ambil ke toko
-                  </button>
-                  <button type="button" disabled={item.stokToko <= 0} title="Pindahkan dari toko ke gudang" onClick={() => setDialog({ kind: "setor", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white disabled:opacity-40">
-                    <Warehouse className="size-4" /> Simpan ke gudang
-                  </button>
-                </div>
-              ) : null}
-              {bisaUbah ? (
-                <button type="button" onClick={() => setDialog({ kind: "tambah", item })} className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">
-                  <Plus className="size-4" /> Tambah stok
-                </button>
-              ) : null}
-              {bisaUbah ? (
-                <button type="button" aria-label="Hitung stok gudang" title="Hitung stok gudang (hitungan sementara)" onClick={() => setDialog({ kind: "opname", item })} className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 text-sm font-bold text-violet-900">
-                  <ClipboardCheck className="size-4" /> Hitung
-                </button>
-              ) : null}
-              {canHistory ? (
-                <button type="button" aria-label="Riwayat barang" title="Riwayat mutasi barang ini" onClick={() => onHistory(item.productId)} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
-                  <History className="size-4" />
-                </button>
-              ) : null}
-              {admin ? (
-                <>
-                  <button type="button" aria-label="Sesuaikan stok" title="Sesuaikan stok" onClick={() => setDialog({ kind: "sesuaikan", item })} className="grid size-10 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700">
-                    <SlidersHorizontal className="size-4" />
-                  </button>
-                  <button type="button" aria-label="Hapus dari gudang" title="Hapus dari daftar gudang" onClick={() => void removeItem(item)} className="grid size-10 place-items-center rounded-lg border border-red-200 bg-white text-red-600">
-                    <Trash2 className="size-4" />
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </article>
-        ))}
-      </div>
-      {data ? <Pager page={data.page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
+      {data && data.items.length > 0 ? (
+        wide ? (
+          <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white ${loading ? "opacity-60" : ""}`}>
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-slate-300 bg-slate-100">
+                <tr>
+                  <th className={TH}>Nama Barang</th>
+                  <th className={TH}>Part Number</th>
+                  <th className={`${TH} bg-emerald-50 text-center text-emerald-800`}>Stok Gudang</th>
+                  <th className={`${TH} text-center`}>Stok Toko</th>
+                  <th className={`${TH} text-center`}>Pindah</th>
+                  <th className={`${TH} text-center`}>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((item, i) => {
+                  const cat = catOf(item);
+                  const showCat = i === 0 || catOf(data.items[i - 1]).toLowerCase() !== cat.toLowerCase();
+                  return (
+                    <Fragment key={item.productId}>
+                      {showCat ? (
+                        <tr>
+                          <td colSpan={6} className="border-y border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900">{cat.toUpperCase()}</td>
+                        </tr>
+                      ) : null}
+                      <tr id={`gudang-item-${item.productId}`} className={`border-b border-slate-100 transition-colors ${focusId === item.productId ? "bg-amber-50 ring-2 ring-inset ring-amber-300" : "bg-white hover:bg-blue-50/50"}`}>
+                        <td className={`${TD} min-w-[220px] max-w-[320px]`}>
+                          <div className="font-semibold leading-snug text-slate-900">{item.nama}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            {item.merek ? <span className="inline-block rounded bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">{item.merek}</span> : null}
+                            {item.kodePajak ? <span className="inline-block rounded bg-violet-100 px-1.5 py-px font-mono text-[11px] font-bold text-violet-800">[{item.kodePajak}]</span> : null}
+                          </div>
+                          {admin ? (
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {item.opnamePada ? `Opname ${when(item.opnamePada)}, ${item.opnameSelisih === 0 ? "cocok" : `selisih ${(item.opnameSelisih ?? 0) > 0 ? "+" : "-"}${fmtItem(Math.abs(item.opnameSelisih ?? 0), item)}`}` : "Belum pernah di-opname"}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className={`${TD} min-w-[150px]`}>
+                          <div className="whitespace-nowrap font-mono text-xs">{item.partNumber || item.kode || "-"}</div>
+                          {item.partNumbersAlt ? <div className="mt-0.5 break-words font-mono text-[11px] text-slate-500">Alt: {item.partNumbersAlt}</div> : null}
+                        </td>
+                        <td className={`${TD} whitespace-nowrap bg-emerald-50/40 text-center`}>
+                          <span className={`num text-base font-extrabold ${item.stokGudang > 0 ? "text-emerald-900" : "text-slate-400"}`}>{fmtItem(item.stokGudang, item)}</span>
+                        </td>
+                        <td className={`${TD} whitespace-nowrap text-center`}>
+                          <span className={`num text-base font-extrabold ${item.stokToko > 0 ? "text-slate-900" : "text-red-700"}`}>{fmtItem(item.stokToko, item)}</span>
+                        </td>
+                        <td className={TD}>
+                          {bisaUbah ? (
+                            <div className="flex flex-col gap-1">
+                              <button type="button" disabled={item.stokGudang <= 0} title="Pindahkan dari gudang ke toko" onClick={() => setDialog({ kind: "ambil", item })} className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3 text-xs font-bold text-white disabled:opacity-40">
+                                <Store className="size-4" /> Ambil ke toko
+                              </button>
+                              <button type="button" disabled={item.stokToko <= 0} title="Pindahkan dari toko ke gudang" onClick={() => setDialog({ kind: "setor", item })} className="flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40">
+                                <Warehouse className="size-4" /> Simpan ke gudang
+                              </button>
+                            </div>
+                          ) : <span className="block text-center text-slate-300">–</span>}
+                        </td>
+                        <td className={`${TD} whitespace-nowrap`}>
+                          <div className="flex items-center justify-center gap-1">{lainnya(item)}</div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={`space-y-2.5 ${loading ? "opacity-60" : ""}`}>
+            {data.items.map((item, i) => {
+              const cat = catOf(item);
+              const showCat = i === 0 || catOf(data.items[i - 1]).toLowerCase() !== cat.toLowerCase();
+              return (
+                <Fragment key={item.productId}>
+                  {showCat ? <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-extrabold tracking-wide text-blue-900">{cat.toUpperCase()}</p> : null}
+                  <article id={`gudang-item-${item.productId}`} className={`flex flex-col rounded-xl border bg-white p-3 shadow-sm transition ${focusId === item.productId ? "border-amber-400 ring-2 ring-amber-300" : "border-slate-200"}`}>
+                    <ItemIdentity item={item} />
+                    <div className="mt-2.5 grid grid-cols-2 gap-2 text-center">
+                      <div className={`rounded-lg p-2 ${item.stokGudang > 0 ? "bg-emerald-50" : "bg-slate-100"}`}>
+                        <p className="text-[11px] font-semibold text-slate-600">Stok gudang</p>
+                        <p className="text-base font-extrabold text-slate-900">{fmtItem(item.stokGudang, item)}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-100 p-2">
+                        <p className="text-[11px] font-semibold text-slate-600">Stok toko</p>
+                        <p className="text-base font-extrabold text-slate-900">{fmtItem(item.stokToko, item)}</p>
+                      </div>
+                    </div>
+                    {admin ? (
+                      <p className="mt-1.5 text-[11px] text-slate-500">
+                        {item.opnamePada ? `Opname terakhir ${when(item.opnamePada)}, ${item.opnameSelisih === 0 ? "cocok" : `selisih ${(item.opnameSelisih ?? 0) > 0 ? "+" : "-"}${fmtItem(Math.abs(item.opnameSelisih ?? 0), item)}`}` : "Belum pernah di-opname"}
+                      </p>
+                    ) : null}
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {bisaUbah ? (
+                        <div className="grid w-full grid-cols-2 gap-1.5">
+                          <button type="button" disabled={item.stokGudang <= 0} title="Pindahkan dari gudang ke toko" onClick={() => setDialog({ kind: "ambil", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-bold text-white disabled:opacity-40">
+                            <Store className="size-4" /> Ambil ke toko
+                          </button>
+                          <button type="button" disabled={item.stokToko <= 0} title="Pindahkan dari toko ke gudang" onClick={() => setDialog({ kind: "setor", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white disabled:opacity-40">
+                            <Warehouse className="size-4" /> Simpan ke gudang
+                          </button>
+                        </div>
+                      ) : null}
+                      {lainnya(item, true)}
+                    </div>
+                  </article>
+                </Fragment>
+              );
+            })}
+          </div>
+        )
+      ) : null}
+      {data && data.total > 0 ? <PageBar page={data.page} total={data.total} perPage={data.perPage} unit="barang" onPage={setPage} /> : null}
 
       {dialog?.kind === "tambah-barang" ? <TambahDialog onClose={() => setDialog(null)} onDone={done} onExisting={goToExisting} /> : null}
       {dialog?.kind === "tambah" ? <TambahDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
@@ -284,6 +375,10 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
     </>
   );
 }
+
+const TH = "whitespace-nowrap px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-600";
+const TD = "px-3 py-2.5 align-middle";
+const catOf = (item: { kategori: string }) => (item.kategori || "").trim() || "TANPA KATEGORI";
 
 const TIPE_LABEL: Record<GudangLog["tipe"], { text: string; cls: string }> = {
   MASUK: { text: "Tambah stok", cls: "bg-emerald-100 text-emerald-800" },
