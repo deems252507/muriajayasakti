@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, ClipboardCheck, FileText, Pencil, Search, Store, Trash2, Undo2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { FilterBaris } from "@/components/shop/list-filter";
 import { Pager } from "@/components/shop/opname-ui";
 import { StatusBadge } from "@/components/shop/alokasi-badge";
 import { Panel, inputClass } from "@/components/shop/shell";
@@ -46,6 +47,10 @@ function AlokasiPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>(filterParam ?? "tindakan");
   const [q, setQ] = useState("");
+  const [kategori, setKategori] = useState("");
+  const [pemasokId, setPemasokId] = useState(0);
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,19 +59,19 @@ function AlokasiPage() {
   const [openId, setOpenId] = useState<number | null>(faktur ?? null);
   const dq = useDebounced(q.trim());
 
-  useEffect(() => setPage(1), [dq, filter]);
+  useEffect(() => setPage(1), [dq, filter, kategori, pemasokId, dari, sampai]);
   // Notifikasi diklik saat halaman ini sudah terbuka: buka faktur yang dimaksud.
   useEffect(() => { if (faktur) setOpenId(faktur); }, [faktur]);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    void alokasiList({ data: { filter, q: dq, page } })
+    void alokasiList({ data: { filter, q: dq, kategori, pemasokId, dari, sampai, page } })
       .then((res) => { if (alive) { setData(res); setError(""); } })
       .catch((err: Error) => alive && setError(err.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [filter, dq, page, tick]);
+  }, [filter, dq, kategori, pemasokId, dari, sampai, page, tick]);
 
   // Daftar ikut segar saat ada perubahan dari notifikasi / perangkat lain (lencana menu memicu ini).
   useEffect(() => {
@@ -124,6 +129,24 @@ function AlokasiPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <input className={`${inputClass} pl-9`} placeholder="Cari nomor faktur, pemasok, atau barang" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <FilterBaris
+          kategoriList={data?.kategori ?? []}
+          kategori={kategori}
+          onKategori={setKategori}
+          pemasokList={data?.pemasok ?? []}
+          pemasokId={pemasokId}
+          onPemasok={setPemasokId}
+          dari={dari}
+          sampai={sampai}
+          onDari={setDari}
+          onSampai={setSampai}
+          onReset={() => {
+            setKategori("");
+            setPemasokId(0);
+            setDari("");
+            setSampai("");
+          }}
+        />
       </Panel>
 
       {error ? <Panel><p className="text-sm font-semibold text-red-700">{error}</p></Panel> : null}
@@ -132,7 +155,7 @@ function AlokasiPage() {
         {!loading && data && data.items.length === 0 ? (
           <Panel>
             <p className="py-6 text-center text-sm text-slate-600">
-              {filter === "tindakan" ? "Tidak ada faktur yang perlu ditindaklanjuti. Semua sudah beres." : "Tidak ada faktur sesuai pencarian."}
+              {filter === "tindakan" && !q.trim() && !kategori && !pemasokId && !dari && !sampai ? "Tidak ada faktur yang perlu ditindaklanjuti. Semua sudah beres." : "Tidak ada faktur sesuai pencarian atau filter."}
             </p>
           </Panel>
         ) : null}
@@ -168,7 +191,7 @@ function AlokasiPage() {
         ))}
         {loading && !data ? <Panel><p className="py-6 text-center text-sm text-slate-600">Memuat…</p></Panel> : null}
       </div>
-      {data ? <Pager page={page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
+      {data ? <Pager ringkas page={page} total={data.total} perPage={data.perPage} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : null}
 
       {openId ? <FakturDialog id={openId} onClose={closeDialog} onDone={done} /> : null}
     </div>
