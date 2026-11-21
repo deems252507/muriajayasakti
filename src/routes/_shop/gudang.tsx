@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, SetorDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
 import { GudangHitungDialog } from "@/components/shop/gudang-hitung";
-import { FilterBaris } from "@/components/shop/list-filter";
 import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
 import { confirmDialog } from "@/lib/confirm";
@@ -94,9 +93,6 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
   const [q, setQ] = usePersistedState("gudang:q", "");
   const [kategori, setKategori] = usePersistedState("gudang:kategori", "");
   const [hanyaStok, setHanyaStok] = usePersistedState("gudang:hanyaStok", false);
-  const [pemasokId, setPemasokId] = usePersistedState("gudang:pemasok", 0);
-  const [dari, setDari] = usePersistedState("gudang:dari", "");
-  const [sampai, setSampai] = usePersistedState("gudang:sampai", "");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,16 +102,13 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
   const [focusId, setFocusId] = useState<number | null>(null);
   const dq = useDebounced(q.trim());
 
-  useEffect(() => setPage(1), [dq, kategori, hanyaStok, pemasokId, dari, sampai]);
+  useEffect(() => setPage(1), [dq, kategori, hanyaStok]);
 
   // Barang yang dipilih di "Tambah barang ke gudang" tetapi sudah ada di gudang: tampilkan kartunya dan sorot sebentar.
   function goToExisting(row: { productId: number; nama: string; satuan: string; satuanAlt: string; isiSatuanAlt: number; stokGudang?: number | null }) {
     setDialog(null);
     setKategori("");
     setHanyaStok(false);
-    setPemasokId(0);
-    setDari("");
-    setSampai("");
     setQ(row.nama);
     setFocusId(row.productId);
     toast.info("Barang sudah ada di gudang", { description: `${row.nama}: stok gudang ${fmt(row.stokGudang ?? 0, row)}. Pakai tombol Tambah stok pada kartunya.` });
@@ -126,7 +119,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    void gudangList({ data: { q: dq, kategori, hanyaStok, pemasokId, dari, sampai, page } })
+    void gudangList({ data: { q: dq, kategori, hanyaStok, page } })
       .then((res) => {
         if (!alive) return;
         setData(res);
@@ -137,7 +130,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
     return () => {
       alive = false;
     };
-  }, [dq, kategori, hanyaStok, pemasokId, dari, sampai, page, tick]);
+  }, [dq, kategori, hanyaStok, page, tick]);
 
   const done = () => {
     setDialog(null);
@@ -182,30 +175,20 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input className={`${inputClass} pl-9`} placeholder="Cari nama, part number, kode pajak" aria-label="Cari barang gudang" value={q} onChange={(event) => setQ(event.target.value)} />
           </div>
+          <select className={`${inputClass} sm:!w-48`} aria-label="Kategori" value={kategori} onChange={(event) => setKategori(event.target.value)}>
+            <option value="">Semua kategori</option>
+            {(data?.kategori ?? []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           {bisaUbah ? (
             <button type="button" onClick={() => setDialog({ kind: "tambah-barang" })} className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 text-sm font-bold text-white">
               <Plus className="size-4" /> Tambah barang ke gudang
             </button>
           ) : null}
         </div>
-        <FilterBaris
-          kategoriList={data?.kategori ?? []}
-          kategori={kategori}
-          onKategori={setKategori}
-          pemasokList={data?.pemasok ?? []}
-          pemasokId={pemasokId}
-          onPemasok={setPemasokId}
-          dari={dari}
-          sampai={sampai}
-          onDari={setDari}
-          onSampai={setSampai}
-          onReset={() => {
-            setKategori("");
-            setPemasokId(0);
-            setDari("");
-            setSampai("");
-          }}
-        />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
           <label className="flex items-center gap-2 font-semibold">
             <input type="checkbox" checked={hanyaStok} onChange={(event) => setHanyaStok(event.target.checked)} /> Hanya yang ada stok
@@ -223,11 +206,11 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
       {loading && !data ? <p className="p-6 text-center text-sm text-slate-500">Memuat...</p> : null}
       {data && data.items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          {data.total === 0 && !dq && !kategori && !hanyaStok && !pemasokId && !dari && !sampai
+          {data.total === 0 && !dq && !kategori && !hanyaStok
             ? bisaUbah
               ? "Belum ada barang di gudang. Klik Tambah barang ke gudang untuk memilih barang dari Daftar Sparepart."
               : "Belum ada barang di gudang."
-            : "Tidak ada barang yang cocok dengan pencarian atau filter."}
+            : "Tidak ada barang yang cocok dengan pencarian."}
         </div>
       ) : null}
 
@@ -290,7 +273,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
           </article>
         ))}
       </div>
-      {data ? <Pager ringkas page={data.page} total={data.total} perPage={data.perPage} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : null}
+      {data ? <Pager page={data.page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
 
       {dialog?.kind === "tambah-barang" ? <TambahDialog onClose={() => setDialog(null)} onDone={done} onExisting={goToExisting} /> : null}
       {dialog?.kind === "tambah" ? <TambahDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
@@ -323,10 +306,6 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
   const [q, setQ] = usePersistedState("gudang:rq", "");
   const [tipe, setTipe] = usePersistedState("gudang:rtipe", "");
   const [belumDicek, setBelumDicek] = usePersistedState("gudang:rbelum", false);
-  const [kategori, setKategori] = usePersistedState("gudang:rkategori", "");
-  const [pemasokId, setPemasokId] = usePersistedState("gudang:rpemasok", 0);
-  const [dari, setDari] = usePersistedState("gudang:rdari", "");
-  const [sampai, setSampai] = usePersistedState("gudang:rsampai", "");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<LogData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -335,14 +314,14 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
   const [edit, setEdit] = useState<GudangLog | null>(null);
   const dq = useDebounced(q.trim());
 
-  useEffect(() => setPage(1), [dq, tipe, belumDicek, hid, kategori, pemasokId, dari, sampai]);
+  useEffect(() => setPage(1), [dq, tipe, belumDicek, hid]);
 
   const load = useCallback(() => setTick((n) => n + 1), []);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    void gudangLogs({ data: { q: dq, tipe, belumDicek, productId: hid ?? null, kategori, pemasokId, dari, sampai, page } })
+    void gudangLogs({ data: { q: dq, tipe, belumDicek, productId: hid ?? null, page } })
       .then((res) => {
         if (!alive) return;
         setData(res);
@@ -353,7 +332,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
     return () => {
       alive = false;
     };
-  }, [dq, tipe, belumDicek, hid, kategori, pemasokId, dari, sampai, page, tick]);
+  }, [dq, tipe, belumDicek, hid, page, tick]);
 
   async function cek(ids: number[], nilai: boolean) {
     try {
@@ -425,24 +404,6 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
             <option value="OPNAME">Opname</option>
           </select>
         </div>
-        <FilterBaris
-          kategoriList={data?.kategori ?? []}
-          kategori={kategori}
-          onKategori={setKategori}
-          pemasokList={data?.pemasok ?? []}
-          pemasokId={pemasokId}
-          onPemasok={setPemasokId}
-          dari={dari}
-          sampai={sampai}
-          onDari={setDari}
-          onSampai={setSampai}
-          onReset={() => {
-            setKategori("");
-            setPemasokId(0);
-            setDari("");
-            setSampai("");
-          }}
-        />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
           <label className="flex items-center gap-2 font-semibold">
             <input type="checkbox" checked={belumDicek} onChange={(event) => setBelumDicek(event.target.checked)} /> Belum dicek Admin
@@ -520,7 +481,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
           </article>
         ))}
       </div>
-      {data ? <Pager ringkas page={data.page} total={data.total} perPage={data.perPage} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : null}
+      {data ? <Pager page={data.page} total={data.total} perPage={data.perPage} onPage={setPage} /> : null}
 
       {edit ? (
         <EditLogDialog
@@ -542,9 +503,6 @@ type PerluData = Awaited<ReturnType<typeof gudangPerluDiambil>>;
 /** Barang yang stok tokonya sudah di bawah minimum tetapi masih ada di gudang. Saran: isi toko sampai 2x stok minimum. */
 function PerluTab() {
   const [q, setQ] = useState("");
-  const [kategori, setKategori] = useState("");
-  const [pemasokId, setPemasokId] = useState(0);
-  const [page, setPage] = useState(1);
   const [data, setData] = useState<PerluData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -552,17 +510,15 @@ function PerluTab() {
   const [ambil, setAmbil] = useState<PerluData["items"][number] | null>(null);
   const dq = useDebounced(q.trim());
 
-  useEffect(() => setPage(1), [dq, kategori, pemasokId]);
-
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    void gudangPerluDiambil({ data: { q: dq, kategori, pemasokId, page } })
+    void gudangPerluDiambil({ data: { q: dq } })
       .then((res) => { if (alive) { setData(res); setError(""); } })
       .catch((err: Error) => alive && setError(err.message))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [dq, kategori, pemasokId, page, tick]);
+  }, [dq, tick]);
 
   return (
     <>
@@ -572,26 +528,6 @@ function PerluTab() {
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <input className={`${inputClass} pl-9`} placeholder="Cari barang" aria-label="Cari barang" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <label className="block text-[11px] font-semibold text-slate-600">
-            Kategori
-            <select className={`${inputClass} mt-1`} value={kategori} onChange={(e) => setKategori(e.target.value)}>
-              <option value="">Semua kategori</option>
-              {(data?.kategori ?? []).map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-[11px] font-semibold text-slate-600">
-            Pemasok
-            <select className={`${inputClass} mt-1`} value={pemasokId || ""} onChange={(e) => setPemasokId(Number(e.target.value) || 0)}>
-              <option value="">Semua pemasok</option>
-              {(data?.pemasok ?? []).map((p) => (
-                <option key={p.id} value={p.id}>{p.nama}</option>
-              ))}
-            </select>
-          </label>
         </div>
       </Panel>
       {error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
@@ -623,7 +559,6 @@ function PerluTab() {
           </article>
         ))}
       </div>
-      {data ? <Pager ringkas page={data.page} total={data.total} perPage={data.perPage} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : null}
       {ambil ? <AmbilDialog item={ambil} initialQty={ambil.saran} onClose={() => setAmbil(null)} onDone={() => { setAmbil(null); setTick((n) => n + 1); }} /> : null}
     </>
   );

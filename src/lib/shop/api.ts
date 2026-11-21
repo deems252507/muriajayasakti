@@ -1099,13 +1099,10 @@ const gudangQtyInput = (input: GudangQtyInput) => ({
 });
 
 export const gudangList = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; kategori?: string; hanyaStok?: boolean; pemasokId?: number; dari?: string; sampai?: string; page?: number }) => ({
+  .validator((input: { q?: string; kategori?: string; hanyaStok?: boolean; page?: number }) => ({
     q: String(input?.q ?? "").trim(),
     kategori: String(input?.kategori ?? "").trim(),
     hanyaStok: Boolean(input?.hanyaStok),
-    pemasokId: Math.max(0, Number(input?.pemasokId ?? 0) || 0),
-    dari: String(input?.dari ?? ""),
-    sampai: String(input?.sampai ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
   }))
   .handler(async ({ data }) => {
@@ -1146,15 +1143,11 @@ export const gudangSetor = createServerFn({ method: "POST" })
   });
 
 export const gudangLogs = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; tipe?: string; belumDicek?: boolean; productId?: number | null; kategori?: string; pemasokId?: number; dari?: string; sampai?: string; page?: number }) => ({
+  .validator((input: { q?: string; tipe?: string; belumDicek?: boolean; productId?: number | null; page?: number }) => ({
     q: String(input?.q ?? "").trim(),
     tipe: String(input?.tipe ?? ""),
     belumDicek: Boolean(input?.belumDicek),
     productId: input?.productId == null ? null : Number(input.productId),
-    kategori: String(input?.kategori ?? "").trim(),
-    pemasokId: Math.max(0, Number(input?.pemasokId ?? 0) || 0),
-    dari: String(input?.dari ?? ""),
-    sampai: String(input?.sampai ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
   }))
   .handler(async ({ data }) => {
@@ -1268,13 +1261,9 @@ export const gudangDraftConfirm = createServerFn({ method: "POST" })
 
 /* ===== Alokasi Faktur (toko / gudang) ===== */
 export const alokasiList = createServerFn({ method: "GET" })
-  .validator((input: { filter?: string; q?: string; kategori?: string; pemasokId?: number; dari?: string; sampai?: string; page?: number }) => ({
+  .validator((input: { filter?: string; q?: string; page?: number }) => ({
     filter: String(input?.filter ?? "tindakan"),
     q: String(input?.q ?? "").trim(),
-    kategori: String(input?.kategori ?? "").trim(),
-    pemasokId: Math.max(0, Number(input?.pemasokId ?? 0) || 0),
-    dari: String(input?.dari ?? ""),
-    sampai: String(input?.sampai ?? ""),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
   }))
   .handler(async ({ data }) => {
@@ -1319,12 +1308,7 @@ export const alokasiInbox = createServerFn({ method: "GET" })
 
 
 export const gudangPerluDiambil = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; kategori?: string; pemasokId?: number; page?: number }) => ({
-    q: String(input?.q ?? "").trim(),
-    kategori: String(input?.kategori ?? "").trim(),
-    pemasokId: Math.max(0, Number(input?.pemasokId ?? 0) || 0),
-    page: Math.max(1, Number(input?.page ?? 1) || 1),
-  }))
+  .validator((input: { q?: string }) => ({ q: String(input?.q ?? "").trim() }))
   .handler(async ({ data }) => {
     const { gudangPerluDiambil: run } = await import("./logic.server");
     return run(data);
