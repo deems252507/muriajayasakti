@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Check, ClipboardCheck, FileText, Search, Store, Undo2, Warehouse, X } from "lucide-react";
+import { Check, ClipboardCheck, FileText, Pencil, Search, Store, Trash2, Undo2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Pager } from "@/components/shop/opname-ui";
 import { StatusBadge } from "@/components/shop/alokasi-badge";
 import { Panel, inputClass } from "@/components/shop/shell";
-import { alokasiGet, alokasiList, alokasiReview, alokasiSave } from "@/lib/shop/api";
+import { confirmDialog } from "@/lib/confirm";
+import { alokasiGet, alokasiList, alokasiReview, alokasiSave, deleteSupplierReceipt } from "@/lib/shop/api";
 import { when } from "@/lib/shop/format";
 import { printBeritaAcaraSelisih, printSuratMutasi } from "@/lib/shop/print";
 
@@ -94,7 +95,7 @@ function AlokasiPage() {
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="mx-auto w-full max-w-4xl space-y-3">
       <Panel>
         <div className="flex items-center gap-3">
           <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
@@ -113,7 +114,7 @@ function AlokasiPage() {
               role="tab"
               aria-selected={filter === t.key}
               onClick={() => setFilter(t.key)}
-              className={`h-11 rounded-lg text-sm font-bold transition ${filter === t.key ? "bg-white text-accent shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              className={`h-11 rounded-lg text-sm font-bold transition ${filter === t.key ? "bg-white text-accent shadow-sm" : "bg-transparent text-slate-600 hover:text-slate-900"}`}
             >
               {t.label}
             </button>
@@ -136,11 +137,13 @@ function AlokasiPage() {
           </Panel>
         ) : null}
         {(data?.items ?? []).map((row) => (
-          <button
+          <div
             key={row.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => setOpenId(row.id)}
-            className="block w-full rounded-2xl border border-white/80 bg-panel p-4 text-left shadow-[0_8px_30px_rgba(15,23,42,0.05)] transition hover:border-accent"
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(row.id); } }}
+            className="block w-full cursor-pointer rounded-2xl border border-white/80 bg-panel p-4 text-left shadow-[0_8px_30px_rgba(15,23,42,0.05)] transition hover:border-accent"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-mono text-sm font-extrabold text-slate-900">{row.invoiceNo}</p>
@@ -151,8 +154,8 @@ function AlokasiPage() {
             </div>
             <p className="mt-1 text-sm font-semibold text-slate-800">{row.supplierName}</p>
             <p className="mt-0.5 text-xs text-slate-600">
-              {new Date(row.receivedAt).toLocaleDateString("id-ID")} · {row.nItem} barang
-              {row.nGudang > 0 ? ` · ${row.nGudang} barang ke gudang` : " · semua di toko"}
+              {new Date(row.receivedAt).toLocaleDateString("id-ID")} · {row.nItem} barang ·{" "}
+              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${row.nGudang > 0 ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>{row.nGudang > 0 ? `Ke gudang: ${row.nGudang}` : "Semua di toko"}</span>
               {row.nSelisih > 0 ? <b className="text-amber-800"> · {row.nSelisih} barang ada selisih</b> : null}
             </p>
             {row.status === "dikembalikan" && row.catatanKembali ? (
@@ -161,7 +164,7 @@ function AlokasiPage() {
             {row.status === "menunggu_cek" && row.alokasiNama ? (
               <p className="mt-1 text-xs text-slate-600">Dialokasikan oleh {row.alokasiNama}, {when(row.alokasiPada)}</p>
             ) : null}
-          </button>
+          </div>
         ))}
         {loading && !data ? <Panel><p className="py-6 text-center text-sm text-slate-600">Memuat…</p></Panel> : null}
       </div>
@@ -173,6 +176,7 @@ function AlokasiPage() {
 }
 
 function FakturDialog({ id, onClose, onDone }: { id: number; onClose: () => void; onDone: () => void }) {
+  const navigate = useNavigate();
   const [d, setD] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [vals, setVals] = useState<Record<number, string>>({});
@@ -304,6 +308,35 @@ function FakturDialog({ id, onClose, onDone }: { id: number; onClose: () => void
     }
   }
 
+  /** Admin: ubah isi faktur (barang, jumlah, harga) di menu Barang Masuk Pemasok. Alokasi dikembalikan dulu lalu dipasang lagi otomatis. */
+  function ubahFaktur() {
+    if (!d) return;
+    void navigate({ to: "/pemasok", search: { edit: d.id } });
+  }
+
+  /** Admin: hapus faktur. Konfirmasi menyebut dampak ke stok toko, gudang, dan petugas. */
+  async function hapusFaktur() {
+    if (!d) return;
+    const nGudang = d.lines.filter((l) => l.keGudang > 0).length;
+    const dampak = [
+      nGudang > 0 ? `${nGudang} barang yang sudah dialokasikan ke gudang akan ditarik dari gudang` : "",
+      "stok toko dikurangi sesuai faktur",
+      d.status === "menunggu_cek" || d.status === "dikembalikan" ? `${d.alokasiNama || "petugas"} sedang mengerjakan alokasi ini dan akan diberi notifikasi` : "",
+    ].filter(Boolean);
+    const msg = `Hapus faktur ${d.invoiceNo} (${d.supplierName})? Dampaknya: ${dampak.join("; ")}. Kalau barangnya sudah terjual atau diambil dari gudang, penghapusan ditolak.`;
+    if (!(await confirmDialog(msg, { title: "Hapus faktur?", danger: true, confirmText: "Hapus faktur" }))) return;
+    setBusy(true);
+    try {
+      await deleteSupplierReceipt({ data: { id } });
+      toast.success(`Faktur ${d.invoiceNo} dihapus`, { description: "Stok toko dan gudang sudah disesuaikan." });
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus faktur");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const waiting = d?.status === "menunggu_cek";
   const canReview = Boolean(d?.isAdmin && waiting);
   const canEdit = Boolean(d?.canEdit);
@@ -430,6 +463,16 @@ function FakturDialog({ id, onClose, onDone }: { id: number; onClose: () => void
               <p className="text-sm font-extrabold text-amber-900">Pemeriksaan Admin</p>
               <p className="mt-0.5 text-xs text-amber-900">Cocokkan angka di atas dengan barang yang ada di gudang dan toko. Setujui kalau sudah benar, atau kembalikan ke staf dengan catatan.</p>
               <input className={`${inputClass} mt-2`} maxLength={300} disabled={busy} placeholder="Catatan untuk staf (wajib kalau dikembalikan)" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} />
+            </div>
+          ) : null}
+          {d?.isAdmin ? (
+            <div className="rounded-xl border border-line bg-slate-50 p-3">
+              <p className="text-sm font-extrabold text-slate-900">Kelola faktur (Admin)</p>
+              <p className="mt-0.5 text-xs text-slate-600">Salah catat barang, jumlah, atau harga? Ubah fakturnya. Alokasi gudang dikembalikan dulu lalu dipasang lagi otomatis, jadi stok tidak bentrok.</p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <button type="button" disabled={busy} onClick={ubahFaktur} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-line bg-white px-4 text-sm font-bold text-slate-800 disabled:opacity-50"><Pencil className="size-4" />Ubah faktur</button>
+                <button type="button" disabled={busy} onClick={() => void hapusFaktur()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="size-4" />Hapus faktur</button>
+              </div>
             </div>
           ) : null}
         </div>

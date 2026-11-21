@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRightLeft, Check, ClipboardCheck, FileText, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
+import { ArrowRightLeft, Check, Store, ClipboardCheck, FileText, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
+import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, SetorDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
 import { GudangHitungDialog } from "@/components/shop/gudang-hitung";
 import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
@@ -98,7 +98,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
-  const [dialog, setDialog] = useState<{ kind: "tambah-barang" } | { kind: "tambah" | "ambil" | "sesuaikan" | "opname"; item: GudangItem } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "tambah-barang" } | { kind: "tambah" | "ambil" | "setor" | "sesuaikan" | "opname"; item: GudangItem } | null>(null);
   const [focusId, setFocusId] = useState<number | null>(null);
   const dq = useDebounced(q.trim());
 
@@ -235,9 +235,14 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
             ) : null}
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {bisaUbah ? (
-                <button type="button" disabled={item.stokGudang <= 0} onClick={() => setDialog({ kind: "ambil", item })} className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-bold text-white disabled:opacity-40">
-                  <ArrowRightLeft className="size-4" /> Ambil
-                </button>
+                <div className="grid w-full grid-cols-2 gap-1.5">
+                  <button type="button" disabled={item.stokGudang <= 0} title="Pindahkan dari gudang ke toko" onClick={() => setDialog({ kind: "ambil", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-bold text-white disabled:opacity-40">
+                    <Store className="size-4" /> Ambil ke toko
+                  </button>
+                  <button type="button" disabled={item.stokToko <= 0} title="Pindahkan dari toko ke gudang" onClick={() => setDialog({ kind: "setor", item })} className="flex h-11 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white disabled:opacity-40">
+                    <Warehouse className="size-4" /> Simpan ke gudang
+                  </button>
+                </div>
               ) : null}
               {bisaUbah ? (
                 <button type="button" onClick={() => setDialog({ kind: "tambah", item })} className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">
@@ -273,6 +278,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
       {dialog?.kind === "tambah-barang" ? <TambahDialog onClose={() => setDialog(null)} onDone={done} onExisting={goToExisting} /> : null}
       {dialog?.kind === "tambah" ? <TambahDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "ambil" ? <AmbilDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
+      {dialog?.kind === "setor" ? <SetorDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "sesuaikan" ? <SesuaikanDialog item={dialog.item} onClose={() => setDialog(null)} onDone={done} /> : null}
       {dialog?.kind === "opname" ? <GudangHitungDialog item={dialog.item} canCount={bisaUbah} admin={admin} onClose={() => setDialog(null)} onChanged={load} onDone={done} /> : null}
     </>
@@ -282,6 +288,7 @@ function StokTab({ onHistory, canHistory }: { onHistory: (productId: number) => 
 const TIPE_LABEL: Record<GudangLog["tipe"], { text: string; cls: string }> = {
   MASUK: { text: "Tambah stok", cls: "bg-emerald-100 text-emerald-800" },
   PINDAH: { text: "Ambil ke toko", cls: "bg-blue-100 text-blue-800" },
+  SETOR: { text: "Simpan ke gudang", cls: "bg-teal-100 text-teal-800" },
   KOREKSI: { text: "Koreksi", cls: "bg-amber-100 text-amber-900" },
   OPNAME: { text: "Opname", cls: "bg-violet-100 text-violet-800" },
 };
@@ -290,6 +297,7 @@ function jumlahText(log: GudangLog) {
   const text = fmtItem(Math.abs(log.jumlah), log);
   if (log.tipe === "MASUK") return `+${text} ke gudang`;
   if (log.tipe === "PINDAH") return `${text}: gudang ke toko`;
+  if (log.tipe === "SETOR") return `${text}: toko ke gudang`;
   if (log.tipe === "OPNAME") return log.jumlah === 0 ? `hitung fisik ${fmtItem(log.qtyInput, log)}, cocok` : `hitung fisik ${fmtItem(log.qtyInput, log)}, selisih ${log.jumlah < 0 ? "-" : "+"}${text}`;
   return `${log.jumlah < 0 ? "-" : "+"}${text}`;
 }
@@ -340,7 +348,9 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
     const efek =
       log.tipe === "PINDAH"
         ? "Stok gudang dikembalikan dan stok toko dikurangi."
-        : log.tipe === "MASUK"
+        : log.tipe === "SETOR"
+          ? "Stok gudang dikurangi dan stok toko dikembalikan."
+          : log.tipe === "MASUK"
           ? "Stok gudang dikurangi sebesar catatan ini."
           : "Pengaruh koreksi pada stok gudang dibatalkan.";
     if (!(await confirmDialog(`Hapus catatan "${log.nama}" (${jumlahText(log)})? ${efek}`, { title: "Hapus catatan gudang", confirmText: "Hapus" }))) return;
@@ -356,7 +366,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
   /** Surat mutasi satu catatan. Arah: Ambil ke toko = Gudang ke Toko; alokasi faktur = Toko ke Gudang; tambah stok lain = masuk gudang. */
   function cetakSurat(log: GudangLog) {
     const dariAlokasi = log.catatan.startsWith("Alokasi faktur");
-    const dari = log.tipe === "PINDAH" ? "Gudang" : dariAlokasi ? "Toko" : "Luar (pemasok / lainnya)";
+    const dari = log.tipe === "PINDAH" ? "Gudang" : dariAlokasi || log.tipe === "SETOR" ? "Toko" : "Luar (pemasok / lainnya)";
     const ke = log.tipe === "PINDAH" ? "Toko" : "Gudang";
     try {
       printSuratMutasi({
@@ -375,7 +385,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
   }
 
   const admin = Boolean(data?.admin);
-  const belumIds = (data?.items ?? []).filter((l) => (l.tipe === "MASUK" || l.tipe === "PINDAH") && !l.dicek).map((l) => l.id);
+  const belumIds = (data?.items ?? []).filter((l) => (l.tipe === "MASUK" || l.tipe === "PINDAH" || l.tipe === "SETOR") && !l.dicek).map((l) => l.id);
 
   return (
     <>
@@ -389,6 +399,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
             <option value="">Semua jenis</option>
             <option value="MASUK">Tambah stok</option>
             <option value="PINDAH">Ambil ke toko</option>
+            <option value="SETOR">Simpan ke gudang</option>
             <option value="KOREKSI">Koreksi</option>
             <option value="OPNAME">Opname</option>
           </select>
@@ -424,7 +435,7 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${TIPE_LABEL[log.tipe].cls}`}>{TIPE_LABEL[log.tipe].text}</span>
               <span className="text-xs text-slate-500">{when(log.tanggal)}</span>
-              {log.tipe === "MASUK" || log.tipe === "PINDAH" ? (
+              {log.tipe === "MASUK" || log.tipe === "PINDAH" || log.tipe === "SETOR" ? (
                 log.dicek ? (
                   <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">Dicek{log.dicekNama ? ` oleh ${log.dicekNama}` : ""}</span>
                 ) : (
@@ -441,14 +452,14 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
               {log.catatan ? ` · ${log.catatan}` : ""}
               {log.diubahNama ? ` · diedit ${log.diubahNama}` : ""}
             </p>
-            {log.tipe === "MASUK" || log.tipe === "PINDAH" ? (
+            {log.tipe === "MASUK" || log.tipe === "PINDAH" || log.tipe === "SETOR" ? (
               <button type="button" onClick={() => cetakSurat(log)} className="mt-2 flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800">
                 <FileText className="size-4" /> Cetak surat mutasi
               </button>
             ) : null}
             {admin ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {log.tipe === "MASUK" || log.tipe === "PINDAH" ? (
+                {log.tipe === "MASUK" || log.tipe === "PINDAH" || log.tipe === "SETOR" ? (
                   <button type="button" onClick={() => void cek([log.id], !log.dicek)} className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800">
                     <Check className="size-4" /> {log.dicek ? "Batalkan tanda dicek" : "Tandai sudah dicek"}
                   </button>

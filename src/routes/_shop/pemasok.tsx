@@ -1,5 +1,5 @@
 import { confirmDialog } from "@/lib/confirm";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
@@ -15,7 +15,11 @@ import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 export const Route = createFileRoute("/_shop/pemasok")({
   component: PemasokPage,
   // ?inv=NO-INVOICE: dibuka dari popup Asal Barang (Daftar Sparepart), langsung menyaring ke invoice itu.
-  validateSearch: (search: Record<string, unknown>): { inv?: string } => ({ inv: typeof search.inv === "string" && search.inv.trim() ? search.inv.trim() : undefined }),
+  // ?edit=ID: dibuka dari menu Alokasi Faktur (Admin), langsung membuka form ubah faktur itu.
+  validateSearch: (search: Record<string, unknown>): { inv?: string; edit?: number } => {
+    const edit = Number(search.edit);
+    return { inv: typeof search.inv === "string" && search.inv.trim() ? search.inv.trim() : undefined, edit: Number.isInteger(edit) && edit > 0 ? edit : undefined };
+  },
 });
 
 type Draft = { product: Product; qty: number; satuan: string; hargaBeli: number; hargaJual: number; markup: string };
@@ -164,7 +168,8 @@ function SupplierPicker({ suppliers, value, onChange, placeholder }: { suppliers
 
 function PemasokPage() {
   const me = Route.useRouteContext().me;
-  const { inv } = Route.useSearch();
+  const { inv, edit: editParam } = Route.useSearch();
+  const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState<Partner[]>([]);
   const [rows, setRows] = useState<SupplierReceipt[]>([]);
   const [q, setQ] = useState(inv ?? "");
@@ -187,6 +192,7 @@ function PemasokPage() {
   const [activeHit, setActiveHit] = useState(0);
   const [justAdded, setJustAdded] = useState<{ id: number; n: number } | null>(null);
   const [defaultMarkup, setDefaultMarkup] = useState("");
+  const [tujuan, setTujuan] = useState<"toko" | "gudang_sekarang" | "gudang_staf">("toko");
   const searchRef = useRef<HTMLInputElement>(null);
   const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const canEdit = me.role === "Admin";
@@ -204,6 +210,22 @@ function PemasokPage() {
   }, []);
 
   useEffect(() => { load(page); }, [q, supplierId, start, end, page]);
+  // Dibuka dari Alokasi Faktur: ambil faktur itu lalu buka form ubah (hanya Admin), kemudian bersihkan ?edit dari alamat.
+  useEffect(() => {
+    if (!editParam) return;
+    let alive = true;
+    void listSupplierReceipts({ data: { id: editParam } })
+      .then((res) => {
+        if (!alive) return;
+        const row = (res.items as SupplierReceipt[])[0];
+        if (!row) toast.error("Faktur tidak ditemukan. Mungkin sudah dihapus.");
+        else if (!canEdit) toast.error("Hanya Admin yang dapat mengubah faktur.");
+        else openEdit(row);
+      })
+      .catch((error: Error) => toast.error(error.message))
+      .finally(() => { if (alive) void navigate({ to: "/pemasok", search: {}, replace: true }); });
+    return () => { alive = false; };
+  }, [editParam]);
   useEffect(() => { if (inv) { setSupplierId(""); setStart(""); setEnd(""); setPage(1); setQ(inv); } }, [inv]);
 
   useEffect(() => {
@@ -234,6 +256,7 @@ function PemasokPage() {
     setItems([]);
     setJustAdded(null);
     setDefaultMarkup("");
+    setTujuan("toko");
   }
 
   function dateInput(iso: string) {
@@ -294,7 +317,9 @@ function PemasokPage() {
   }
 
   async function removeReceipt(row: SupplierReceipt) {
-    if (!(await confirmDialog(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi.`, { title: "Hapus penerimaan?", danger: true }))) return;
+    const gudangNote = row.nGudang ? ` ${row.nGudang} barang yang sudah dialokasikan ke gudang akan ditarik dari gudang.` : "";
+    const statusNote = row.alokasiStatus === "menunggu_cek" || row.alokasiStatus === "dikembalikan" ? " Faktur ini sedang dalam pengecekan alokasi; petugasnya akan diberi tahu." : "";
+    if (!(await confirmDialog(`Hapus penerimaan ${row.invoiceNo}? Stok barang akan dikurangi sesuai faktur.${gudangNote}${statusNote}`, { title: "Hapus penerimaan?", danger: true }))) return;
     void deleteSupplierReceipt({ data: { id: row.id } })
       .then(() => { toast.success(`Penerimaan ${row.invoiceNo} berhasil dihapus`, { description: "Stok barang dikurangi sesuai penerimaan." }); load(page); })
       .catch((error: Error) => toast.error(error.message));
@@ -588,17 +613,36 @@ function PemasokPage() {
             </div>
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm">
-                <span className="text-muted">{items.length} barang · {items.reduce((sum, item) => sum + item.qty, 0)} qty · Total</span>
-                <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
+              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:gap-4">
+                <div>
+                  <span className="text-muted">{items.length} barang · {items.reduce((sum, item) => sum + item.qty, 0)} qty · Total</span>
+                  <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
+                </div>
+                {!readOnly && !editingId ? (
+                  <label className="flex flex-col gap-0.5 text-xs font-semibold text-slate-700">
+                    Tujuan barang
+                    <select className={`${inputClass} !h-10 sm:!w-72`} value={tujuan} onChange={(e) => setTujuan(e.target.value as typeof tujuan)}>
+                      <option value="toko">Semua ke toko (tanpa alokasi)</option>
+                      <option value="gudang_sekarang">Ada ke gudang, atur sekarang</option>
+                      <option value="gudang_staf">Ada ke gudang, serahkan ke staf</option>
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <div className="flex justify-end gap-2">
                 <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>{readOnly ? "Tutup" : "Batal"}</button>
                 {!readOnly ? <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
-                  const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli, hargaJual: item.hargaJual })) };
+                  const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, tujuan, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli, hargaJual: item.hargaJual })) };
+                  const wasNew = !editingId;
                   const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
                   void run
-                    .then(() => { toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: editingId ? "Stok disesuaikan." : "Stok barang bertambah." }); setOpen(false); resetForm(); setPage(1); load(1); })
+                    .then((res) => {
+                      const deskripsi = editingId ? "Stok disesuaikan." : tujuan === "toko" ? "Stok toko bertambah. Tidak perlu alokasi gudang." : tujuan === "gudang_sekarang" ? "Stok toko bertambah. Lanjut atur barang yang ke gudang." : "Stok toko bertambah. Staf gudang diberi notifikasi untuk alokasi.";
+                      toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: deskripsi });
+                      const goAlokasi = wasNew && tujuan === "gudang_sekarang" && res.id > 0;
+                      setOpen(false); resetForm(); setPage(1); load(1);
+                      if (goAlokasi) void navigate({ to: "/alokasi", search: { faktur: res.id } });
+                    })
                     .catch((error: Error) => toast.error(error.message));
                 }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton> : null}
               </div>

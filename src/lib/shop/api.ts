@@ -356,7 +356,8 @@ export const getInvoice = createServerFn({ method: "GET" })
   });
 
 export const createSupplierReceipt = createServerFn({ method: "POST" })
-  .validator((input: { invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
+  .validator((input: { invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; tujuan?: "toko" | "gudang_sekarang" | "gudang_staf"; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
+    tujuan: (input?.tujuan === "gudang_sekarang" || input?.tujuan === "gudang_staf" ? input.tujuan : "toko") as "toko" | "gudang_sekarang" | "gudang_staf",
     invoiceNo: String(input?.invoiceNo ?? "").trim(),
     supplierId: Number(input?.supplierId),
     receivedAt: String(input?.receivedAt ?? "").trim(),
@@ -390,7 +391,8 @@ export const deleteSupplierReceipt = createServerFn({ method: "POST" })
   });
 
 export const listSupplierReceipts = createServerFn({ method: "GET" })
-  .validator((input: { q?: string; supplierId?: number | string; start?: string; end?: string; page?: number; all?: boolean }) => ({
+  .validator((input: { id?: number; q?: string; supplierId?: number | string; start?: string; end?: string; page?: number; all?: boolean }) => ({
+    id: Number(input?.id) > 0 ? Number(input.id) : 0,
     q: String(input?.q ?? "").trim(),
     supplierId: input?.supplierId ? Number(input.supplierId) : 0,
     start: String(input?.start ?? "").trim(),
@@ -1130,6 +1132,13 @@ export const gudangPindah = createServerFn({ method: "POST" })
   .validator(gudangQtyInput)
   .handler(async ({ data }) => {
     const { gudangPindah: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const gudangSetor = createServerFn({ method: "POST" })
+  .validator(gudangQtyInput)
+  .handler(async ({ data }) => {
+    const { gudangSetor: run } = await import("./logic.server");
     return run(data);
   });
 

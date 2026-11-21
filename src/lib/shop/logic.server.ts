@@ -1570,6 +1570,32 @@ export async function getInvoice(data: any): Promise<any> {
 
 
 
+/** Data faktur sebelum diubah/dihapus, untuk memberi tahu petugas yang sedang mengerjakannya. */
+async function fakturInfo(db: ChatDb, id: number) {
+  const [r] = await db.query<{ invoice_no: string; alokasi_status: string; alokasi_oleh: string }>(
+    `select invoice_no, alokasi_status, alokasi_oleh from supplier_receipts where id = $1`,
+    [id],
+  );
+  return r ? { invoiceNo: String(r.invoice_no), status: String(r.alokasi_status), oleh: String(r.alokasi_oleh ?? "") } : null;
+}
+
+/** Faktur yang sedang menunggu cek / dikembalikan diubah atau dihapus Admin: beri tahu staf yang mengalokasikannya. */
+async function notifyFakturBerubah(db: ChatDb, me: Staff, id: number, info: Awaited<ReturnType<typeof fakturInfo>>, aksi: "diubah" | "dihapus") {
+  try {
+    if (!info || !info.oleh || info.oleh === me.username) return;
+    if (info.status !== "menunggu_cek" && info.status !== "dikembalikan") return;
+    await pushAlokasi(db, [info.oleh], id, `Faktur ${aksi}`, `${info.invoiceNo} ${aksi} oleh ${me.name}. Alokasi yang Anda kerjakan ${aksi === "dihapus" ? "ikut dibatalkan" : "perlu dicek ulang"}.`, aksi === "dihapus" ? "r:0" : undefined);
+  } catch {
+    /* abaikan */
+  }
+}
+
+/** Tambahkan petunjuk tindakan pada pesan galat yang sering muncul saat faktur diubah/dihapus. */
+function fakturHint(message: string) {
+  if (/sudah diambil ke toko/i.test(message)) return `${message} Kembalikan dulu barangnya ke gudang lewat Stok Gudang (tombol Simpan ke gudang), lalu coba lagi.`;
+  return message;
+}
+
 export async function createSupplierReceipt(data: any) {
   const me = await requireStaff();
   assertAdmin(me);
@@ -1578,6 +1604,7 @@ export async function createSupplierReceipt(data: any) {
   const supplierId = Number(data.supplierId);
   const receivedAt = String(data.receivedAt ?? '').trim();
   const items = Array.isArray(data.items) ? data.items : [];
+  const tujuan: 'toko' | 'gudang_sekarang' | 'gudang_staf' = data.tujuan === 'gudang_sekarang' || data.tujuan === 'gudang_staf' ? data.tujuan : 'toko';
   if (!invoiceNo) throw new Error('Nomor invoice barang masuk wajib diisi.');
   if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
   if (!items.length) throw new Error('Minimal satu barang harus dimasukkan.');
@@ -1600,9 +1627,17 @@ export async function createSupplierReceipt(data: any) {
       })],
     );
     const result = row?.shop_receive_supplier as { id?: number; invoiceNo?: string };
-    await audit(me, `Barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
-    await notifyFakturBaru(db, me, Number(result?.id ?? 0), String(result?.invoiceNo ?? invoiceNo), supplierId);
-    return { ok: true, id: Number(result?.id ?? 0), invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
+    const newId = Number(result?.id ?? 0);
+    await audit(me, `Barang masuk pemasok ${result?.invoiceNo ?? invoiceNo} (${tujuan === 'toko' ? 'semua ke toko' : tujuan === 'gudang_sekarang' ? 'ada ke gudang, diatur Admin' : 'ada ke gudang, diserahkan ke staf'})`);
+    if (newId > 0) {
+      if (tujuan === 'toko') {
+        // Semua barang tetap di toko: tidak perlu alokasi, tidak masuk antrian, tidak ada notifikasi.
+        await db.query(`update supplier_receipts set alokasi_status = 'selesai', status_diubah = now() where id = $1 and alokasi_status = 'perlu_alokasi'`, [newId]);
+      } else if (tujuan === 'gudang_staf') {
+        await notifyFakturBaru(db, me, newId, String(result?.invoiceNo ?? invoiceNo), supplierId);
+      }
+    }
+    return { ok: true, id: newId, invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
   } catch (error) {
     throw new Error(cleanError(error));
   }
@@ -1621,6 +1656,7 @@ export async function updateSupplierReceipt(data: any) {
   if (!invoiceNo) throw new Error('Nomor invoice barang masuk wajib diisi.');
   if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
   if (!items.length) throw new Error('Minimal satu barang harus dimasukkan.');
+  const info = await fakturInfo(db, id);
   try {
     const [row] = await db.query<{ shop_update_supplier_receipt: unknown }>(
       `select shop_update_supplier_receipt($1::jsonb) as shop_update_supplier_receipt`,
@@ -1641,9 +1677,10 @@ export async function updateSupplierReceipt(data: any) {
     );
     const result = row?.shop_update_supplier_receipt as { invoiceNo?: string };
     await audit(me, `Ubah barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
+    await notifyFakturBerubah(db, me, id, info, 'diubah');
     return { ok: true, id, invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
   } catch (error) {
-    throw new Error(cleanError(error));
+    throw new Error(fakturHint(cleanError(error)));
   }
 }
 
@@ -1653,6 +1690,7 @@ export async function deleteSupplierReceipt(data: any) {
   const db = await sql();
   const id = Number(data.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error('Penerimaan tidak ditemukan.');
+  const info = await fakturInfo(db, id);
   try {
     const [row] = await db.query<{ shop_delete_supplier_receipt: unknown }>(
       `select shop_delete_supplier_receipt($1::bigint) as shop_delete_supplier_receipt`,
@@ -1660,9 +1698,10 @@ export async function deleteSupplierReceipt(data: any) {
     );
     const result = row?.shop_delete_supplier_receipt as { invoiceNo?: string };
     await audit(me, `Hapus barang masuk pemasok ${result?.invoiceNo ?? id}`);
+    await notifyFakturBerubah(db, me, id, info, 'dihapus');
     return { ok: true, id };
   } catch (error) {
-    throw new Error(cleanError(error));
+    throw new Error(fakturHint(cleanError(error)));
   }
 }
 
@@ -1671,6 +1710,10 @@ export async function listSupplierReceipts(data: any) {
   const db = await sql();
   const where: string[] = ['1=1'];
   const params: unknown[] = [];
+  if (Number(data.id) > 0) {
+    params.push(Number(data.id));
+    where.push(`r.id = $${params.length}`);
+  }
   if (data.supplierId) {
     params.push(Number(data.supplierId));
     where.push(`r.supplier_id = $${params.length}`);
@@ -4900,6 +4943,34 @@ export async function gudangPindah(data: { productId: number; qty: number; unit:
   }
 }
 
+/** Simpan ke gudang: stok toko berkurang, stok gudang bertambah (kebalikan Ambil). */
+export async function gudangSetor(data: { productId: number; qty: number; unit: "base" | "alt"; catatan?: string }) {
+  const me = await requireGudangOps();
+  const c = await gudangQty(data?.productId, data?.qty, data?.unit);
+  if (c.jumlah <= 0) throw new Error("Jumlah harus lebih dari 0.");
+  const db = await sql();
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_gudang_setor($1::jsonb) as r`, [
+      JSON.stringify({
+        productId: c.productId,
+        jumlah: c.jumlah,
+        qty: c.qty,
+        unit: c.unit,
+        catatan: String(data?.catatan ?? ""),
+        actor: me.username,
+        actorName: me.name,
+        autoCek: me.role === "Admin",
+      }),
+    ]);
+    const r = gudangJson<{ ok: boolean; alasan?: string; sisa?: number; stokGudang?: number; stokToko?: number }>(row?.r);
+    if (!r?.ok) throw new Error(r?.alasan === "toko_kurang" ? `Stok toko tidak cukup. Sisa ${gudangFmt(Number(r.sisa ?? 0), c.units)}.` : gudangFail(r ?? {}, c.units));
+    await audit(me, `Stok Gudang simpan ke gudang ${c.units.kode} ${c.units.nama}: ${gudangFmt(c.jumlah, c.units)}, stok gudang ${gudangFmt(Number(r.stokGudang), c.units)}, sisa toko ${gudangFmt(Number(r.stokToko), c.units)}`);
+    return { ok: true as const, stokGudang: Number(r.stokGudang), stokToko: Number(r.stokToko) };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
 const GUDANG_LOG_PER_PAGE = 30;
 
 export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek?: unknown; productId?: unknown; page?: unknown }) {
@@ -4915,11 +4986,11 @@ export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek
     where.push(`(p.nama ilike $${n} or p.part_number ilike $${n} or p.kode ilike $${n} or l.oleh_nama ilike $${n} or l.catatan ilike $${n})`);
   }
   const tipe = String(data?.tipe ?? "");
-  if (tipe === "MASUK" || tipe === "PINDAH" || tipe === "KOREKSI" || tipe === "OPNAME") {
+  if (tipe === "MASUK" || tipe === "PINDAH" || tipe === "SETOR" || tipe === "KOREKSI" || tipe === "OPNAME") {
     params.push(tipe);
     where.push(`l.tipe = $${params.length}`);
   }
-  if (data?.belumDicek) where.push(`l.tipe in ('MASUK', 'PINDAH') and not l.dicek`);
+  if (data?.belumDicek) where.push(`l.tipe in ('MASUK', 'PINDAH', 'SETOR') and not l.dicek`);
   const productId = Number(data?.productId);
   if (Number.isInteger(productId) && productId > 0) {
     params.push(productId);
@@ -4928,7 +4999,7 @@ export async function gudangLogs(data: { q?: unknown; tipe?: unknown; belumDicek
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const page = Math.max(1, Number(data?.page ?? 1) || 1);
   const [count] = await db.query<{ n: number; belum: number }>(
-    `select count(*)::int as n, (select count(*)::int from gudang_log where tipe in ('MASUK', 'PINDAH') and not dicek) as belum
+    `select count(*)::int as n, (select count(*)::int from gudang_log where tipe in ('MASUK', 'PINDAH', 'SETOR') and not dicek) as belum
      from gudang_log l left join products p on p.id = l.product_id ${clause}`,
     params,
   );
@@ -4994,7 +5065,7 @@ export async function gudangEdit(data: { logId: number; qty: number; unit: "base
   let jumlah = Number(log.jumlah);
   let qty = Number(log.qty_input);
   let unit: "base" | "alt" = log.satuan_input === "alt" ? "alt" : "base";
-  if (log.tipe === "MASUK" || log.tipe === "PINDAH") {
+  if (log.tipe === "MASUK" || log.tipe === "PINDAH" || log.tipe === "SETOR") {
     const c = await gudangQty(log.product_id, data?.qty, data?.unit);
     jumlah = c.jumlah;
     qty = c.qty;
@@ -5384,11 +5455,11 @@ function alokasiTindakanSql(me: Staff, params: unknown[]) {
 }
 
 /** Kirim notifikasi HP; tidak boleh menggagalkan penyimpanan. Target "r:ID" membuka faktur di menu Alokasi Faktur. */
-async function pushAlokasi(db: ChatDb, usernames: string[], id: number, title: string, body: string) {
+async function pushAlokasi(db: ChatDb, usernames: string[], id: number, title: string, body: string, target?: string) {
   if (!usernames.length || !id) return;
   try {
     await Promise.race([
-      sendChatPush(db, usernames, { title, body, tag: `alk-${id}`, target: `r:${id}`, soft: true }),
+      sendChatPush(db, usernames, { title, body, tag: `alk-${id}`, target: target ?? `r:${id}`, soft: true }),
       new Promise((resolve) => setTimeout(resolve, 4000)),
     ]);
   } catch {

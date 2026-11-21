@@ -237,7 +237,7 @@ export type OpnameConfirmResult =
   | { ok: false; peringatan: true; jumlahMutasi: number; netMutasi: number; stokSekarang: number; total: number };
 
 /* ===== Stok Gudang ===== */
-export type GudangTipe = "MASUK" | "PINDAH" | "KOREKSI" | "OPNAME";
+export type GudangTipe = "MASUK" | "PINDAH" | "SETOR" | "KOREKSI" | "OPNAME";
 
 export type GudangItem = {
   productId: number;

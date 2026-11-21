@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { KategoriPicker } from "@/components/shop/opname-kategori";
 import { Field, MarkWords, PrimaryButton, inputClass } from "@/components/shop/shell";
-import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSesuaikan, gudangTambah, listKategoriBarang } from "@/lib/shop/api";
+import { gudangEdit, gudangPindah, gudangSearchMaster, gudangSetor, gudangSesuaikan, gudangTambah, listKategoriBarang } from "@/lib/shop/api";
 import { formatQtyPack, hasAltUnit, toBaseQty } from "@/lib/shop/format";
 import type { GudangItem, GudangLog, GudangPickItem } from "@/lib/shop/types";
 
@@ -430,6 +430,66 @@ export function AmbilDialog({ item, onClose, onDone, initialQty }: { item: Gudan
   );
 }
 
+/** Simpan ke gudang: stok toko berkurang, stok gudang bertambah (kebalikan Ambil). */
+export function SetorDialog({ item, onClose, onDone }: { item: GudangItem; onClose: () => void; onDone: () => void }) {
+  const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState<Unit>(defaultUnit(item));
+  const [catatan, setCatatan] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = baseOf(qty, unit, item);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (base == null || base <= 0) return setError("Isi jumlah yang disimpan (lebih dari 0).");
+    if (base > item.stokToko) return setError(`Stok toko tidak cukup. Sisa ${fmt(item.stokToko, item)}.`);
+    setBusy(true);
+    setError("");
+    try {
+      const res = await gudangSetor({ data: { productId: item.productId, qty: Number(qty), unit, catatan } });
+      toast.success("Barang disimpan ke gudang", { description: `${item.nama}: gudang ${fmt(res.stokGudang, item)}, toko ${fmt(res.stokToko, item)}` });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memindahkan barang.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Simpan ke gudang" onClose={onClose}>
+      <form onSubmit={(event) => void submit(event)}>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <ItemIdentity item={item} />
+          <div className="mt-2 grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="rounded-lg bg-slate-100 p-2">
+              <p className="text-slate-600">Stok toko</p>
+              <p className="text-sm font-extrabold text-slate-900">{fmt(item.stokToko, item)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-100 p-2">
+              <p className="text-slate-600">Stok gudang</p>
+              <p className="text-sm font-extrabold text-slate-900">{fmt(item.stokGudang, item)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          <QtyField label="Jumlah disimpan" qty={qty} unit={unit} units={item} onQty={setQty} onUnit={setUnit} />
+          {base != null && base > 0 && base <= item.stokToko ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              Setelah dipindahkan: toko <b>{fmt(item.stokToko - base, item)}</b>, gudang <b>{fmt(item.stokGudang + base, item)}</b>.
+            </p>
+          ) : null}
+          <Field label="Catatan (opsional)">
+            <input className={inputClass} maxLength={300} placeholder="Contoh: dari faktur INV-123" value={catatan} onChange={(event) => setCatatan(event.target.value)} />
+          </Field>
+        </div>
+        <ErrorLine text={error} />
+        <Actions onClose={onClose} busy={busy} label="Simpan ke gudang" />
+      </form>
+    </Modal>
+  );
+}
+
 /** Admin: set stok gudang ke angka yang benar; alasan wajib dan tercatat di riwayat. */
 export function SesuaikanDialog({ item, onClose, onDone }: { item: GudangItem; onClose: () => void; onDone: () => void }) {
   const [qty, setQty] = useState("");
@@ -481,7 +541,7 @@ export function SesuaikanDialog({ item, onClose, onDone }: { item: GudangItem; o
 
 /** Admin: ubah jumlah/catatan entri riwayat. Selisihnya otomatis dikoreksi ke stok. */
 export function EditLogDialog({ log, onClose, onDone }: { log: GudangLog; onClose: () => void; onDone: () => void }) {
-  const koreksi = log.tipe !== "MASUK" && log.tipe !== "PINDAH";
+  const koreksi = log.tipe !== "MASUK" && log.tipe !== "PINDAH" && log.tipe !== "SETOR";
   const alt = hasAltUnit(log.satuanAlt, log.isiSatuanAlt);
   const [qty, setQty] = useState(String(log.qtyInput));
   const [unit, setUnit] = useState<Unit>(log.satuanInput === "alt" && alt ? "alt" : "base");
@@ -512,7 +572,7 @@ export function EditLogDialog({ log, onClose, onDone }: { log: GudangLog; onClos
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <p className="text-[15px] font-extrabold text-slate-900">{log.nama}</p>
           <p className="mt-0.5 text-xs text-slate-600">
-            {log.tipe === "MASUK" ? "Tambah stok gudang" : log.tipe === "PINDAH" ? "Ambil dari gudang ke toko" : log.tipe === "OPNAME" ? "Stok opname, selisih" : "Koreksi stok"}: {fmt(log.jumlah, log)}
+            {log.tipe === "MASUK" ? "Tambah stok gudang" : log.tipe === "PINDAH" ? "Ambil dari gudang ke toko" : log.tipe === "SETOR" ? "Simpan dari toko ke gudang" : log.tipe === "OPNAME" ? "Stok opname, selisih" : "Koreksi stok"}: {fmt(log.jumlah, log)}
           </p>
         </div>
         <div className="mt-3 space-y-2">
@@ -521,7 +581,7 @@ export function EditLogDialog({ log, onClose, onDone }: { log: GudangLog; onClos
           ) : (
             <>
               <QtyField label="Jumlah" qty={qty} unit={unit} units={log} onQty={setQty} onUnit={setUnit} />
-              <p className="text-xs text-slate-600">Selisih jumlah otomatis dikoreksi ke stok gudang{log.tipe === "PINDAH" ? " dan stok toko" : ""}.</p>
+              <p className="text-xs text-slate-600">Selisih jumlah otomatis dikoreksi ke stok gudang{log.tipe === "PINDAH" || log.tipe === "SETOR" ? " dan stok toko" : ""}.</p>
             </>
           )}
           <Field label="Catatan">
