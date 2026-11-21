@@ -670,9 +670,9 @@ async function printBarcode(item: Product, opt: LabelOptions) {
     .ctl .chk { display: flex; align-items: center; gap: 4px; padding-bottom: 5px; }
     .bar-top button { font: inherit; font-weight: 700; padding: 6px 14px; border: 0; border-radius: 8px; background: #1d4ed8; color: #fff; cursor: pointer; }
     .sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 14px; }
-    .label { width: var(--w); background: #fff; padding: 2.5mm 3mm; text-align: center; border-radius: 1.5mm; box-shadow: 0 1px 4px rgba(0,0,0,.18); break-inside: avoid; page-break-inside: avoid; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+    .label { width: var(--w); background: #fff; padding: max(.8mm, calc(3.5mm * var(--s))) max(1mm, calc(4mm * var(--s))); text-align: center; border-radius: 2mm; box-shadow: 0 1px 4px rgba(0,0,0,.18); break-inside: avoid; page-break-inside: avoid; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
     .label.kotak { border: .35mm solid #111; box-shadow: none; }
-    .head { padding-bottom: calc(1.4mm * var(--s)); }
+    .head { padding-bottom: calc(1.6mm * var(--s)); }
     .nama { font-size: calc(14px * var(--s)); font-weight: 800; line-height: 1.22; letter-spacing: .1px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .sub { margin-top: 1mm; font-size: calc(10.5px * var(--s)); line-height: 1.3; color: #374151; }
     .meta { margin-top: 1.2mm; }
@@ -680,7 +680,7 @@ async function printBarcode(item: Product, opt: LabelOptions) {
     .bar { padding-top: .5mm; min-height: 0; }
     .bar svg { max-height: var(--bar) !important; }
     .harga { font-size: calc(22px * var(--s)); font-weight: 800; line-height: 1.1; letter-spacing: .2px; }
-    .harga:not(:first-child) { margin-top: 1mm; padding-top: 1.2mm; border-top: .3mm solid #111; }
+    .harga:not(:first-child) { margin-top: 1mm; padding-top: calc(1.4mm * var(--s)); border-top: .3mm solid #111; }
     .head:last-child { padding-bottom: 0; }
     .label > .bar:first-child { padding-top: 0; }
     .label > .head:only-child .nama:only-child { font-size: calc(16px * var(--s)); }
@@ -700,8 +700,9 @@ async function printBarcode(item: Product, opt: LabelOptions) {
       <div class="ctl">
         <label>Lebar (mm)<input type="number" id="w" min="20" max="210"></label>
         <label>Tinggi (mm)<input type="number" id="h" min="0" max="297" title="0 = otomatis"></label>
-        <label>Teks (%)<input type="number" id="s" min="50" max="250"></label>
+        <label>Teks (%)<input type="number" id="s" min="20" max="250"></label>
         <label>Jumlah<input type="number" id="n" min="1" max="200"></label>
+        <label>Susunan<select id="m" style="padding:4px 6px;font:inherit;font-size:13px;border:1px solid #cbd5e1;border-radius:6px"><option value="kertas">Banyak per kertas</option><option value="halaman">1 label per halaman</option></select></label>
         <label class="chk"><input type="checkbox" id="k"> Kotak</label>
       </div>
       <button onclick="window.print()">Cetak</button>
@@ -711,26 +712,32 @@ async function printBarcode(item: Product, opt: LabelOptions) {
       var D = ${data};
       var el = function (id) { return document.getElementById(id); };
       var num = function (id, lo, hi, def) { var v = Math.round(Number(el(id).value)); return isFinite(v) && el(id).value !== "" ? Math.min(hi, Math.max(lo, v)) : def; };
-      el("w").value = D.ukuran.lebar; el("h").value = D.ukuran.tinggi; el("s").value = D.ukuran.skala; el("n").value = D.ukuran.jumlah; el("k").checked = D.ukuran.kotak;
+      el("w").value = D.ukuran.lebar; el("h").value = D.ukuran.tinggi; el("s").value = D.ukuran.skala; el("n").value = D.ukuran.jumlah; el("k").checked = D.ukuran.kotak; el("m").value = D.ukuran.susunan;
       function render() {
-        var w = num("w", 20, 210, 70), h = num("h", 0, 297, 0), s = num("s", 50, 250, 100), n = num("n", 1, 200, 1), k = el("k").checked;
+        var w = num("w", 20, 210, 70), h = num("h", 0, 297, 0), s = num("s", 20, 250, 100), n = num("n", 1, 200, 1), k = el("k").checked, m = el("m").value;
         if (h > 0 && h < 15) h = 15;
         var root = document.documentElement.style;
         root.setProperty("--s", String(s / 100));
         root.setProperty("--w", w + "mm");
         root.setProperty("--bar", (h > 0 ? Math.max(6, h * 0.38) : 20 * s / 100) + "mm");
         // Tinggi diisi: kertas dicetak persis seukuran label (cocok untuk printer label). Kosong/0: kertas ikut printer, label di tengah.
-        el("pg").textContent = h > 0
-          ? "@page { size: " + w + "mm " + h + "mm; margin: 0; } @media print { .label { width: " + (w - 1) + "mm !important; height: " + (h - 1) + "mm !important; margin: .5mm !important; } }"
-          : "@page { margin: 3mm; }";
+        if (m === "kertas") {
+          // Printer biasa (A4): label berjajar memenuhi kertas, pindah baris/halaman otomatis.
+          el("pg").textContent = "@page { margin: 8mm; } @media print { .sheet { display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: flex-start; justify-content: flex-start; gap: 2mm; } .label { margin: 0 !important; break-after: auto !important; page-break-after: auto !important; } }";
+        } else {
+          // Tinggi diisi: kertas dicetak persis seukuran label (cocok untuk printer label). Kosong/0: kertas ikut printer, label di tengah.
+          el("pg").textContent = h > 0
+            ? "@page { size: " + w + "mm " + h + "mm; margin: 0; } @media print { .label { width: " + (w - 1) + "mm !important; height: " + (h - 1) + "mm !important; margin: .5mm !important; } }"
+            : "@page { margin: 3mm; }";
+        }
         var html = "";
         for (var i = 0; i < D.labels.length; i++) {
           for (var j = 0; j < n; j++) html += D.labels[i].replace('class="label"', 'class="label' + (k ? " kotak" : "") + '"' + (h > 0 ? ' style="height:' + h + 'mm"' : ""));
         }
         el("sheet").innerHTML = html;
-        el("info").textContent = (D.labels.length * n) + " label (" + n + " salinan x " + D.labels.length + " satuan) \u00b7 tiap label dicetak di halaman sendiri";
+        el("info").textContent = (D.labels.length * n) + " label (" + n + " salinan x " + D.labels.length + " satuan) \u00b7 " + (m === "kertas" ? "berjajar dalam satu kertas" : "tiap label dicetak di halaman sendiri");
       }
-      ["w", "h", "s", "n", "k"].forEach(function (id) { el(id).addEventListener("input", render); el(id).addEventListener("change", render); });
+      ["w", "h", "s", "n", "k", "m"].forEach(function (id) { el(id).addEventListener("input", render); el(id).addEventListener("change", render); });
       render();
     </script>
   </body></html>`;

@@ -14,10 +14,11 @@ export type LabelFields = {
 /** Label satuan kecil (Pcs) dan satuan besar (Dus) diatur sendiri-sendiri. */
 export type LabelOptions = { pcs: LabelFields; dus: LabelFields; ukuran: LabelSize };
 
+/** susunan: "kertas" = banyak label berjajar dalam satu kertas (printer biasa/A4); "halaman" = tiap label satu halaman (printer label). */
 /** Ukuran kertas label. Tinggi 0 = otomatis mengikuti isi. Skala teks dalam persen. */
-export type LabelSize = { lebar: number; tinggi: number; skala: number; kotak: boolean; jumlah: number };
-export const SIZE_DEFAULTS: LabelSize = { lebar: 70, tinggi: 0, skala: 100, kotak: true, jumlah: 1 };
-export const SIZE_LIMITS = { lebar: [20, 210], tinggi: [0, 297], skala: [50, 250], jumlah: [1, 200] } as const;
+export type LabelSize = { lebar: number; tinggi: number; skala: number; kotak: boolean; jumlah: number; susunan: "kertas" | "halaman" };
+export const SIZE_DEFAULTS: LabelSize = { lebar: 70, tinggi: 0, skala: 100, kotak: true, jumlah: 1, susunan: "kertas" };
+export const SIZE_LIMITS = { lebar: [20, 210], tinggi: [0, 297], skala: [20, 250], jumlah: [1, 200] } as const;
 
 const clampInt = (v: unknown, [min, max]: readonly [number, number], fallback: number) => {
   const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
@@ -34,6 +35,7 @@ export function cleanLabelSize(raw: unknown): LabelSize {
     skala: clampInt(src.skala, SIZE_LIMITS.skala, SIZE_DEFAULTS.skala),
     kotak: typeof src.kotak === "boolean" ? src.kotak : SIZE_DEFAULTS.kotak,
     jumlah: clampInt(src.jumlah, SIZE_LIMITS.jumlah, SIZE_DEFAULTS.jumlah),
+    susunan: src.susunan === "halaman" ? "halaman" : "kertas",
   };
 }
 export type LabelUnit = keyof LabelOptions;

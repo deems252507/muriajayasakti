@@ -1096,7 +1096,7 @@ export async function saveLabelBarcode(data: any) {
   const db = await sql();
   await db.query(`update shop_profile set label_barcode = $1::jsonb where id = 1`, [JSON.stringify(label)]);
   const ringkas = (f: typeof label.pcs) => (f.aktif ? Object.entries(f).filter(([k, v]) => k !== "aktif" && v).map(([k]) => k).join("+") || "kosong" : "tidak dicetak");
-  await audit(me, `Ubah isi label barcode (Pcs: ${ringkas(label.pcs)}; Dus: ${ringkas(label.dus)}; ukuran: ${label.ukuran.lebar}x${label.ukuran.tinggi || "auto"} mm, teks ${label.ukuran.skala}%, ${label.ukuran.kotak ? "pakai kotak" : "tanpa kotak"}, ${label.ukuran.jumlah} salinan)`);
+  await audit(me, `Ubah isi label barcode (Pcs: ${ringkas(label.pcs)}; Dus: ${ringkas(label.dus)}; ukuran: ${label.ukuran.lebar}x${label.ukuran.tinggi || "auto"} mm, teks ${label.ukuran.skala}%, ${label.ukuran.kotak ? "pakai kotak" : "tanpa kotak"}, ${label.ukuran.jumlah} salinan, ${label.ukuran.susunan === "halaman" ? "satu label per halaman" : "banyak label per kertas"})`);
   return label;
 }
 

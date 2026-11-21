@@ -79,6 +79,13 @@ function SizeBox({ value, onChange }: { value: LabelSize; onChange: (next: Label
         <NumField label="Ukuran teks (%)" hint="100 = normal" value={value.skala} onChange={(n) => set({ skala: n })} />
         <NumField label="Jumlah salinan" hint="Label sama yang dicetak" value={value.jumlah} onChange={(n) => set({ jumlah: n })} />
       </div>
+      <label className="mt-2 block text-sm font-semibold">
+        Susunan di kertas
+        <select className="mt-1 h-10 w-full rounded-lg border border-line px-2.5 font-normal sm:w-auto" value={value.susunan} onChange={(e) => set({ susunan: e.target.value === "halaman" ? "halaman" : "kertas" })}>
+          <option value="kertas">Banyak label dalam satu kertas (printer biasa / A4)</option>
+          <option value="halaman">Satu label per halaman (printer label / thermal)</option>
+        </select>
+      </label>
       <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold">
         <input type="checkbox" className="size-4" checked={value.kotak} onChange={() => set({ kotak: !value.kotak })} />
         Cetak dengan garis kotak
