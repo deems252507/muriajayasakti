@@ -187,6 +187,26 @@ export const saveShopProfile = createServerFn({ method: "POST" })
     return run(data);
   });
 
+export const getLabelBarcode = createServerFn({ method: "GET" }).handler(async () => {
+  const { getLabelBarcode: run } = await import("./logic.server");
+  return run();
+});
+
+export const saveLabelBarcode = createServerFn({ method: "POST" })
+  .validator((input: { nama?: boolean; merek?: boolean; partNumber?: boolean; kodePajak?: boolean; barcode?: boolean; kodeBarcode?: boolean; harga?: boolean }) => ({
+    nama: input?.nama !== false,
+    merek: input?.merek !== false,
+    partNumber: input?.partNumber !== false,
+    kodePajak: input?.kodePajak !== false,
+    barcode: input?.barcode !== false,
+    kodeBarcode: input?.kodeBarcode !== false,
+    harga: input?.harga !== false,
+  }))
+  .handler(async ({ data }) => {
+    const { saveLabelBarcode: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const publicShop = createServerFn({ method: "GET" }).handler(async () => {
   const { publicShop: run } = await import("./logic.server");
   return run();

@@ -8,10 +8,10 @@ import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
 import { SortPicker, hideCategoryHeaders, DEFAULT_SORTS } from "@/components/shop/sort-picker";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
-import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
+import { deleteProduct, exportProducts, getLabelBarcode, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
-import { loadLabelOptions } from "@/lib/shop/label-settings";
+import { LABEL_DEFAULTS, cleanLabelOptions, type LabelOptions } from "@/lib/shop/label-settings";
 import { stockLevel } from "@/components/shop/stock-table";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -63,6 +63,14 @@ function BarangPage() {
     if (!saved) return;
     sessionStorage.removeItem("mjs-find");
     setQ(saved);
+  }, []);
+  // Isi label barcode diatur di Pengaturan (berlaku untuk semua akun). Dimuat dulu supaya tombol Barcode langsung membuka cetakan.
+  const [labelOpt, setLabelOpt] = useState<LabelOptions>(LABEL_DEFAULTS);
+  useEffect(() => {
+    const muat = () => void getLabelBarcode().then((res) => setLabelOpt(cleanLabelOptions(res))).catch(() => undefined);
+    muat();
+    window.addEventListener("focus", muat);
+    return () => window.removeEventListener("focus", muat);
   }, []);
   const [dupOnly, setDupOnly] = usePersistedState("barang:dupOnly", false);
   const [kategori, setKategori] = usePersistedState<string[]>("barang:kategori", []);
@@ -342,7 +350,7 @@ function BarangPage() {
               {!canEdit ? <ExpandButton label="Detail" icon={<Eye />} onClick={() => setDetail(item)} /> : null}
               <ExpandButton label="Riwayat harga" icon={<History />} onClick={() => openHistory(item)} />
               {me.role !== "Kasir" ? <ExpandButton label="Pemasok" icon={<Truck />} onClick={() => openOrigin(item)} /> : null}
-              <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item)} />
+              <ExpandButton label="Barcode" icon={<Barcode />} onClick={() => void printBarcode(item, labelOpt)} />
               {canEdit ? (
                 <>
                   <ExpandButton label="Ubah" icon={<Pencil />} onClick={() => { setForm({ ...item, id: item.id, stokAsal: item.stok }); setUseDus(Boolean(item.satuanAlt && item.isiSatuanAlt > 0)); setOpen(true); }} />
@@ -613,8 +621,7 @@ function splitCsv(line: string) {
   return out;
 }
 
-async function printBarcode(item: Product) {
-  const opt = loadLabelOptions();
+async function printBarcode(item: Product, opt: LabelOptions) {
   const barcodeOn = opt.barcode;
   const adaIsi = opt.nama || opt.merek || opt.partNumber || opt.kodePajak || opt.barcode || opt.harga;
   if (!adaIsi) {

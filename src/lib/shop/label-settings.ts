@@ -1,4 +1,4 @@
-/** Isi label barcode yang dicetak dari Daftar Sparepart. Disimpan di browser/perangkat yang dipakai mencetak. */
+/** Isi label barcode yang dicetak dari Daftar Sparepart. Disimpan di database (berlaku untuk semua akun). */
 export type LabelOptions = {
   nama: boolean;
   merek: boolean;
@@ -21,25 +21,10 @@ export const LABEL_FIELDS: Array<{ key: keyof LabelOptions; label: string; hint?
 
 export const LABEL_DEFAULTS: LabelOptions = { nama: true, merek: true, partNumber: true, kodePajak: true, barcode: true, kodeBarcode: true, harga: true };
 
-const KEY = "mjs:label-barcode";
-
-export function loadLabelOptions(): LabelOptions {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...LABEL_DEFAULTS };
-    const parsed = JSON.parse(raw) as Partial<LabelOptions>;
-    const out = { ...LABEL_DEFAULTS };
-    for (const f of LABEL_FIELDS) if (typeof parsed[f.key] === "boolean") out[f.key] = parsed[f.key] as boolean;
-    return out;
-  } catch {
-    return { ...LABEL_DEFAULTS };
-  }
-}
-
-export function saveLabelOptions(options: LabelOptions) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(options));
-  } catch {
-    /* storage diblokir: pengaturan tidak tersimpan */
-  }
+/** Isian yang tidak ada atau rusak dianggap tampil (sama seperti sebelum ada pengaturan ini). */
+export function cleanLabelOptions(raw: unknown): LabelOptions {
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const out = { ...LABEL_DEFAULTS };
+  for (const f of LABEL_FIELDS) if (typeof src[f.key] === "boolean") out[f.key] = src[f.key] as boolean;
+  return out;
 }

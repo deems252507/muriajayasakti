@@ -1080,6 +1080,31 @@ export async function saveShopProfile(data: any) {
   return { ok: true, nama, alamat, telepon, tagline, logo, icon };
 }
 
+const LABEL_KEYS = ["nama", "merek", "partNumber", "kodePajak", "barcode", "kodeBarcode", "harga"] as const;
+
+function cleanLabel(raw: unknown) {
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return Object.fromEntries(LABEL_KEYS.map((k) => [k, typeof src[k] === "boolean" ? src[k] : true])) as Record<(typeof LABEL_KEYS)[number], boolean>;
+}
+
+/** Isi label barcode (semua akun boleh membaca, karena semua akun bisa mencetak). */
+export async function getLabelBarcode() {
+  await requireStaff();
+  const db = await sql();
+  const [row] = await db.query<{ label_barcode: unknown }>(`select label_barcode from shop_profile where id = 1`);
+  return cleanLabel(row?.label_barcode);
+}
+
+export async function saveLabelBarcode(data: any) {
+  const me = await requireStaff();
+  assertManageStaff(me);
+  const label = cleanLabel(data);
+  const db = await sql();
+  await db.query(`update shop_profile set label_barcode = $1::jsonb where id = 1`, [JSON.stringify(label)]);
+  await audit(me, `Ubah isi label barcode (${LABEL_KEYS.filter((k) => label[k]).join(", ") || "kosong"})`);
+  return label;
+}
+
 /** Gambar ikon aplikasi untuk favicon / layar utama / notifikasi. null = pakai berkas bawaan. */
 export async function shopIconImage(kind: "icon" | "badge" = "icon") {
   const db = await sql();
