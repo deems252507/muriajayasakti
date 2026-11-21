@@ -1261,13 +1261,10 @@ export const gudangDraftConfirm = createServerFn({ method: "POST" })
 
 /* ===== Alokasi Faktur (toko / gudang) ===== */
 export const alokasiList = createServerFn({ method: "GET" })
-  .validator((input: { filter?: string; q?: string; page?: number; supplierId?: number; start?: string; end?: string }) => ({
+  .validator((input: { filter?: string; q?: string; page?: number }) => ({
     filter: String(input?.filter ?? "tindakan"),
     q: String(input?.q ?? "").trim(),
     page: Math.max(1, Number(input?.page ?? 1) || 1),
-    supplierId: Number(input?.supplierId) > 0 ? Number(input.supplierId) : 0,
-    start: String(input?.start ?? "").trim(),
-    end: String(input?.end ?? "").trim(),
   }))
   .handler(async ({ data }) => {
     const { alokasiList: run } = await import("./logic.server");
