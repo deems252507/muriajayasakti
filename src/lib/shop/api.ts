@@ -370,8 +370,9 @@ export const createSupplierReceipt = createServerFn({ method: "POST" })
   });
 
 export const updateSupplierReceipt = createServerFn({ method: "POST" })
-  .validator((input: { id: number; invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
+  .validator((input: { id: number; invoiceNo: string; supplierId: number; receivedAt: string; notes?: string; tujuan?: "tetap" | "toko" | "gudang_sekarang" | "gudang_staf"; items: Array<{ productId: number; qty: number; satuan: string; hargaBeli: number; hargaJual?: number }> }) => ({
     id: Number(input?.id),
+    tujuan: (input?.tujuan === "toko" || input?.tujuan === "gudang_sekarang" || input?.tujuan === "gudang_staf" ? input.tujuan : "tetap") as "tetap" | "toko" | "gudang_sekarang" | "gudang_staf",
     invoiceNo: String(input?.invoiceNo ?? "").trim(),
     supplierId: Number(input?.supplierId),
     receivedAt: String(input?.receivedAt ?? "").trim(),

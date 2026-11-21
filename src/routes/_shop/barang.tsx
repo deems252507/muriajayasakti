@@ -11,6 +11,7 @@ import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell
 import { deleteProduct, exportProducts, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
+import { loadLabelOptions } from "@/lib/shop/label-settings";
 import { stockLevel } from "@/components/shop/stock-table";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -613,17 +614,28 @@ function splitCsv(line: string) {
 }
 
 async function printBarcode(item: Product) {
-  const { default: JsBarcode } = await import("jsbarcode");
+  const opt = loadLabelOptions();
+  const barcodeOn = opt.barcode;
+  const adaIsi = opt.nama || opt.merek || opt.partNumber || opt.kodePajak || opt.barcode || opt.harga;
+  if (!adaIsi) {
+    toast.error("Isi label kosong. Centang minimal satu isi di Pengaturan > Label Barcode.");
+    return;
+  }
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const JsBarcode = barcodeOn ? (await import("jsbarcode")).default : null;
   const make = (code: string) => {
+    if (!JsBarcode) return "";
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    JsBarcode(svg, code, { format: "CODE128", width: 1.2, height: 40, displayValue: true, fontSize: 12, margin: 4 });
+    JsBarcode(svg, code, { format: "CODE128", width: 1.2, height: 40, displayValue: opt.kodeBarcode, fontSize: 12, margin: 4 });
     return svg.outerHTML;
   };
-  const dus = item.satuanAlt
-    ? `<hr><div><b>${item.nama}</b><div>${item.merek || "-"} · ${item.partNumber || "-"}</div>${item.kodePajak ? `<div>${item.kodePajak}</div>` : ""}${make(`${item.kode}-DUS`)}<div style="font-size:16px">${rupiah(item.hargaJualAlt)}</div></div>`
-    : "";
+  const label = (code: string, harga: number) => {
+    const sub = [opt.merek && (item.merek || "-"), opt.partNumber && `PN ${item.partNumber || "-"}`].filter(Boolean).join(" · ");
+    return `<div>${opt.nama ? `<b>${esc(item.nama)}</b>` : ""}${sub ? `<div style="font-size:12px">${esc(sub)}</div>` : ""}${opt.kodePajak && item.kodePajak ? `<div>${esc(item.kodePajak)}</div>` : ""}${make(code)}${opt.harga ? `<div style="font-size:16px">${rupiah(harga)}</div>` : ""}</div>`;
+  };
+  const dus = item.satuanAlt ? `<hr>${label(`${item.kode}-DUS`, item.hargaJualAlt)}` : "";
   const html = `<!doctype html><html><body style="font-family:sans-serif;width:280px;margin:16px auto;text-align:center">
-    <div><b>${item.nama}</b><div style="font-size:12px">${item.merek || "-"} · PN ${item.partNumber || "-"}</div>${item.kodePajak ? `<div>${item.kodePajak}</div>` : ""}${make(`${item.kode}-PCS`)}<div style="font-size:16px">${rupiah(item.hargaJual)}</div></div>
+    ${label(`${item.kode}-PCS`, item.hargaJual)}
     ${dus}
   </body></html>`;
   const win = window.open("", "_blank", "width=420,height=640");

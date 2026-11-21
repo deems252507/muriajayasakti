@@ -6,6 +6,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell";
 import { addPajak, changeOwnPassword, deletePajak, listKategoriBarang, listMasters, listStaff, revealPassword, saveBank, savePajak, saveShopProfile, saveStaff, updateOwnProfile } from "@/lib/shop/api";
+import { LabelBarcodePanel } from "@/components/shop/label-barcode-panel";
 import { setShopProfile } from "@/lib/shop/print";
 import type { Bank, Staff } from "@/lib/shop/types";
 
@@ -283,6 +284,7 @@ function SettingsPage() {
         </div>
       </Panel>
       </>) : null}
+      {!akunSaja ? <LabelBarcodePanel /> : null}
       <Panel>
         <h2 className="font-extrabold">Nama dan Foto Akun</h2>
         <p className="text-xs text-muted">{akunSaja ? "Ubah nama dan foto akun Anda. Password diatur oleh Admin 1." : "Ubah nama Owner, Admin, atau Kasir yang sedang masuk. Password tidak ditampilkan di halaman login."}</p>

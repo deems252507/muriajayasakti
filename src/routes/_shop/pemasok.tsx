@@ -192,7 +192,8 @@ function PemasokPage() {
   const [activeHit, setActiveHit] = useState(0);
   const [justAdded, setJustAdded] = useState<{ id: number; n: number } | null>(null);
   const [defaultMarkup, setDefaultMarkup] = useState("");
-  const [tujuan, setTujuan] = useState<"toko" | "gudang_sekarang" | "gudang_staf">("toko");
+  const [tujuan, setTujuan] = useState<"tetap" | "toko" | "gudang_sekarang" | "gudang_staf">("toko");
+  const [editStatus, setEditStatus] = useState<{ status: string; nGudang: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const canEdit = me.role === "Admin";
@@ -257,6 +258,7 @@ function PemasokPage() {
     setJustAdded(null);
     setDefaultMarkup("");
     setTujuan("toko");
+    setEditStatus(null);
   }
 
   function dateInput(iso: string) {
@@ -268,6 +270,8 @@ function PemasokPage() {
 
   function openEdit(row: SupplierReceipt) {
     setEditingId(row.id);
+    setTujuan("tetap");
+    setEditStatus({ status: row.alokasiStatus ?? "selesai", nGudang: row.nGudang ?? 0 });
     setInvoiceNo(row.invoiceNo);
     setReceivedAt(dateInput(row.receivedAt));
     setFormSupplierId(String(row.supplierId));
@@ -618,11 +622,12 @@ function PemasokPage() {
                   <span className="text-muted">{items.length} barang · {items.reduce((sum, item) => sum + item.qty, 0)} qty · Total</span>
                   <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
                 </div>
-                {!readOnly && !editingId ? (
+                {!readOnly ? (
                   <label className="flex flex-col gap-0.5 text-xs font-semibold text-slate-700">
                     Tujuan barang
                     <select className={`${inputClass} !h-10 sm:!w-72`} value={tujuan} onChange={(e) => setTujuan(e.target.value as typeof tujuan)}>
-                      <option value="toko">Semua ke toko (tanpa alokasi)</option>
+                      {editingId ? <option value="tetap">Tetap seperti sekarang{editStatus ? (editStatus.nGudang > 0 ? ` (${editStatus.nGudang} barang ke gudang)` : " (semua di toko)") : ""}</option> : null}
+                      <option value="toko">{editingId ? "Semua ke toko (tarik dari gudang)" : "Semua ke toko (tanpa alokasi)"}</option>
                       <option value="gudang_sekarang">Ada ke gudang, atur sekarang</option>
                       <option value="gudang_staf">Ada ke gudang, serahkan ke staf</option>
                     </select>
@@ -633,17 +638,18 @@ function PemasokPage() {
                 <button className="h-12 rounded-lg border border-line px-5" onClick={() => { setOpen(false); setEditingId(null); }}>{readOnly ? "Tutup" : "Batal"}</button>
                 {!readOnly ? <PrimaryButton disabled={!invoiceNo.trim() || !formSupplierId || !items.length} onClick={() => {
                   const payload = { invoiceNo, supplierId: Number(formSupplierId), receivedAt, notes, tujuan, items: items.map((item) => ({ productId: item.product.id, qty: item.qty, satuan: item.satuan, hargaBeli: item.hargaBeli, hargaJual: item.hargaJual })) };
-                  const wasNew = !editingId;
-                  const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: payload });
+                  const run = editingId ? updateSupplierReceipt({ data: { id: editingId, ...payload } }) : createSupplierReceipt({ data: { ...payload, tujuan: tujuan === "tetap" ? "toko" : tujuan } });
                   void run
                     .then((res) => {
-                      const deskripsi = editingId ? "Stok disesuaikan." : tujuan === "toko" ? "Stok toko bertambah. Tidak perlu alokasi gudang." : tujuan === "gudang_sekarang" ? "Stok toko bertambah. Lanjut atur barang yang ke gudang." : "Stok toko bertambah. Staf gudang diberi notifikasi untuk alokasi.";
+                      const deskripsi = editingId
+                        ? tujuan === "tetap" ? "Stok disesuaikan." : tujuan === "toko" ? "Stok disesuaikan. Semua barang faktur ini ada di toko." : tujuan === "gudang_sekarang" ? "Stok disesuaikan. Lanjut atur barang yang ke gudang." : "Stok disesuaikan. Staf gudang diberi notifikasi untuk alokasi."
+                        : tujuan === "toko" ? "Stok toko bertambah. Tidak perlu alokasi gudang." : tujuan === "gudang_sekarang" ? "Stok toko bertambah. Lanjut atur barang yang ke gudang." : "Stok toko bertambah. Staf gudang diberi notifikasi untuk alokasi.";
                       toast.success(editingId ? `Penerimaan ${invoiceNo} berhasil diubah` : `Barang masuk ${invoiceNo} berhasil disimpan`, { description: deskripsi });
-                      const goAlokasi = wasNew && tujuan === "gudang_sekarang" && res.id > 0;
+                      const goAlokasi = tujuan === "gudang_sekarang" && res.id > 0;
                       setOpen(false); resetForm(); setPage(1); load(1);
                       if (goAlokasi) void navigate({ to: "/alokasi", search: { faktur: res.id } });
                     })
-                    .catch((error: Error) => toast.error(error.message));
+                    .catch((error: Error) => { toast.error(error.message); if (editingId) load(page); });
                 }}>{editingId ? "Simpan Perubahan" : "Simpan Barang Masuk"}</PrimaryButton> : null}
               </div>
             </div>

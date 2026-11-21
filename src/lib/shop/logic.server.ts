@@ -1652,6 +1652,8 @@ export async function updateSupplierReceipt(data: any) {
   const supplierId = Number(data.supplierId);
   const receivedAt = String(data.receivedAt ?? '').trim();
   const items = Array.isArray(data.items) ? data.items : [];
+  // 'tetap' = alokasi dan status faktur tidak disentuh (perilaku lama). Selain itu, Admin memindahkan tujuan barang faktur ini.
+  const tujuan: 'tetap' | 'toko' | 'gudang_sekarang' | 'gudang_staf' = data.tujuan === 'toko' || data.tujuan === 'gudang_sekarang' || data.tujuan === 'gudang_staf' ? data.tujuan : 'tetap';
   if (!Number.isInteger(id) || id <= 0) throw new Error('Penerimaan tidak ditemukan.');
   if (!invoiceNo) throw new Error('Nomor invoice barang masuk wajib diisi.');
   if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
@@ -1676,9 +1678,27 @@ export async function updateSupplierReceipt(data: any) {
       })],
     );
     const result = row?.shop_update_supplier_receipt as { invoiceNo?: string };
-    await audit(me, `Ubah barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
+    const noFaktur = String(result?.invoiceNo ?? invoiceNo);
+    const tujuanLabel = tujuan === 'toko' ? ', tujuan: semua ke toko' : tujuan === 'gudang_sekarang' ? ', tujuan: ada ke gudang, diatur Admin' : tujuan === 'gudang_staf' ? ', tujuan: ada ke gudang, diserahkan ke staf' : '';
+    await audit(me, `Ubah barang masuk pemasok ${noFaktur}${tujuanLabel}`);
     await notifyFakturBerubah(db, me, id, info, 'diubah');
-    return { ok: true, id, invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
+    try {
+      if (tujuan === 'toko') {
+        // Semua barang faktur ini kembali ke toko. Setiap pemindahan dicatat di riwayat gudang atas nama Admin.
+        const lines = await db.query<{ id: number }>(`select id from supplier_receipt_lines where receipt_id = $1 and ke_gudang > 0 order by id`, [id]);
+        for (const line of lines) {
+          await db.query(`select shop_receipt_apply_line($1::bigint, 0, $2, $3, true, true)`, [Number(line.id), me.username, me.name]);
+        }
+        await db.query(`update supplier_receipts set alokasi_status = 'selesai', status_diubah = now(), pengingat_pada = null where id = $1`, [id]);
+      } else if (tujuan === 'gudang_sekarang' || tujuan === 'gudang_staf') {
+        // Faktur kembali masuk antrian alokasi (jumlah ke gudang yang sudah ada tetap dipertahankan sebagai titik awal).
+        await db.query(`update supplier_receipts set alokasi_status = 'perlu_alokasi', status_diubah = now(), pengingat_pada = null, catatan_kembali = '' where id = $1`, [id]);
+        if (tujuan === 'gudang_staf') await notifyFakturBaru(db, me, id, noFaktur, supplierId);
+      }
+    } catch (error) {
+      throw new Error(`Faktur sudah berhasil diubah, tetapi tujuan barang belum berubah: ${fakturHint(cleanError(error))}`);
+    }
+    return { ok: true, id, invoiceNo: noFaktur };
   } catch (error) {
     throw new Error(fakturHint(cleanError(error)));
   }
