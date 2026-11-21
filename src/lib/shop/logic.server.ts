@@ -4792,7 +4792,7 @@ export async function gudangList(data: { q?: unknown; kategori?: unknown; hanyaS
             (select l.jumlah from gudang_log l where l.product_id = g.product_id and l.tipe = 'OPNAME' order by l.tanggal desc, l.id desc limit 1) as opname_selisih
      from gudang_items g join products p on p.id = g.product_id
      ${clause}
-     order by lower(p.nama), p.id
+     order by (btrim(coalesce(p.kategori, '')) = '') asc, lower(btrim(coalesce(p.kategori, ''))), lower(p.nama), p.id
      limit ${GUDANG_PER_PAGE} offset ${(page - 1) * GUDANG_PER_PAGE}`,
     params,
   );
@@ -5521,6 +5521,7 @@ function alokasiRow(row: Record<string, unknown>) {
     invoiceNo: String(row.invoice_no ?? ""),
     receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : "",
     supplierName: String(row.supplier_name ?? ""),
+    barangPertama: String(row.barang_pertama ?? ""),
     status: String(row.alokasi_status ?? "selesai") as AlokasiStatus,
     statusDiubah: row.status_diubah ? new Date(String(row.status_diubah)).toISOString() : "",
     alokasiOleh: String(row.alokasi_oleh ?? ""),
@@ -5539,7 +5540,7 @@ function alokasiRow(row: Record<string, unknown>) {
 }
 
 /** Daftar faktur untuk menu Alokasi Faktur (tanpa harga). filter: tindakan (butuh saya), semua, selesai. */
-export async function alokasiList(data: { filter?: string; q?: string; page?: number }) {
+export async function alokasiList(data: { filter?: string; q?: string; page?: number; supplierId?: number; start?: string; end?: string }) {
   const me = await requireAlokasi();
   const db = await sql();
   const filter = data?.filter === "semua" || data?.filter === "selesai" || data?.filter === "selisih" ? data.filter : "tindakan";
@@ -5554,8 +5555,23 @@ export async function alokasiList(data: { filter?: string; q?: string; page?: nu
     const n = params.length;
     where.push(`(r.invoice_no ilike $${n} or p.nama ilike $${n} or exists (select 1 from supplier_receipt_lines lq join products pq on pq.id = lq.product_id where lq.receipt_id = r.id and (pq.nama ilike $${n} or pq.part_number ilike $${n})))`);
   }
+  const supplierId = Number(data?.supplierId);
+  if (Number.isInteger(supplierId) && supplierId > 0) {
+    params.push(supplierId);
+    where.push(`r.supplier_id = $${params.length}`);
+  }
+  const start = String(data?.start ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    params.push(start);
+    where.push(`r.received_at >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`);
+  }
+  const end = String(data?.end ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    params.push(end);
+    where.push(`r.received_at < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`);
+  }
   const clause = where.join(" and ");
-  const perPage = 15;
+  const perPage = 20;
   const page = Math.max(1, Number(data?.page ?? 1) || 1);
   const [count] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r join partners p on p.id = r.supplier_id where ${clause}`, params);
   const rows = await db.query<Record<string, unknown>>(
@@ -5563,14 +5579,37 @@ export async function alokasiList(data: { filter?: string; q?: string; page?: nu
             r.alokasi_catatan, r.cek_nama, r.cek_pada, r.catatan_kembali, p.nama as supplier_name,
             (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id) as n_item,
             (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
-            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.selisih > 0) as n_selisih
+            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.selisih > 0) as n_selisih,
+            (select pr.nama from supplier_receipt_lines l join products pr on pr.id = l.product_id where l.receipt_id = r.id order by l.id limit 1) as barang_pertama
      from supplier_receipts r join partners p on p.id = r.supplier_id
      where ${clause}
      order by (r.alokasi_status = 'selesai') asc, r.received_at desc, r.id desc
      limit ${perPage} offset ${(page - 1) * perPage}`,
     params,
   );
-  return { total: Number(count?.n ?? 0), page, perPage, isAdmin: me.role === "Admin", items: rows.map(alokasiRow) };
+  // Pemasok untuk filter, jumlah faktur per tahap alur, dan jumlah yang perlu ditindak akun ini (tidak terpengaruh filter).
+  const suppliers = await db.query<{ id: number; nama: string }>(
+    `select distinct p.id, p.nama from supplier_receipts r join partners p on p.id = r.supplier_id order by p.nama`,
+  );
+  const statusRows = await db.query<{ s: string; n: number }>(`select alokasi_status as s, count(*)::int as n from supplier_receipts group by 1`);
+  const byStatus = Object.fromEntries(statusRows.map((r) => [String(r.s), Number(r.n)])) as Record<string, number>;
+  const tp: unknown[] = [];
+  const [tind] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r where ${alokasiTindakanSql(me, tp)}`, tp);
+  return {
+    total: Number(count?.n ?? 0),
+    page,
+    perPage,
+    isAdmin: me.role === "Admin",
+    items: rows.map(alokasiRow),
+    suppliers: suppliers.map((r) => ({ id: Number(r.id), nama: String(r.nama) })),
+    counts: {
+      perlu_alokasi: byStatus.perlu_alokasi ?? 0,
+      menunggu_cek: byStatus.menunggu_cek ?? 0,
+      dikembalikan: byStatus.dikembalikan ?? 0,
+      selesai: byStatus.selesai ?? 0,
+      tindakan: Number(tind?.n ?? 0),
+    },
+  };
 }
 
 /** Satu faktur dengan baris barangnya (tanpa harga): jumlah faktur, alokasi gudang, stok toko dan gudang saat ini. */
