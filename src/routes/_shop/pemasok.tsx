@@ -1,11 +1,12 @@
 import { confirmDialog } from "@/lib/confirm";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
+import { StatusBadge } from "@/components/shop/alokasi-badge";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierInvoice, printSupplierReceiptReport, shopBrand } from "@/lib/shop/print";
@@ -372,10 +373,10 @@ function PemasokPage() {
       <Panel className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Item</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
+            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Item</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Alokasi</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={9} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan={10} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
               <tr
                 key={row.id}
@@ -400,6 +401,12 @@ function PemasokPage() {
                 <td className="px-2 py-3 text-center text-xs font-semibold text-slate-600">{row.items.length}</td>
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
                 <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
+                <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <Link to="/alokasi" search={{ faktur: row.id }} title="Buka alokasi faktur" className="inline-flex flex-col items-start gap-0.5">
+                    <StatusBadge status={row.alokasiStatus ?? "selesai"} />
+                    <span className="text-[11px] text-slate-600">{row.nGudang ? `${row.nGudang} barang ke gudang` : "semua di toko"}</span>
+                  </Link>
+                </td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
                 <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
               </tr>

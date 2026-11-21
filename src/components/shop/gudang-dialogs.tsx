@@ -371,9 +371,9 @@ export function TambahDialog({ item, onClose, onDone, onExisting }: { item?: Gud
 }
 
 /** Ambil dari gudang: stok gudang berkurang, stok toko bertambah. */
-export function AmbilDialog({ item, onClose, onDone }: { item: GudangItem; onClose: () => void; onDone: () => void }) {
-  const [qty, setQty] = useState("");
-  const [unit, setUnit] = useState<Unit>(defaultUnit(item));
+export function AmbilDialog({ item, onClose, onDone, initialQty }: { item: GudangItem; onClose: () => void; onDone: () => void; /** Saran jumlah dalam satuan dasar (mis. dari daftar Perlu Diambil). */ initialQty?: number }) {
+  const [qty, setQty] = useState(initialQty && initialQty > 0 ? String(initialQty) : "");
+  const [unit, setUnit] = useState<Unit>(initialQty && initialQty > 0 ? "base" : defaultUnit(item));
   const [catatan, setCatatan] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

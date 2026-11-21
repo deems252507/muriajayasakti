@@ -101,7 +101,13 @@ export type SupplierReceipt = {
   totalQty: number;
   totalValue: number;
   items: SupplierReceiptItem[];
+  /** Status alokasi toko/gudang (menu Alokasi Faktur). Faktur lama = selesai. */
+  alokasiStatus?: AlokasiStatus;
+  /** Jumlah barang pada faktur yang sebagian atau seluruhnya dialokasikan ke gudang. */
+  nGudang?: number;
 };
+
+export type AlokasiStatus = "perlu_alokasi" | "menunggu_cek" | "dikembalikan" | "selesai";
 
 /* ===== Stok Opname ===== */
 

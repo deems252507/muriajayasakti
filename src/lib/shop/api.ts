@@ -1248,3 +1248,66 @@ export const gudangDraftConfirm = createServerFn({ method: "POST" })
     const { gudangDraftConfirm: run } = await import("./logic.server");
     return run(data);
   });
+
+
+/* ===== Alokasi Faktur (toko / gudang) ===== */
+export const alokasiList = createServerFn({ method: "GET" })
+  .validator((input: { filter?: string; q?: string; page?: number }) => ({
+    filter: String(input?.filter ?? "tindakan"),
+    q: String(input?.q ?? "").trim(),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+  }))
+  .handler(async ({ data }) => {
+    const { alokasiList: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const alokasiGet = createServerFn({ method: "GET" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { alokasiGet: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const alokasiSave = createServerFn({ method: "POST" })
+  .validator((input: { id: number; lines: Array<{ lineId: number; keGudang: number; selisih: number; selisihCatatan?: string }>; catatan?: string }) => ({
+    id: Number(input?.id),
+    lines: Array.isArray(input?.lines) ? input.lines.map((l) => ({ lineId: Number(l?.lineId), keGudang: Number(l?.keGudang), selisih: Number(l?.selisih ?? 0), selisihCatatan: String(l?.selisihCatatan ?? "") })) : [],
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { alokasiSave: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const alokasiReview = createServerFn({ method: "POST" })
+  .validator((input: { id: number; aksi: "setuju" | "kembalikan"; catatan?: string }) => ({
+    id: Number(input?.id),
+    aksi: input?.aksi === "kembalikan" ? ("kembalikan" as const) : ("setuju" as const),
+    catatan: String(input?.catatan ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { alokasiReview: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const alokasiInbox = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { alokasiInbox: run } = await import("./logic.server");
+    return run();
+  });
+
+
+export const gudangPerluDiambil = createServerFn({ method: "GET" })
+  .validator((input: { q?: string }) => ({ q: String(input?.q ?? "").trim() }))
+  .handler(async ({ data }) => {
+    const { gudangPerluDiambil: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const laporanGudang = createServerFn({ method: "GET" })
+  .validator((input: { hari?: number }) => ({ hari: Number(input?.hari ?? 90) || 90 }))
+  .handler(async ({ data }) => {
+    const { laporanGudang: run } = await import("./logic.server");
+    return run(data);
+  });

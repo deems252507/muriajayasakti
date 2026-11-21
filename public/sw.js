@@ -63,6 +63,11 @@ self.addEventListener("notificationclick", (event) => {
           return;
         }
       }
+      if (target.indexOf("r:") === 0) {
+        // Alokasi faktur: buka faktur yang dimaksud (r:ID).
+        await self.clients.openWindow("/alokasi?faktur=" + encodeURIComponent(target.slice(2)));
+        return;
+      }
       if (target.indexOf("c:") === 0 || target.indexOf("b:") === 0) {
         // Komentar: buka aplikasi; jendela komentar bagian itu terbuka otomatis (c:jenis:nomor).
         const key = target.indexOf("b:") === 0 ? "barang:" + target.slice(2) : target.slice(2);

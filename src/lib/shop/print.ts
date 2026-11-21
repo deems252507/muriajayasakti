@@ -1000,3 +1000,75 @@ export function printOpnameReport(
     true,
   );
 }
+
+/** Surat Mutasi Barang: bukti perpindahan barang antara toko dan gudang (arah dan jumlah, siapa yang memindahkan, kolom tanda tangan). */
+export function printSuratMutasi(doc: {
+  nomor: string;
+  tanggal: string;
+  dari: string;
+  ke: string;
+  referensi?: string;
+  catatan?: string;
+  petugas?: string;
+  items: Array<{ nama: string; kode?: string; partNumber?: string; qtyText: string }>;
+}) {
+  const date = doc.tanggal ? new Date(doc.tanggal).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
+  const lines = doc.items.map((item, index) => `<tr>
+    <td class="c muted">${index + 1}</td>
+    <td><b>${esc(item.nama)}</b><span class="sub">PN: ${esc(item.partNumber || item.kode || "-")}</span></td>
+    <td class="r b">${esc(item.qtyText)}</td>
+  </tr>`).join("");
+  openModernPrint(
+    `Surat Mutasi ${doc.nomor}`,
+    `<div class="doc-title"><div><h2>Surat Mutasi Barang</h2><p>No. ${esc(doc.nomor)}</p></div></div>
+    <div class="cards">
+      <div class="card"><span class="lbl">Perpindahan barang</span><b class="big">${esc(doc.dari)} &rarr; ${esc(doc.ke)}</b>${doc.referensi ? `<p>${esc(doc.referensi)}</p>` : ""}</div>
+      <div class="card meta">
+        <div><span>Tanggal</span><b>${esc(date)}</b></div>
+        ${doc.petugas ? `<div><span>Dipindahkan oleh</span><b>${esc(doc.petugas)}</b></div>` : ""}
+      </div>
+    </div>
+    <table class="grid">
+      <thead><tr><th class="c" style="width:30px">No</th><th>Nama Barang</th><th class="r" style="width:150px">Jumlah</th></tr></thead>
+      <tbody>${lines}</tbody>
+    </table>
+    <div class="bottom"><div class="notes"><span class="lbl">Keterangan</span><p>${esc(doc.catatan || "-")}</p></div></div>
+    <div class="sign"><div><p>Yang memindahkan,</p><i></i></div><div><p>Yang menerima,</p><i></i></div><div><p>Mengetahui (Admin),</p><i></i></div></div>`,
+  );
+}
+
+/** Berita Acara Selisih Penerimaan: bukti barang kurang / rusak dibanding faktur pemasok (untuk klaim ke pemasok). */
+export function printBeritaAcaraSelisih(doc: {
+  invoiceNo: string;
+  supplierName: string;
+  receivedAt: string;
+  petugas?: string;
+  items: Array<{ nama: string; kode?: string; partNumber?: string; qtyFaktur: string; selisih: string; diterima: string; catatan: string }>;
+}) {
+  const date = doc.receivedAt ? new Date(doc.receivedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
+  const lines = doc.items.map((item, index) => `<tr>
+    <td class="c muted">${index + 1}</td>
+    <td><b>${esc(item.nama)}</b><span class="sub">PN: ${esc(item.partNumber || item.kode || "-")}</span></td>
+    <td class="r">${esc(item.qtyFaktur)}</td>
+    <td class="r">${esc(item.diterima)}</td>
+    <td class="r b">${esc(item.selisih)}</td>
+    <td>${esc(item.catatan || "-")}</td>
+  </tr>`).join("");
+  openModernPrint(
+    `Berita Acara Selisih ${doc.invoiceNo}`,
+    `<div class="doc-title"><div><h2>Berita Acara Selisih Penerimaan</h2><p>Faktur ${esc(doc.invoiceNo)}</p></div></div>
+    <div class="cards">
+      <div class="card"><span class="lbl">Pemasok</span><b class="big">${esc(doc.supplierName)}</b></div>
+      <div class="card meta">
+        <div><span>No. Faktur</span><b class="mono">${esc(doc.invoiceNo)}</b></div>
+        <div><span>Tanggal Terima</span><b>${esc(date)}</b></div>
+        ${doc.petugas ? `<div><span>Diperiksa oleh</span><b>${esc(doc.petugas)}</b></div>` : ""}
+      </div>
+    </div>
+    <table class="grid">
+      <thead><tr><th class="c" style="width:30px">No</th><th>Nama Barang</th><th class="r" style="width:90px">Di Faktur</th><th class="r" style="width:90px">Diterima</th><th class="r" style="width:90px">Selisih</th><th>Keterangan</th></tr></thead>
+      <tbody>${lines}</tbody>
+    </table>
+    <div class="sign"><div><p>Diperiksa oleh,</p><i></i></div><div><p>Mengetahui (Admin),</p><i></i></div><div><p>Pemasok / pengirim,</p><i></i></div></div>`,
+  );
+}

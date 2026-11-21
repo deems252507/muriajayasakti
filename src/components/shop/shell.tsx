@@ -1,5 +1,5 @@
 import { clearPersistedState } from "@/lib/persist";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ClipboardCheck,
@@ -9,6 +9,7 @@ import {
   Menu,
   MessageCircle,
   Package,
+  PackageCheck,
   PackagePlus,
   Percent,
   Receipt,
@@ -25,7 +26,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
-import { chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
+import { alokasiInbox, chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
 import { disablePush, showLocalNotification, syncPush } from "@/lib/shop/push";
 import { setPrintUser, setShopProfile } from "@/lib/shop/print";
 import { CommentHost, goToComment } from "@/components/shop/comment-ui";
@@ -65,6 +66,7 @@ const ADMIN = [
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
+      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Warehouse },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
@@ -93,6 +95,7 @@ const OWNER = [
       { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
+      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Warehouse },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
@@ -234,6 +237,10 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [chatBadge, setChatBadge] = useState(0);
   const [tagBadge, setTagBadge] = useState(0);
+  const [alokBadge, setAlokBadge] = useState(0);
+  const navigate = useNavigate();
+  const navRef = useRef(navigate);
+  navRef.current = navigate;
   const [askLogout, setAskLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const pathRef = useRef(path);
@@ -333,14 +340,55 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         }
       }).catch(() => undefined);
     };
+    // Alokasi Faktur: lencana menu + kartu saat ada faktur baru, alokasi menunggu cek Admin, atau alokasi dikembalikan.
+    const goAlokasi = (id: number) => { void navRef.current({ to: "/alokasi", search: { faktur: id } }); };
+    let alokSeen = -1;
+    const tickAlok = () => {
+      void alokasiInbox().then((res) => {
+        if (!alive) return;
+        setAlokBadge(res.pending);
+        const latest = res.latest;
+        if (!latest) { if (alokSeen < 0) alokSeen = 0; return; }
+        if (alokSeen < 0) { alokSeen = latest.ts; return; }
+        if (latest.ts <= alokSeen) return;
+        alokSeen = latest.ts;
+        beep();
+        const baseTitle = latest.status === "menunggu_cek" ? "Alokasi menunggu pengecekan" : latest.status === "dikembalikan" ? "Alokasi dikembalikan Admin" : "Faktur baru perlu alokasi";
+        const title = latest.pengingat ? `Pengingat: ${baseTitle.toLowerCase()}` : baseTitle;
+        const detail = latest.status === "menunggu_cek"
+          ? `${latest.invoiceNo} dialokasikan oleh ${latest.fromName || "staf"}`
+          : latest.status === "dikembalikan"
+            ? `${latest.invoiceNo}${latest.catatan ? `: ${latest.catatan}` : ""}`
+            : `${latest.invoiceNo} dari ${latest.supplierName}`;
+        if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
+          void showLocalNotification(title, detail, `r:${latest.id}`);
+        } else {
+          toast.custom((id) => (
+            <div role="status" className="flex w-[min(92vw,360px)] items-start gap-3 rounded-2xl border border-emerald-300 bg-white p-3 shadow-xl ring-1 ring-emerald-100">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-white"><PackageCheck className="size-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-extrabold text-slate-900">{title}</p>
+                <p className="mt-0.5 line-clamp-2 break-words text-xs text-slate-600">{detail}</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" onClick={() => { toast.dismiss(id); goAlokasi(latest.id); }}>Buka faktur</button>
+                  <button type="button" className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600" onClick={() => toast.dismiss(id)}>Tutup</button>
+                </div>
+              </div>
+            </div>
+          ), { id: "alokasi-toast", duration: 12000 });
+        }
+      }).catch(() => undefined);
+    };
     tick();
     tickTag();
+    tickAlok();
     // 6 detik saat tab terlihat (notifikasi tetap cepat), 30 detik saat tab tersembunyi (hemat; Web Push tetap jalan).
     let skip = 0;
     const timer = window.setInterval(() => {
       if (document.hidden) { skip = (skip + 1) % 5; if (skip) return; } else skip = 0;
       tick();
       tickTag();
+      tickAlok();
     }, 6000);
     const onChat = () => tick();
     const onTagChange = () => tickTag();
@@ -356,6 +404,12 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     const onWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type !== "open-chat") return;
       const target = String(event.data.target ?? "");
+      if (target.startsWith("r:")) {
+        // Alokasi faktur: buka faktur yang dimaksud (r:ID).
+        const rid = Number(target.slice(2));
+        if (Number.isInteger(rid) && rid > 0) goAlokasi(rid);
+        return;
+      }
       if (target.startsWith("c:") || target.startsWith("b:")) {
         // Komentar: buka jendela komentarnya (c:jenis:nomor; "b:" = format lama khusus barang).
         const m = target.startsWith("b:") ? ["", "barang", target.slice(2)] : /^c:([a-z]+):(.+)$/.exec(target);
@@ -370,6 +424,8 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     window.addEventListener("mjs-chat", onChat);
     window.addEventListener("focus", tick);
     window.addEventListener("focus", tickTag);
+    window.addEventListener("focus", tickAlok);
+    window.addEventListener("mjs-alokasi-changed", tickAlok);
     window.addEventListener("click", askPermission, { once: true });
     return () => {
       alive = false;
@@ -377,18 +433,25 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
       window.removeEventListener("mjs-chat", onChat);
       window.removeEventListener("focus", tick);
       window.removeEventListener("focus", tickTag);
+      window.removeEventListener("focus", tickAlok);
+      window.removeEventListener("mjs-alokasi-changed", tickAlok);
       window.removeEventListener("mjs-comment-changed", onTagChange);
       window.removeEventListener("click", askPermission);
       if ("serviceWorker" in navigator) navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
       document.title = baseTitle;
     };
   }, []);
-  const baseGroups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
+  const roleGroups = me.role === "Staf" ? STAF : me.role === "Kasir" ? KASIR : me.role === "Owner" ? OWNER : ADMIN;
+  // Alokasi Faktur muncul tepat di bawah Stok Gudang untuk Admin dan staf/kasir yang diberi izin Stok Gudang.
+  const alokasiItem = { to: "/alokasi", label: "Alokasi Faktur", icon: PackageCheck } as const;
+  const baseGroups = (me.canGudang && me.role !== "Owner"
+    ? roleGroups.map((group) => ({ ...group, items: group.items.flatMap((item) => (item.to === "/gudang" ? [item, alokasiItem] : [item])) }))
+    : roleGroups) as unknown as typeof roleGroups;
   // Pengaturan hanya terlihat oleh Admin 1 (Admin yang dicentang kelola akun).
   // Staf, Admin lain, dan Owner juga melihat Pengaturan, tetapi isinya hanya Nama dan Foto Akun. Kasir tidak.
   const groups = (me.canManageStaff || me.role !== "Kasir" ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as typeof baseGroups;
   const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
-  const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas"].includes(path);
+  const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas", "/laporan-gudang"].includes(path);
   useEffect(() => {
     function apply(profile: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string; icon?: string }) {
       if (!profile?.nama) return;
@@ -434,6 +497,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                       <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
                       {item.label}
                       {item.to === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
+                      {item.to === "/alokasi" && alokBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" aria-label={`${alokBadge} faktur perlu tindakan`}>{alokBadge > 99 ? "99+" : alokBadge}</span> : null}
                     </Link>
                   );
                 })}

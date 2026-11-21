@@ -6,10 +6,11 @@ export const Route = createFileRoute("/_shop")({
   beforeLoad: async ({ location }: { location: { pathname: string } }) => {
     const me = await getMe();
     if (!me) throw redirect({ to: "/" });
-    // Staf (pengecek barang) hanya boleh Daftar Sparepart, Stok Gudang (lihat saja kecuali diberi izin), dan Chat Staff.
+    // Staf (pengecek barang) hanya boleh Daftar Sparepart, Stok Gudang (lihat saja kecuali diberi izin), Chat Staff, dan Alokasi Faktur (hanya yang diberi izin Stok Gudang).
     if (me.role === "Staf") {
       const path = location.pathname.replace(/\/+$/, "") || "/";
-      if (!["/barang", "/gudang", "/chat", "/pengaturan"].includes(path)) throw redirect({ to: "/barang" });
+      const allowed = ["/barang", "/gudang", "/chat", "/pengaturan", ...(me.canGudang ? ["/alokasi"] : [])];
+      if (!allowed.includes(path)) throw redirect({ to: "/barang" });
     }
     // Pengaturan sistem dan password hanya untuk Admin 1. Staf, Admin lain, dan Owner hanya mendapat halaman Nama dan Foto Akun. Kasir tidak.
     if (me.role === "Kasir" && (location.pathname.replace(/\/+$/, "") || "/") === "/pengaturan") {

@@ -5,6 +5,7 @@ import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/persist";
 import { toast } from "sonner";
+import { AmbilDialog } from "@/components/shop/gudang-dialogs";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { checkout, listMasters, listPartners, listShifts, savePartner, saveProduct, searchProducts } from "@/lib/shop/api";
 import { digits, grouped, rupiah } from "@/lib/shop/format";
@@ -29,6 +30,8 @@ type CartLine = {
   harga: number;
   konv: number;
   stok: number;
+  /** Stok di gudang saat barang ditambahkan (info; tidak ikut batas penjualan). */
+  gudang?: number;
   kodePajak: string;
   custom?: string;
 };
@@ -53,6 +56,8 @@ function KasirPage() {
   const [customOpen, setCustomOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
+  const [ambil, setAmbil] = useState<Product | null>(null);
+  const [searchTick, setSearchTick] = useState(0);
   const [scanConfirm, setScanConfirm] = useState<{ product: Product; unit: "pcs" | "dus" | null } | null>(null);
   const scanLock = useRef(false);
   // true hanya kalau isi kolom datang dari alat scan (ketikan sangat cepat), tempel, atau kamera.
@@ -117,7 +122,7 @@ function KasirPage() {
       });
     }, /[\s]/.test(q) ? 160 : 40);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, searchTick]);
 
   useEffect(() => {
     if (!camera) return;
@@ -182,7 +187,9 @@ function KasirPage() {
     const konvBaru = isAlt ? product.isiSatuanAlt : 1;
     const available = Math.floor((product.stok - usedPcs(product.id)) / konvBaru);
     if (available <= 0) {
-      toast.error(isAlt ? `Stok ${product.satuanAlt} tidak cukup (sudah habis di keranjang).` : `Stok ${product.satuan} habis (sudah habis di keranjang).`);
+      const gudangAda = (product.stokGudang ?? 0) > 0;
+      const info = gudangAda ? ` Ada di gudang: ${product.stokGudang} ${product.satuan}${me.canGudang ? ". Ambil dulu dari gudang." : ". Minta petugas gudang memindahkan ke toko."}` : "";
+      toast.error((isAlt ? `Stok ${product.satuanAlt} tidak cukup (sudah habis di keranjang).` : `Stok ${product.satuan} habis (sudah habis di keranjang).`) + info);
       return;
     }
     setCart((prev) => [
@@ -203,6 +210,7 @@ function KasirPage() {
         harga: isAlt ? product.hargaJualAlt : product.hargaJual,
         konv: isAlt ? product.isiSatuanAlt : 1,
         stok: product.stok,
+        gudang: product.stokGudang ?? 0,
         kodePajak: product.kodePajak,
       },
     ]);
@@ -333,6 +341,12 @@ function KasirPage() {
                   {dusOk ? <button type="button" className="btn-tight inline-flex items-center gap-1 bg-blue-700 text-white shadow-sm" onClick={() => addProduct(item, true, false)}><Plus size={13} aria-hidden />{item.satuanAlt || "Dus"}</button> : null}
                   <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${habis ? "bg-red-600 text-white" : "bg-emerald-100 text-emerald-800"}`}>{habis ? "HABIS" : "CUKUP"}</span>
                 </div>
+                {(item.stokGudang ?? 0) > 0 ? (
+                  <div className={`mt-2 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-[10px] font-bold ${habis ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-600"}`} onClick={(e) => e.stopPropagation()}>
+                    <span>{habis ? "Toko habis, ada di gudang" : "Gudang"}: {item.stokGudang} {item.satuan}</span>
+                    {habis && me.canGudang ? <button type="button" className="rounded bg-amber-600 px-2 py-0.5 text-white" onClick={() => setAmbil(item)}>Ambil dari gudang</button> : null}
+                  </div>
+                ) : null}
                 <div className="mt-2 flex items-end justify-between gap-2">
                   <span className="text-[11px] font-bold text-green-600">
                     {rupiah(item.hargaJual)} / {item.satuan}
@@ -411,7 +425,7 @@ function KasirPage() {
                   <p className="text-[10px] text-slate-500">Stok berkurang {line.qty * line.konv} {line.satuanBase}</p>
                   {line.productId != null ? (
                     maxQty(line) <= line.qty
-                      ? <p className="text-[10px] font-bold text-red-600">Stok mentok: maksimal {Math.max(0, maxQty(line))} {line.satuan}</p>
+                      ? <p className="text-[10px] font-bold text-red-600">Stok mentok: maksimal {Math.max(0, maxQty(line))} {line.satuan}{(line.gudang ?? 0) > 0 ? ` · ada di gudang ${line.gudang} ${line.satuanBase}` : ""}</p>
                       : null
                   ) : null}
                 </div>
@@ -548,6 +562,28 @@ function KasirPage() {
             setCustomer(nama);
             setPartnerOpen(false);
             void listPartners().then(setPartners);
+          }}
+        />
+      ) : null}
+      {ambil ? (
+        <AmbilDialog
+          item={{
+            productId: ambil.id, kode: ambil.kode, partNumber: ambil.partNumber, partNumbersAlt: ambil.partNumbersAlt, nama: ambil.nama,
+            kategori: ambil.kategori, merek: ambil.merek, kodePajak: ambil.kodePajak, satuan: ambil.satuan, satuanAlt: ambil.satuanAlt,
+            isiSatuanAlt: ambil.isiSatuanAlt, stokGudang: ambil.stokGudang ?? 0, stokToko: ambil.stok, opnamePada: null, opnameSelisih: null,
+          }}
+          onClose={() => setAmbil(null)}
+          onDone={() => {
+            const pid = ambil.id;
+            setAmbil(null);
+            setSearchTick((n) => n + 1);
+            // Stok di baris keranjang ikut disegarkan supaya batas jumlahnya sesuai stok toko yang baru.
+            void searchProducts({ data: { q: ambil.partNumber || ambil.kode || ambil.nama, limit: 20 } })
+              .then((res) => {
+                const fresh = res.items.find((p) => p.id === pid);
+                if (fresh) setCart((prev) => prev.map((line) => (line.productId === pid ? { ...line, stok: fresh.stok, gudang: fresh.stokGudang ?? 0 } : line)));
+              })
+              .catch(() => undefined);
           }}
         />
       ) : null}

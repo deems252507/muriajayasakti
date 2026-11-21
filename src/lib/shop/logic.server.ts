@@ -601,7 +601,7 @@ export async function searchProducts(data: any) {
     const db = await sql();
     const scan = data.q.match(/^(.*)-(pcs|dus)$/i);
     if (scan) {
-      const rows = await db.query(`select * from products where lower(kode) = lower($1) limit 1`, [scan[1]]);
+      const rows = await db.query(`select products.*, (select g.stok from gudang_items g where g.product_id = products.id) as stok_gudang from products where lower(kode) = lower($1) limit 1`, [scan[1]]);
       return {
         unit: scan[2].toLowerCase() as "pcs" | "dus",
         exact: rows.length > 0,
@@ -611,7 +611,7 @@ export async function searchProducts(data: any) {
     if (data.q.length < 1) return { unit: null, exact: false, items: [] as Product[] };
     const like = `%${data.q}%`;
     const rows = await db.query(
-      `select * from products
+      `select products.*, (select g.stok from gudang_items g where g.product_id = products.id) as stok_gudang from products
        where nama ilike $1 or part_number ilike $1 or part_numbers_alt ilike $1
           or kode ilike $1 or merek ilike $1 or kode_pajak ilike $1 or kategori ilike $1
        order by
@@ -1601,6 +1601,7 @@ export async function createSupplierReceipt(data: any) {
     );
     const result = row?.shop_receive_supplier as { id?: number; invoiceNo?: string };
     await audit(me, `Barang masuk pemasok ${result?.invoiceNo ?? invoiceNo}`);
+    await notifyFakturBaru(db, me, Number(result?.id ?? 0), String(result?.invoiceNo ?? invoiceNo), supplierId);
     return { ok: true, id: Number(result?.id ?? 0), invoiceNo: String(result?.invoiceNo ?? invoiceNo) };
   } catch (error) {
     throw new Error(cleanError(error));
@@ -1692,6 +1693,8 @@ export async function listSupplierReceipts(data: any) {
   const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r join partners p on p.id = r.supplier_id where ${clause}`, params);
   const rows = await db.query<Record<string, unknown>>(
     `select r.id, r.invoice_no, r.received_at, r.notes, r.created_by, p.id as supplier_id, p.nama as supplier_name,
+      r.alokasi_status, r.alokasi_nama, r.cek_nama, r.catatan_kembali,
+      (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
       coalesce((select sum(l.qty_dasar) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_qty,
       coalesce((select sum(l.harga_beli * l.qty) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_value,
       coalesce((select json_agg(json_build_object(
@@ -1711,6 +1714,7 @@ export async function listSupplierReceipts(data: any) {
       id: Number(row.id), invoiceNo: String(row.invoice_no), receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : '',
       supplierId: Number(row.supplier_id), supplierName: String(row.supplier_name ?? ''), notes: String(row.notes ?? ''), createdBy: String(row.created_by ?? ''),
       totalQty: Number(row.total_qty ?? 0), totalValue: Number(row.total_value ?? 0), items: Array.isArray(row.items) ? row.items : [],
+      alokasiStatus: String(row.alokasi_status ?? 'selesai'), nGudang: Number(row.n_gudang ?? 0),
     })),
   };
 }
@@ -5353,4 +5357,440 @@ export async function gudangDraftConfirm(data: { productId: number; expected: nu
   } catch (error) {
     throw new Error(cleanError(error));
   }
+}
+
+
+/* ===== Alokasi Faktur (migrasi 0053) =====
+   Faktur barang masuk disimpan dulu (semua stok masuk ke toko). Admin / staf berizin Stok Gudang lalu mengatur
+   berapa yang ke gudang; sisanya tetap di toko, jadi toko + gudang selalu sama dengan jumlah faktur.
+   Alokasi staf berstatus "menunggu_cek" sampai Admin menyetujui atau mengembalikan dengan catatan.
+   Perubahan stok atomik dikerjakan fungsi SQL shop_receipt_alokasi / shop_receipt_review. */
+
+type AlokasiStatus = "perlu_alokasi" | "menunggu_cek" | "dikembalikan" | "selesai";
+
+/** Admin dan staf/kasir yang diberi izin Stok Gudang. Owner tidak (hanya melihat laporan). */
+async function requireAlokasi() {
+  const me = await readStaff();
+  if (!me) throw new Error("Sesi habis. Masuk lagi.");
+  if (!me.canGudang) throw new Error("Alokasi Faktur hanya untuk Admin dan staf yang diberi izin Stok Gudang.");
+  return me;
+}
+
+/** Status yang perlu ditindaklanjuti oleh akun ini. Admin: alokasi baru dan yang menunggu cek. Staf: alokasi baru dan yang dikembalikan kepadanya. */
+function alokasiTindakanSql(me: Staff, params: unknown[]) {
+  if (me.role === "Admin") return `r.alokasi_status in ('perlu_alokasi', 'menunggu_cek')`;
+  params.push(me.username);
+  return `(r.alokasi_status = 'perlu_alokasi' or (r.alokasi_status = 'dikembalikan' and r.alokasi_oleh = $${params.length}))`;
+}
+
+/** Kirim notifikasi HP; tidak boleh menggagalkan penyimpanan. Target "r:ID" membuka faktur di menu Alokasi Faktur. */
+async function pushAlokasi(db: ChatDb, usernames: string[], id: number, title: string, body: string) {
+  if (!usernames.length || !id) return;
+  try {
+    await Promise.race([
+      sendChatPush(db, usernames, { title, body, tag: `alk-${id}`, target: `r:${id}`, soft: true }),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  } catch {
+    /* notifikasi gagal tidak masalah; data tetap tersimpan */
+  }
+}
+
+/** Faktur baru masuk: beri tahu Admin dan staf berizin (kecuali yang membuatnya). */
+async function notifyFakturBaru(db: ChatDb, me: Staff, id: number, invoiceNo: string, supplierId: number) {
+  try {
+    const [sup] = await db.query<{ nama: string }>(`select nama from partners where id = $1`, [supplierId]);
+    const users = await db.query<{ username: string }>(
+      `select username from staff where status = 'Aktif' and username <> $1
+         and (role = 'Admin' or (can_gudang and role in ('Kasir', 'Staf')))`,
+      [me.username],
+    );
+    await pushAlokasi(db, users.map((u) => String(u.username)), id, "Faktur baru perlu alokasi", `${invoiceNo}${sup?.nama ? ` dari ${sup.nama}` : ""}: atur berapa yang ke gudang.`);
+  } catch {
+    /* abaikan */
+  }
+}
+
+let alokasiRemindAt = 0;
+/** Faktur yang belum ditindak lebih dari 1 hari: kirim pengingat (maksimal 1 per faktur per hari). Dicek paling sering tiap 5 menit. */
+async function kirimPengingatAlokasi(db: ChatDb) {
+  if (Date.now() - alokasiRemindAt < 5 * 60_000) return;
+  alokasiRemindAt = Date.now();
+  try {
+    // Satu UPDATE mengklaim faktur yang jatuh tempo, jadi pengingat tidak terkirim dobel walau banyak akun membuka aplikasi.
+    const due = await db.query<{ id: number; invoice_no: string; alokasi_status: string; alokasi_oleh: string }>(
+      `update supplier_receipts set pengingat_pada = now()
+       where alokasi_status <> 'selesai' and status_diubah < now() - interval '1 day'
+         and (pengingat_pada is null or pengingat_pada < now() - interval '1 day')
+       returning id, invoice_no, alokasi_status, alokasi_oleh`,
+    );
+    for (const r of due) {
+      const status = String(r.alokasi_status);
+      let users: string[];
+      if (status === "dikembalikan" && r.alokasi_oleh) {
+        users = [String(r.alokasi_oleh)];
+      } else if (status === "menunggu_cek" || status === "dikembalikan") {
+        users = (await db.query<{ username: string }>(`select username from staff where status = 'Aktif' and role = 'Admin'`)).map((u) => String(u.username));
+      } else {
+        users = (await db.query<{ username: string }>(
+          `select username from staff where status = 'Aktif' and (role = 'Admin' or (can_gudang and role in ('Kasir', 'Staf')))`,
+        )).map((u) => String(u.username));
+      }
+      const label = status === "menunggu_cek" ? "menunggu pengecekan Admin" : status === "dikembalikan" ? "dikembalikan dan belum dikoreksi" : "belum dialokasikan";
+      await pushAlokasi(db, users, Number(r.id), "Pengingat: faktur belum selesai", `${r.invoice_no} masih ${label} lebih dari 1 hari.`);
+    }
+  } catch {
+    /* pengingat gagal tidak masalah; dicoba lagi di pengecekan berikutnya */
+  }
+}
+
+function alokasiRow(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    invoiceNo: String(row.invoice_no ?? ""),
+    receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : "",
+    supplierName: String(row.supplier_name ?? ""),
+    status: String(row.alokasi_status ?? "selesai") as AlokasiStatus,
+    statusDiubah: row.status_diubah ? new Date(String(row.status_diubah)).toISOString() : "",
+    alokasiOleh: String(row.alokasi_oleh ?? ""),
+    alokasiNama: String(row.alokasi_nama ?? ""),
+    alokasiPada: row.alokasi_pada ? new Date(String(row.alokasi_pada)).toISOString() : "",
+    alokasiCatatan: String(row.alokasi_catatan ?? ""),
+    cekNama: String(row.cek_nama ?? ""),
+    cekPada: row.cek_pada ? new Date(String(row.cek_pada)).toISOString() : "",
+    catatanKembali: String(row.catatan_kembali ?? ""),
+    /** Belum selesai dan tidak ada perubahan status lebih dari 1 hari. */
+    terlambat: String(row.alokasi_status ?? "selesai") !== "selesai" && row.status_diubah ? Date.now() - new Date(String(row.status_diubah)).getTime() > 86_400_000 : false,
+    nItem: Number(row.n_item ?? 0),
+    nGudang: Number(row.n_gudang ?? 0),
+    nSelisih: Number(row.n_selisih ?? 0),
+  };
+}
+
+/** Daftar faktur untuk menu Alokasi Faktur (tanpa harga). filter: tindakan (butuh saya), semua, selesai. */
+export async function alokasiList(data: { filter?: string; q?: string; page?: number }) {
+  const me = await requireAlokasi();
+  const db = await sql();
+  const filter = data?.filter === "semua" || data?.filter === "selesai" || data?.filter === "selisih" ? data.filter : "tindakan";
+  const params: unknown[] = [];
+  const where: string[] = ["1=1"];
+  if (filter === "tindakan") where.push(alokasiTindakanSql(me, params));
+  else if (filter === "selesai") where.push(`r.alokasi_status = 'selesai'`);
+  else if (filter === "selisih") where.push(`exists (select 1 from supplier_receipt_lines ls where ls.receipt_id = r.id and ls.selisih > 0)`);
+  const q = String(data?.q ?? "").trim();
+  if (q) {
+    params.push(`%${q.replace(/[\\%_]/g, "\\$&")}%`);
+    const n = params.length;
+    where.push(`(r.invoice_no ilike $${n} or p.nama ilike $${n} or exists (select 1 from supplier_receipt_lines lq join products pq on pq.id = lq.product_id where lq.receipt_id = r.id and (pq.nama ilike $${n} or pq.part_number ilike $${n})))`);
+  }
+  const clause = where.join(" and ");
+  const perPage = 15;
+  const page = Math.max(1, Number(data?.page ?? 1) || 1);
+  const [count] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r join partners p on p.id = r.supplier_id where ${clause}`, params);
+  const rows = await db.query<Record<string, unknown>>(
+    `select r.id, r.invoice_no, r.received_at, r.alokasi_status, r.status_diubah, r.alokasi_oleh, r.alokasi_nama, r.alokasi_pada,
+            r.alokasi_catatan, r.cek_nama, r.cek_pada, r.catatan_kembali, p.nama as supplier_name,
+            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id) as n_item,
+            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
+            (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.selisih > 0) as n_selisih
+     from supplier_receipts r join partners p on p.id = r.supplier_id
+     where ${clause}
+     order by (r.alokasi_status = 'selesai') asc, r.received_at desc, r.id desc
+     limit ${perPage} offset ${(page - 1) * perPage}`,
+    params,
+  );
+  return { total: Number(count?.n ?? 0), page, perPage, isAdmin: me.role === "Admin", items: rows.map(alokasiRow) };
+}
+
+/** Satu faktur dengan baris barangnya (tanpa harga): jumlah faktur, alokasi gudang, stok toko dan gudang saat ini. */
+export async function alokasiGet(data: { id: number }) {
+  const me = await requireAlokasi();
+  const db = await sql();
+  const id = Number(data?.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Faktur tidak ditemukan.");
+  const [rec] = await db.query<Record<string, unknown>>(
+    `select r.id, r.invoice_no, r.received_at, r.alokasi_status, r.status_diubah, r.alokasi_oleh, r.alokasi_nama, r.alokasi_pada,
+            r.alokasi_catatan, r.cek_nama, r.cek_pada, r.catatan_kembali, p.nama as supplier_name
+     from supplier_receipts r join partners p on p.id = r.supplier_id where r.id = $1`,
+    [id],
+  );
+  if (!rec) throw new Error("Faktur tidak ditemukan.");
+  const lines = await db.query<Record<string, unknown>>(
+    `select l.id, l.product_id, l.qty, l.satuan, l.qty_dasar, l.ke_gudang, l.selisih, l.selisih_catatan,
+            p.nama, p.part_number, p.part_numbers_alt, p.merek, p.kode_pajak, p.kategori,
+            p.satuan as p_satuan, p.stok as stok_toko, g.stok as stok_gudang
+     from supplier_receipt_lines l
+     join products p on p.id = l.product_id
+     left join gudang_items g on g.product_id = l.product_id
+     where l.receipt_id = $1
+     order by lower(p.nama), l.id`,
+    [id],
+  );
+  const base = alokasiRow({ ...rec, n_item: lines.length, n_gudang: lines.filter((l) => Number(l.ke_gudang) > 0).length, n_selisih: lines.filter((l) => Number(l.selisih) > 0).length });
+  return {
+    ...base,
+    isAdmin: me.role === "Admin",
+    /** Staf hanya boleh mengatur saat status perlu_alokasi, atau dikembalikan kepadanya. Admin selalu boleh. */
+    canEdit: me.role === "Admin" || base.status === "perlu_alokasi" || (base.status === "dikembalikan" && base.alokasiOleh === me.username),
+    lines: lines.map((l) => {
+      const qty = Number(l.qty);
+      const qtyDasar = Number(l.qty_dasar);
+      const faktor = Math.max(1, Math.round(qtyDasar / Math.max(qty, 1)));
+      return {
+        lineId: Number(l.id),
+        productId: Number(l.product_id),
+        nama: String(l.nama ?? ""),
+        partNumber: String(l.part_number ?? ""),
+        partNumbersAlt: String(l.part_numbers_alt ?? ""),
+        merek: String(l.merek ?? ""),
+        kodePajak: String(l.kode_pajak ?? ""),
+        kategori: String(l.kategori ?? ""),
+        qty,
+        satuan: String(l.satuan ?? ""),
+        satuanDasar: String(l.p_satuan ?? ""),
+        faktor,
+        qtyDasar,
+        /** Dalam satuan baris faktur (mis. Dus). */
+        keGudang: Math.floor(Number(l.ke_gudang) / faktor),
+        /** Kurang / rusak, dalam satuan baris faktur. Stok toko dikurangi sebesar ini. */
+        selisih: Math.floor(Number(l.selisih) / faktor),
+        selisihCatatan: String(l.selisih_catatan ?? ""),
+        stokToko: Number(l.stok_toko ?? 0),
+        stokGudang: l.stok_gudang == null ? null : Number(l.stok_gudang),
+      };
+    }),
+  };
+}
+
+/** Simpan alokasi. Admin: langsung selesai. Staf berizin: menunggu pengecekan Admin (Admin diberi notifikasi). */
+export async function alokasiSave(data: { id: number; lines: Array<{ lineId: number; keGudang: number; selisih: number; selisihCatatan?: string }>; catatan?: string }) {
+  const me = await requireAlokasi();
+  const db = await sql();
+  const id = Number(data?.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Faktur tidak ditemukan.");
+  const lines = (Array.isArray(data?.lines) ? data.lines : []).map((l) => ({
+    lineId: Number(l?.lineId),
+    keGudang: Number(l?.keGudang),
+    selisih: Number(l?.selisih ?? 0),
+    selisihCatatan: String(l?.selisihCatatan ?? "").trim().slice(0, 300),
+  }));
+  if (!lines.length || lines.some((l) => !Number.isInteger(l.lineId) || !Number.isInteger(l.keGudang) || l.keGudang < 0 || !Number.isInteger(l.selisih) || l.selisih < 0)) {
+    throw new Error("Jumlah ke gudang dan selisih harus bilangan bulat 0 atau lebih.");
+  }
+  if (lines.some((l) => l.selisih > 0 && !l.selisihCatatan)) throw new Error("Isi catatan untuk setiap barang yang ada selisihnya (mis. rusak, kurang kirim).");
+  const isAdmin = me.role === "Admin";
+  if (!isAdmin) {
+    // Staf hanya boleh mengatur faktur yang memang menunggu alokasi atau dikembalikan kepadanya.
+    const [r] = await db.query<{ alokasi_status: string; alokasi_oleh: string }>(`select alokasi_status, alokasi_oleh from supplier_receipts where id = $1`, [id]);
+    if (!r) throw new Error("Faktur tidak ditemukan.");
+    const ok = r.alokasi_status === "perlu_alokasi" || (r.alokasi_status === "dikembalikan" && r.alokasi_oleh === me.username);
+    if (!ok) throw new Error("Faktur ini sedang menunggu pengecekan Admin atau sudah selesai.");
+  }
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_receipt_alokasi($1::jsonb) as r`, [
+      JSON.stringify({ receiptId: id, lines, catatan: String(data?.catatan ?? ""), isAdmin, actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; invoiceNo: string; status: AlokasiStatus; barangKeGudang: number; barangSelisih?: number }>(row?.r);
+    await audit(me, `Alokasi faktur ${r.invoiceNo}: ${r.barangKeGudang > 0 ? `${r.barangKeGudang} barang ke gudang` : "semua di toko"}${Number(r.barangSelisih) > 0 ? `, ${r.barangSelisih} barang ada selisih (kurang/rusak)` : ""}${isAdmin ? " (Admin, selesai)" : " (menunggu cek Admin)"}`);
+    if (!isAdmin) {
+      const admins = await db.query<{ username: string }>(`select username from staff where status = 'Aktif' and role = 'Admin' and username <> $1`, [me.username]);
+      await pushAlokasi(db, admins.map((a) => String(a.username)), id, "Alokasi faktur menunggu pengecekan", `${r.invoiceNo} sudah dialokasikan oleh ${me.name}. Silakan periksa.`);
+    }
+    return { ok: true as const, invoiceNo: r.invoiceNo, status: r.status };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Admin memeriksa alokasi staf: setuju (selesai) atau kembalikan dengan catatan (staf diberi notifikasi). */
+export async function alokasiReview(data: { id: number; aksi: "setuju" | "kembalikan"; catatan?: string }) {
+  const me = await requireAlokasi();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data?.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Faktur tidak ditemukan.");
+  const aksi = data?.aksi === "kembalikan" ? "kembalikan" : "setuju";
+  const catatan = String(data?.catatan ?? "").trim();
+  if (aksi === "kembalikan" && !catatan) throw new Error("Catatan wajib diisi saat mengembalikan ke staf.");
+  try {
+    const [row] = await db.query<{ r: unknown }>(`select shop_receipt_review($1::jsonb) as r`, [
+      JSON.stringify({ receiptId: id, aksi, catatan, actor: me.username, actorName: me.name }),
+    ]);
+    const r = gudangJson<{ ok: boolean; invoiceNo: string; alokasiOleh: string; alokasiNama?: string }>(row?.r);
+    await audit(me, aksi === "setuju" ? `Setujui alokasi faktur ${r.invoiceNo}` : `Kembalikan alokasi faktur ${r.invoiceNo} ke ${r.alokasiNama || r.alokasiOleh}: ${catatan}`);
+    if (r.alokasiOleh && r.alokasiOleh !== me.username) {
+      await pushAlokasi(
+        db,
+        [r.alokasiOleh],
+        id,
+        aksi === "setuju" ? "Alokasi faktur disetujui" : "Alokasi faktur dikembalikan",
+        aksi === "setuju" ? `${r.invoiceNo} sudah dicek Admin.` : `${r.invoiceNo}: ${catatan}`,
+      );
+    }
+    return { ok: true as const, invoiceNo: r.invoiceNo, aksi };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+/** Untuk lencana menu dan kartu pemberitahuan: jumlah faktur yang perlu tindakan saya, dan peristiwa terbaru. */
+export async function alokasiInbox() {
+  type Latest = { ts: number; id: number; invoiceNo: string; supplierName: string; status: AlokasiStatus; fromName: string; catatan: string; pengingat: boolean };
+  const none = { pending: 0, latest: null as Latest | null };
+  const me = await readStaff();
+  if (!me || !me.canGudang) return none;
+  const db = await sql();
+  await kirimPengingatAlokasi(db);
+  const params: unknown[] = [];
+  const cond = alokasiTindakanSql(me, params);
+  const [n] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_receipts r where ${cond}`, params);
+  const rows = await db.query<Record<string, unknown>>(
+    `select r.id, r.invoice_no, r.alokasi_status, r.alokasi_nama, r.cek_nama, r.catatan_kembali, p.nama as supplier_name,
+            (extract(epoch from greatest(r.status_diubah, coalesce(r.pengingat_pada, r.status_diubah))) * 1000)::bigint as ts,
+            (r.pengingat_pada is not null and r.pengingat_pada >= r.status_diubah) as pengingat
+     from supplier_receipts r join partners p on p.id = r.supplier_id
+     where ${cond}
+     order by greatest(r.status_diubah, coalesce(r.pengingat_pada, r.status_diubah)) desc limit 1`,
+    params,
+  );
+  const r = rows[0];
+  if (!r) return { pending: Number(n?.n ?? 0), latest: null as Latest | null };
+  const status = String(r.alokasi_status) as AlokasiStatus;
+  return {
+    pending: Number(n?.n ?? 0),
+    latest: {
+      ts: Number(r.ts),
+      id: Number(r.id),
+      invoiceNo: String(r.invoice_no),
+      supplierName: String(r.supplier_name ?? ""),
+      status,
+      fromName: status === "menunggu_cek" ? String(r.alokasi_nama ?? "") : status === "dikembalikan" ? String(r.cek_nama ?? "") : "",
+      catatan: String(r.catatan_kembali ?? ""),
+      pengingat: Boolean(r.pengingat),
+    } as Latest,
+  };
+}
+
+
+/* ===== Perlu diambil dari gudang ===== */
+/** Barang yang stok tokonya sudah di bawah (atau sama dengan) stok minimum tetapi masih ada di gudang.
+ *  Saran jumlah: isi toko sampai 2x stok minimum, paling banyak sebesar stok gudang (satuan dasar). */
+export async function gudangPerluDiambil(data: { q?: string }) {
+  const me = await requireGudangView();
+  const db = await sql();
+  const params: unknown[] = [];
+  const conds = String(data?.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 6).map((word) => {
+    params.push(`%${word}%`);
+    const n = params.length;
+    return `(p.nama ilike $${n} or p.part_number ilike $${n} or p.part_numbers_alt ilike $${n} or p.kode ilike $${n} or p.merek ilike $${n} or p.kode_pajak ilike $${n} or p.kategori ilike $${n})`;
+  });
+  const extra = conds.length ? ` and ${conds.join(" and ")}` : "";
+  const rows = await db.query<Record<string, unknown>>(
+    `select p.id as product_id, p.kode, p.part_number, p.part_numbers_alt, p.nama, p.kategori, p.merek, p.kode_pajak,
+            p.satuan, p.satuan_alt, p.isi_satuan_alt, p.stok as stok_toko, p.stok_min, g.stok as stok_gudang
+     from gudang_items g join products p on p.id = g.product_id
+     where g.stok > 0 and p.stok_min > 0 and p.stok <= p.stok_min${extra}
+     order by (p.stok <= 0) desc, (p.stok::float / p.stok_min) asc, lower(p.nama) asc
+     limit 200`,
+    params,
+  );
+  return {
+    bisaUbah: Boolean(me.canGudang),
+    items: rows.map((row) => {
+      const stokToko = Number(row.stok_toko ?? 0);
+      const stokMin = Number(row.stok_min ?? 0);
+      const stokGudang = Number(row.stok_gudang ?? 0);
+      return {
+        productId: Number(row.product_id),
+        kode: String(row.kode ?? ""),
+        partNumber: String(row.part_number ?? ""),
+        partNumbersAlt: String(row.part_numbers_alt ?? ""),
+        nama: String(row.nama ?? ""),
+        kategori: String(row.kategori ?? ""),
+        merek: String(row.merek ?? ""),
+        kodePajak: String(row.kode_pajak ?? ""),
+        satuan: String(row.satuan ?? "Pcs"),
+        satuanAlt: String(row.satuan_alt ?? ""),
+        isiSatuanAlt: Number(row.isi_satuan_alt ?? 0),
+        stokGudang,
+        stokToko,
+        opnamePada: null,
+        opnameSelisih: null,
+        stokMin,
+        saran: Math.max(1, Math.min(stokGudang, stokMin * 2 - stokToko)),
+      };
+    }),
+  };
+}
+
+/* ===== Laporan nilai stok toko dan gudang ===== */
+/** Nilai stok (stok x harga beli satuan dasar) toko dan gudang terpisah, per kategori, plus barang gudang yang lama tidak bergerak.
+ *  Hanya Admin dan Owner (memuat harga beli). "Bergerak" = ada tambah stok / ambil ke toko / koreksi di gudang; opname tidak dihitung. */
+export async function laporanGudang(data: { hari?: number }) {
+  const me = await readStaff();
+  if (!me) throw new Error("Sesi habis. Masuk lagi.");
+  if (me.role !== "Admin" && me.role !== "Owner") throw new Error("Laporan nilai stok hanya untuk Admin dan Owner.");
+  const db = await sql();
+  const hari = [30, 60, 90, 180, 365].includes(Number(data?.hari)) ? Number(data?.hari) : 90;
+  const [sum] = await db.query<Record<string, unknown>>(
+    `select coalesce(sum(p.stok * p.harga_beli) filter (where p.stok > 0), 0)::bigint as nilai_toko,
+            count(*) filter (where p.stok > 0)::int as item_toko,
+            (select coalesce(sum(g.stok * pg.harga_beli), 0)::bigint from gudang_items g join products pg on pg.id = g.product_id where g.stok > 0) as nilai_gudang,
+            (select count(*)::int from gudang_items g where g.stok > 0) as item_gudang
+     from products p`,
+  );
+  const kategori = await db.query<Record<string, unknown>>(
+    `select kat, sum(nilai_toko)::bigint as nilai_toko, sum(nilai_gudang)::bigint as nilai_gudang from (
+       select coalesce(nullif(btrim(p.kategori), ''), 'Tanpa kategori') as kat, greatest(p.stok, 0) * p.harga_beli as nilai_toko, 0 as nilai_gudang from products p
+       union all
+       select coalesce(nullif(btrim(p.kategori), ''), 'Tanpa kategori'), 0, g.stok * p.harga_beli from gudang_items g join products p on p.id = g.product_id
+     ) x group by kat having sum(nilai_toko) + sum(nilai_gudang) > 0 order by sum(nilai_toko) + sum(nilai_gudang) desc limit 30`,
+  );
+  const diam = await db.query<Record<string, unknown>>(
+    `select p.id as product_id, p.nama, p.kode, p.part_number, p.kategori, p.satuan, p.satuan_alt, p.isi_satuan_alt, g.stok as stok_gudang,
+            (g.stok * p.harga_beli)::bigint as nilai, t.terakhir,
+            floor(extract(epoch from (now() - t.terakhir)) / 86400)::int as hari_diam
+     from gudang_items g
+     join products p on p.id = g.product_id
+     cross join lateral (
+       select coalesce((select max(l.tanggal) from gudang_log l where l.product_id = g.product_id and l.tipe <> 'OPNAME'), g.ditambah_pada) as terakhir
+     ) t
+     where g.stok > 0 and t.terakhir < now() - ($1::int * interval '1 day')
+     order by nilai desc, t.terakhir asc
+     limit 300`,
+    [hari],
+  );
+  const [diamTotal] = await db.query<{ n: number; nilai: number }>(
+    `select count(*)::int as n, coalesce(sum(g.stok * p.harga_beli), 0)::bigint as nilai
+     from gudang_items g join products p on p.id = g.product_id
+     cross join lateral (
+       select coalesce((select max(l.tanggal) from gudang_log l where l.product_id = g.product_id and l.tipe <> 'OPNAME'), g.ditambah_pada) as terakhir
+     ) t
+     where g.stok > 0 and t.terakhir < now() - ($1::int * interval '1 day')`,
+    [hari],
+  );
+  return {
+    hari,
+    nilaiToko: Number(sum?.nilai_toko ?? 0),
+    nilaiGudang: Number(sum?.nilai_gudang ?? 0),
+    itemToko: Number(sum?.item_toko ?? 0),
+    itemGudang: Number(sum?.item_gudang ?? 0),
+    kategori: kategori.map((k) => ({ kategori: String(k.kat), nilaiToko: Number(k.nilai_toko ?? 0), nilaiGudang: Number(k.nilai_gudang ?? 0) })),
+    diamJumlah: Number(diamTotal?.n ?? 0),
+    diamNilai: Number(diamTotal?.nilai ?? 0),
+    diam: diam.map((r) => ({
+      productId: Number(r.product_id),
+      nama: String(r.nama ?? ""),
+      kode: String(r.kode ?? ""),
+      partNumber: String(r.part_number ?? ""),
+      kategori: String(r.kategori ?? ""),
+      satuan: String(r.satuan ?? "Pcs"),
+      satuanAlt: String(r.satuan_alt ?? ""),
+      isiSatuanAlt: Number(r.isi_satuan_alt ?? 0),
+      stokGudang: Number(r.stok_gudang ?? 0),
+      nilai: Number(r.nilai ?? 0),
+      terakhir: r.terakhir ? new Date(String(r.terakhir)).toISOString() : "",
+      hariDiam: Number(r.hari_diam ?? 0),
+    })),
+  };
 }

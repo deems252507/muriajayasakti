@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRightLeft, Check, ClipboardCheck, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
+import { ArrowRightLeft, Check, ClipboardCheck, FileText, History, Pencil, Plus, Search, SlidersHorizontal, Trash2, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AmbilDialog, EditLogDialog, ItemIdentity, SesuaikanDialog, TambahDialog, fmt } from "@/components/shop/gudang-dialogs";
@@ -8,11 +8,12 @@ import { Pager } from "@/components/shop/opname-ui";
 import { Panel, inputClass } from "@/components/shop/shell";
 import { confirmDialog } from "@/lib/confirm";
 import { usePersistedState } from "@/lib/persist";
-import { gudangCek, gudangHapusItem, gudangHapusLog, gudangList, gudangLogs } from "@/lib/shop/api";
+import { gudangCek, gudangHapusItem, gudangHapusLog, gudangList, gudangLogs, gudangPerluDiambil } from "@/lib/shop/api";
+import { printSuratMutasi } from "@/lib/shop/print";
 import { formatQtyPack, when } from "@/lib/shop/format";
 import type { GudangItem, GudangLog } from "@/lib/shop/types";
 
-type Tab = "stok" | "riwayat";
+type Tab = "stok" | "riwayat" | "perlu";
 type ListData = Awaited<ReturnType<typeof gudangList>>;
 type LogData = Awaited<ReturnType<typeof gudangLogs>>;
 
@@ -23,8 +24,8 @@ const asId = (value: unknown) => {
 
 export const Route = createFileRoute("/_shop/gudang")({
   // ?tab=riwayat membuka riwayat; ?hid=ID menyaring riwayat satu barang.
-  validateSearch: (search: Record<string, unknown>): { tab?: "riwayat"; hid?: number } => ({
-    tab: search.tab === "riwayat" ? "riwayat" : undefined,
+  validateSearch: (search: Record<string, unknown>): { tab?: "riwayat" | "perlu"; hid?: number } => ({
+    tab: search.tab === "riwayat" || search.tab === "perlu" ? search.tab : undefined,
     hid: asId(search.hid),
   }),
   component: GudangPage,
@@ -63,9 +64,10 @@ function GudangPage() {
           </div>
         </div>
         {showRiwayat ? (
-        <div role="tablist" aria-label="Menu Stok Gudang" className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+        <div role="tablist" aria-label="Menu Stok Gudang" className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
           {([
             { key: "stok", label: "Stok Gudang" },
+            { key: "perlu", label: "Perlu Diambil" },
             { key: "riwayat", label: "Riwayat Mutasi" },
           ] as Array<{ key: Tab; label: string }>).map((t) => (
             <button
@@ -82,7 +84,7 @@ function GudangPage() {
         </div>
         ) : null}
       </Panel>
-      {tab === "stok" ? <StokTab canHistory={showRiwayat} onHistory={(id) => void navigate({ to: "/gudang", search: { tab: "riwayat", hid: id } })} /> : <RiwayatTab hid={hid} onClearHid={() => void navigate({ to: "/gudang", search: { tab: "riwayat" }, replace: true })} />}
+      {tab === "perlu" ? <PerluTab /> : tab === "stok" ? <StokTab canHistory={showRiwayat} onHistory={(id) => void navigate({ to: "/gudang", search: { tab: "riwayat", hid: id } })} /> : <RiwayatTab hid={hid} onClearHid={() => void navigate({ to: "/gudang", search: { tab: "riwayat" }, replace: true })} />}
     </div>
   );
 }
@@ -351,6 +353,27 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
     }
   }
 
+  /** Surat mutasi satu catatan. Arah: Ambil ke toko = Gudang ke Toko; alokasi faktur = Toko ke Gudang; tambah stok lain = masuk gudang. */
+  function cetakSurat(log: GudangLog) {
+    const dariAlokasi = log.catatan.startsWith("Alokasi faktur");
+    const dari = log.tipe === "PINDAH" ? "Gudang" : dariAlokasi ? "Toko" : "Luar (pemasok / lainnya)";
+    const ke = log.tipe === "PINDAH" ? "Toko" : "Gudang";
+    try {
+      printSuratMutasi({
+        nomor: `MT-${log.id}`,
+        tanggal: log.tanggal,
+        dari,
+        ke,
+        referensi: dariAlokasi ? log.catatan : undefined,
+        catatan: dariAlokasi ? "" : log.catatan,
+        petugas: log.olehNama || log.oleh,
+        items: [{ nama: log.nama, kode: log.kode, partNumber: log.partNumber, qtyText: fmtItem(Math.abs(log.jumlah), log) }],
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal mencetak");
+    }
+  }
+
   const admin = Boolean(data?.admin);
   const belumIds = (data?.items ?? []).filter((l) => (l.tipe === "MASUK" || l.tipe === "PINDAH") && !l.dicek).map((l) => l.id);
 
@@ -418,6 +441,11 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
               {log.catatan ? ` · ${log.catatan}` : ""}
               {log.diubahNama ? ` · diedit ${log.diubahNama}` : ""}
             </p>
+            {log.tipe === "MASUK" || log.tipe === "PINDAH" ? (
+              <button type="button" onClick={() => cetakSurat(log)} className="mt-2 flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800">
+                <FileText className="size-4" /> Cetak surat mutasi
+              </button>
+            ) : null}
             {admin ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {log.tipe === "MASUK" || log.tipe === "PINDAH" ? (
@@ -454,6 +482,73 @@ function RiwayatTab({ hid, onClearHid }: { hid?: number; onClearHid: () => void 
           }}
         />
       ) : null}
+    </>
+  );
+}
+
+
+type PerluData = Awaited<ReturnType<typeof gudangPerluDiambil>>;
+
+/** Barang yang stok tokonya sudah di bawah minimum tetapi masih ada di gudang. Saran: isi toko sampai 2x stok minimum. */
+function PerluTab() {
+  const [q, setQ] = useState("");
+  const [data, setData] = useState<PerluData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tick, setTick] = useState(0);
+  const [ambil, setAmbil] = useState<PerluData["items"][number] | null>(null);
+  const dq = useDebounced(q.trim());
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    void gudangPerluDiambil({ data: { q: dq } })
+      .then((res) => { if (alive) { setData(res); setError(""); } })
+      .catch((err: Error) => alive && setError(err.message))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [dq, tick]);
+
+  return (
+    <>
+      <Panel>
+        <p className="text-sm font-extrabold text-slate-900">Perlu diambil dari gudang</p>
+        <p className="mt-0.5 text-xs text-slate-600">Stok toko sudah sama dengan atau di bawah stok minimum, sedangkan gudang masih ada. Jumlah saran mengisi toko sampai 2 kali stok minimum (paling banyak sebesar stok gudang) dan bisa diubah saat mengambil.</p>
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input className={`${inputClass} pl-9`} placeholder="Cari barang" aria-label="Cari barang" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+      </Panel>
+      {error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+      {loading && !data ? <p className="p-6 text-center text-sm text-slate-500">Memuat...</p> : null}
+      {data && data.items.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Tidak ada barang yang perlu diambil dari gudang.</div> : null}
+      <div className={`space-y-2 ${loading ? "opacity-60" : ""}`}>
+        {data?.items.map((item) => (
+          <article key={item.productId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="break-words text-[15px] font-extrabold leading-snug text-slate-900">{item.nama}</p>
+                <p className="text-xs text-slate-600">{[item.partNumber || item.kode, item.merek, item.kategori].filter(Boolean).join(" · ")}</p>
+              </div>
+              {item.stokToko <= 0 ? <span className="shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-extrabold text-white">Toko habis</span> : <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-extrabold text-amber-900">Menipis</span>}
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-lg bg-slate-100 p-2"><p className="text-slate-600">Stok toko</p><p className="text-sm font-extrabold text-slate-900">{fmtItem(item.stokToko, item)}</p></div>
+              <div className="rounded-lg bg-slate-100 p-2"><p className="text-slate-600">Minimum</p><p className="text-sm font-extrabold text-slate-900">{fmtItem(item.stokMin, item)}</p></div>
+              <div className="rounded-lg bg-emerald-50 p-2"><p className="text-emerald-800">Stok gudang</p><p className="text-sm font-extrabold text-emerald-900">{fmtItem(item.stokGudang, item)}</p></div>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-700">Saran ambil: <b className="text-slate-900">{fmtItem(item.saran, item)}</b></p>
+              {data.bisaUbah ? (
+                <button type="button" onClick={() => setAmbil(item)} className="flex h-10 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-bold text-white">
+                  <ArrowRightLeft className="size-4" /> Ambil ke toko
+                </button>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+      {ambil ? <AmbilDialog item={ambil} initialQty={ambil.saran} onClose={() => setAmbil(null)} onDone={() => { setAmbil(null); setTick((n) => n + 1); }} /> : null}
     </>
   );
 }
