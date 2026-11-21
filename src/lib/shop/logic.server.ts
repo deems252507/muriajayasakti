@@ -3,6 +3,7 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
 import { formatQtyPack, hasAltUnit, packFromName, toBaseQty } from "@/lib/shop/format";
+import { cleanLabelOptions } from "@/lib/shop/label-settings";
 import type { Bank, GudangConfirmResult, GudangDraftEntry, GudangItem, GudangLog, GudangOpnameItem, GudangOpnameRecent, GudangOpnameSummary, GudangPickItem, OpnameConfirmResult, OpnameDraftItem, OpnameItem, OpnameLog, OpnameSaveResult, OpnameSummary, Pajak, Partner, Product, Role, Shift, Staff } from "@/lib/shop/types";
 
 const COOKIE = "mjs_session";
@@ -1080,28 +1081,22 @@ export async function saveShopProfile(data: any) {
   return { ok: true, nama, alamat, telepon, tagline, logo, icon };
 }
 
-const LABEL_KEYS = ["nama", "merek", "partNumber", "kodePajak", "barcode", "kodeBarcode", "harga"] as const;
-
-function cleanLabel(raw: unknown) {
-  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  return Object.fromEntries(LABEL_KEYS.map((k) => [k, typeof src[k] === "boolean" ? src[k] : true])) as Record<(typeof LABEL_KEYS)[number], boolean>;
-}
-
 /** Isi label barcode (semua akun boleh membaca, karena semua akun bisa mencetak). */
 export async function getLabelBarcode() {
   await requireStaff();
   const db = await sql();
   const [row] = await db.query<{ label_barcode: unknown }>(`select label_barcode from shop_profile where id = 1`);
-  return cleanLabel(row?.label_barcode);
+  return cleanLabelOptions(row?.label_barcode);
 }
 
 export async function saveLabelBarcode(data: any) {
   const me = await requireStaff();
   assertManageStaff(me);
-  const label = cleanLabel(data);
+  const label = cleanLabelOptions(data);
   const db = await sql();
   await db.query(`update shop_profile set label_barcode = $1::jsonb where id = 1`, [JSON.stringify(label)]);
-  await audit(me, `Ubah isi label barcode (${LABEL_KEYS.filter((k) => label[k]).join(", ") || "kosong"})`);
+  const ringkas = (f: typeof label.pcs) => (f.aktif ? Object.entries(f).filter(([k, v]) => k !== "aktif" && v).map(([k]) => k).join("+") || "kosong" : "tidak dicetak");
+  await audit(me, `Ubah isi label barcode (Pcs: ${ringkas(label.pcs)}; Dus: ${ringkas(label.dus)})`);
   return label;
 }
 

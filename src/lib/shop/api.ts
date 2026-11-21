@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { LabelOptions } from "./label-settings";
 import type { Bank } from "@/lib/shop/types";
 
 type ProductInput = {
@@ -193,15 +194,7 @@ export const getLabelBarcode = createServerFn({ method: "GET" }).handler(async (
 });
 
 export const saveLabelBarcode = createServerFn({ method: "POST" })
-  .validator((input: { nama?: boolean; merek?: boolean; partNumber?: boolean; kodePajak?: boolean; barcode?: boolean; kodeBarcode?: boolean; harga?: boolean }) => ({
-    nama: input?.nama !== false,
-    merek: input?.merek !== false,
-    partNumber: input?.partNumber !== false,
-    kodePajak: input?.kodePajak !== false,
-    barcode: input?.barcode !== false,
-    kodeBarcode: input?.kodeBarcode !== false,
-    harga: input?.harga !== false,
-  }))
+  .validator((input: LabelOptions) => ({ pcs: input?.pcs, dus: input?.dus }))
   .handler(async ({ data }) => {
     const { saveLabelBarcode: run } = await import("./logic.server");
     return run(data);

@@ -11,7 +11,7 @@ import { Field, inputClass, Panel, PrimaryButton } from "@/components/shop/shell
 import { deleteProduct, exportProducts, getLabelBarcode, importProducts, listPriceHistory, listProductSuppliers, listProducts, saveProduct } from "@/lib/shop/api";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { digits, grouped, packFromName, rupiah } from "@/lib/shop/format";
-import { LABEL_DEFAULTS, cleanLabelOptions, type LabelOptions } from "@/lib/shop/label-settings";
+import { LABEL_DEFAULTS, cleanLabelOptions, labelAdaIsi, type LabelFields, type LabelOptions } from "@/lib/shop/label-settings";
 import { stockLevel } from "@/components/shop/stock-table";
 import { shopBrand } from "@/lib/shop/print";
 import type { Product } from "@/lib/shop/types";
@@ -622,37 +622,78 @@ function splitCsv(line: string) {
 }
 
 async function printBarcode(item: Product, opt: LabelOptions) {
-  const barcodeOn = opt.barcode;
-  const adaIsi = opt.nama || opt.merek || opt.partNumber || opt.kodePajak || opt.barcode || opt.harga;
-  if (!adaIsi) {
-    toast.error("Isi label kosong. Centang minimal satu isi di Pengaturan > Label Barcode.");
+  // Label Pcs dan label Dus diatur sendiri di Pengaturan > Label Barcode. Label Dus hanya untuk barang yang punya satuan besar.
+  const plan: Array<{ f: LabelFields; code: string; harga: number; satuan: string }> = [];
+  if (labelAdaIsi(opt.pcs)) plan.push({ f: opt.pcs, code: `${item.kode}-PCS`, harga: item.hargaJual, satuan: item.satuan || "Pcs" });
+  if (item.satuanAlt && labelAdaIsi(opt.dus)) plan.push({ f: opt.dus, code: `${item.kode}-DUS`, harga: item.hargaJualAlt, satuan: item.satuanAlt });
+  if (!plan.length) {
+    toast.error(item.satuanAlt ? "Tidak ada label yang diaktifkan. Atur di Pengaturan > Label Barcode." : "Label Pcs tidak diaktifkan dan barang ini tidak punya Dus. Atur di Pengaturan > Label Barcode.");
     return;
   }
   const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const JsBarcode = barcodeOn ? (await import("jsbarcode")).default : null;
-  const make = (code: string) => {
+  const JsBarcode = plan.some((p) => p.f.barcode) ? (await import("jsbarcode")).default : null;
+  /** Barcode dibuat memenuhi lebar label (viewBox) supaya tajam dan rapi di kertas berapa pun. */
+  const make = (code: string, tampilKode: boolean) => {
     if (!JsBarcode) return "";
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    JsBarcode(svg, code, { format: "CODE128", width: 1.2, height: 40, displayValue: opt.kodeBarcode, fontSize: 12, margin: 4 });
+    JsBarcode(svg, code, { format: "CODE128", width: 2, height: 54, displayValue: tampilKode, fontSize: 15, textMargin: 2, font: "Consolas, 'Courier New', monospace", margin: 6 });
+    const w = parseFloat(svg.getAttribute("width") ?? "") || 0;
+    const h = parseFloat(svg.getAttribute("height") ?? "") || 0;
+    if (w && h) svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.removeAttribute("width");
+    svg.removeAttribute("height");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.setAttribute("style", "display:block;width:100%;height:auto;max-height:20mm");
     return svg.outerHTML;
   };
-  const label = (code: string, harga: number) => {
-    const sub = [opt.merek && (item.merek || "-"), opt.partNumber && `PN ${item.partNumber || "-"}`].filter(Boolean).join(" · ");
-    return `<div>${opt.nama ? `<b>${esc(item.nama)}</b>` : ""}${sub ? `<div style="font-size:12px">${esc(sub)}</div>` : ""}${opt.kodePajak && item.kodePajak ? `<div>${esc(item.kodePajak)}</div>` : ""}${make(code)}${opt.harga ? `<div style="font-size:16px">${rupiah(harga)}</div>` : ""}</div>`;
+  const label = ({ f, code, harga, satuan }: (typeof plan)[number]) => {
+    const sub = [f.merek && item.merek, f.partNumber && (item.partNumber ? `PN ${item.partNumber}` : "")].filter(Boolean).join("  ·  ");
+    const pajak = f.kodePajak && item.kodePajak ? `<span class="pajak">${esc(item.kodePajak)}</span>` : "";
+    const head = (f.nama ? `<div class="nama">${esc(item.nama)}</div>` : "") + (sub ? `<div class="sub">${esc(sub)}</div>` : "") + (pajak ? `<div class="meta">${pajak}</div>` : "");
+    const price = f.harga ? `<div class="harga"><span class="rp">Rp</span>${esc(rupiah(harga).replace(/^Rp\s*/, ""))}<span class="satuan">/ ${esc(satuan)}</span></div>` : "";
+    return `<section class="label">${head ? `<div class="head">${head}</div>` : ""}${f.barcode ? `<div class="bar">${make(code, f.kodeBarcode)}</div>` : ""}${price}</section>`;
   };
-  const dus = item.satuanAlt ? `<hr>${label(`${item.kode}-DUS`, item.hargaJualAlt)}` : "";
-  const html = `<!doctype html><html><body style="font-family:sans-serif;width:280px;margin:16px auto;text-align:center">
-    ${label(`${item.kode}-PCS`, item.hargaJual)}
-    ${dus}
+  const labels = plan.map(label);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Label ${esc(item.nama)}</title><style>
+    @page { margin: 3mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Arial, Helvetica, sans-serif; color: #111; background: #e5e7eb; }
+    .bar-top { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: #fff; border-bottom: 1px solid #d1d5db; font-size: 12px; color: #475569; }
+    .bar-top button { font: inherit; font-weight: 700; padding: 6px 14px; border: 0; border-radius: 8px; background: #1d4ed8; color: #fff; cursor: pointer; }
+    .sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 14px; }
+    .label { width: 70mm; background: #fff; padding: 3.5mm 4mm; text-align: center; border-radius: 2mm; box-shadow: 0 1px 4px rgba(0,0,0,.18); break-inside: avoid; page-break-inside: avoid; }
+    .head { padding-bottom: 1.6mm; }
+    .nama { font-size: 14px; font-weight: 800; line-height: 1.22; letter-spacing: .1px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .sub { margin-top: 1mm; font-size: 10.5px; line-height: 1.3; color: #374151; }
+    .meta { margin-top: 1.2mm; }
+    .pajak { display: inline-block; padding: .2mm 2mm; border: .3mm solid #111; border-radius: 1mm; font: 700 10px Consolas, "Courier New", monospace; letter-spacing: .4px; }
+    .bar { padding-top: .5mm; }
+    .harga { font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: .2px; }
+    .harga:not(:first-child) { margin-top: 1mm; padding-top: 1.4mm; border-top: .3mm solid #111; }
+    .head:last-child { padding-bottom: 0; }
+    .label > .bar:first-child { padding-top: 0; }
+    .label > .head:only-child .nama:only-child { font-size: 16px; }
+    .harga .rp { margin-right: 1mm; font-size: 13px; font-weight: 700; }
+    .harga .satuan { margin-left: 1.5mm; font-size: 10.5px; font-weight: 600; color: #4b5563; }
+    @media print {
+      body { background: #fff; }
+      .bar-top { display: none; }
+      .sheet { display: block; padding: 0; }
+      .label { box-shadow: none; border-radius: 0; margin: 0 auto; break-after: page; page-break-after: always; }
+      .label:last-child { break-after: auto; page-break-after: auto; }
+    }
+  </style></head><body>
+    <div class="bar-top"><span>${labels.length > 1 ? "2 label (per satuan)" : "1 label"} · tiap label dicetak di halaman sendiri</span><button onclick="window.print()">Cetak</button></div>
+    <main class="sheet">${labels.join("")}</main>
   </body></html>`;
-  const win = window.open("", "_blank", "width=420,height=640");
+  const win = window.open("", "_blank", "width=460,height=680");
   if (!win) {
     toast.error("Popup diblokir. Izinkan popup untuk mencetak barcode.");
     return;
   }
   win.document.write(html);
   win.document.close();
-  setTimeout(() => win.print(), 300);
+  setTimeout(() => win.print(), 400);
 }
 
 type OriginData = {
