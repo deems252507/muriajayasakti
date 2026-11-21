@@ -76,7 +76,7 @@ function SizeBox({ value, onChange }: { value: LabelSize; onChange: (next: Label
       <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <NumField label="Lebar (mm)" value={value.lebar} onChange={(n) => set({ lebar: n })} />
         <NumField label="Tinggi (mm)" hint="0 = otomatis mengikuti isi" value={value.tinggi} onChange={(n) => set({ tinggi: n })} />
-        <NumField label="Ukuran teks (%)" hint="100 = normal" value={value.skala} onChange={(n) => set({ skala: n })} />
+        <NumField label="Ukuran teks (%)" hint="0 = otomatis: teks &amp; barcode ikut mengecil/membesar sesuai lebar kotak" value={value.skala} onChange={(n) => set({ skala: n })} />
         <NumField label="Jumlah salinan" hint="Label sama yang dicetak" value={value.jumlah} onChange={(n) => set({ jumlah: n })} />
       </div>
       <label className="mt-2 block text-sm font-semibold">
@@ -92,7 +92,7 @@ function SizeBox({ value, onChange }: { value: LabelSize; onChange: (next: Label
       </label>
       <div className="mt-2 flex gap-3 text-xs">
         <button type="button" className="btn-inline text-accent" onClick={() => onChange({ ...SIZE_DEFAULTS })}>Kembalikan bawaan</button>
-        <button type="button" className="btn-inline text-slate-600" onClick={() => onChange({ ...SIZE_DEFAULTS, lebar: 40, tinggi: 25, skala: 70 })}>Contoh label kecil (40×25)</button>
+        <button type="button" className="btn-inline text-slate-600" onClick={() => onChange({ ...SIZE_DEFAULTS, lebar: 40, tinggi: 25, skala: 0 })}>Contoh label kecil (40×25)</button>
       </div>
     </div>
   );

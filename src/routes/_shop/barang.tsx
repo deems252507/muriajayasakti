@@ -700,7 +700,7 @@ async function printBarcode(item: Product, opt: LabelOptions) {
       <div class="ctl">
         <label>Lebar (mm)<input type="number" id="w" min="20" max="210"></label>
         <label>Tinggi (mm)<input type="number" id="h" min="0" max="297" title="0 = otomatis"></label>
-        <label>Teks (%)<input type="number" id="s" min="20" max="250"></label>
+        <label>Teks (%)<input type="number" id="s" min="0" max="250" title="0 = otomatis ikut lebar kotak" placeholder="auto"></label>
         <label>Jumlah<input type="number" id="n" min="1" max="200"></label>
         <label>Susunan<select id="m" style="padding:4px 6px;font:inherit;font-size:13px;border:1px solid #cbd5e1;border-radius:6px"><option value="kertas">Banyak per kertas</option><option value="halaman">1 label per halaman</option></select></label>
         <label class="chk"><input type="checkbox" id="k"> Kotak</label>
@@ -712,10 +712,13 @@ async function printBarcode(item: Product, opt: LabelOptions) {
       var D = ${data};
       var el = function (id) { return document.getElementById(id); };
       var num = function (id, lo, hi, def) { var v = Math.round(Number(el(id).value)); return isFinite(v) && el(id).value !== "" ? Math.min(hi, Math.max(lo, v)) : def; };
-      el("w").value = D.ukuran.lebar; el("h").value = D.ukuran.tinggi; el("s").value = D.ukuran.skala; el("n").value = D.ukuran.jumlah; el("k").checked = D.ukuran.kotak; el("m").value = D.ukuran.susunan;
+      el("w").value = D.ukuran.lebar; el("h").value = D.ukuran.tinggi; el("s").value = D.ukuran.skala || ""; el("n").value = D.ukuran.jumlah; el("k").checked = D.ukuran.kotak; el("m").value = D.ukuran.susunan;
       function render() {
-        var w = num("w", 20, 210, 70), h = num("h", 0, 297, 0), s = num("s", 20, 250, 100), n = num("n", 1, 200, 1), k = el("k").checked, m = el("m").value;
+        var w = num("w", 20, 210, 70), h = num("h", 0, 297, 0), s = num("s", 0, 250, 0), n = num("n", 1, 200, 1), k = el("k").checked, m = el("m").value;
         if (h > 0 && h < 15) h = 15;
+        if (s > 0 && s < 20) s = 20;
+        // Teks kosong/0 = otomatis: isi label (teks, barcode, jarak) ikut mengecil/membesar sesuai lebar kotak.
+        var auto = s === 0; if (auto) s = Math.min(250, Math.max(20, Math.round(w / 70 * 100)));
         var root = document.documentElement.style;
         root.setProperty("--s", String(s / 100));
         root.setProperty("--w", w + "mm");
@@ -735,7 +738,10 @@ async function printBarcode(item: Product, opt: LabelOptions) {
           for (var j = 0; j < n; j++) html += D.labels[i].replace('class="label"', 'class="label' + (k ? " kotak" : "") + '"' + (h > 0 ? ' style="height:' + h + 'mm"' : ""));
         }
         el("sheet").innerHTML = html;
-        el("info").textContent = (D.labels.length * n) + " label (" + n + " salinan x " + D.labels.length + " satuan) \u00b7 " + (m === "kertas" ? "berjajar dalam satu kertas" : "tiap label dicetak di halaman sendiri");
+        var first = el("sheet").firstElementChild, hmm = h > 0 ? h : (first ? first.offsetHeight * 25.4 / 96 : 0);
+        var est = "";
+        if (m === "kertas" && hmm > 0) { var cols = Math.max(1, Math.floor((194 + 2) / (w + 2))), rows = Math.max(1, Math.floor((281 + 2) / (hmm + 2))); est = " \u00b7 \u00b1" + (cols * rows) + " label per kertas A4"; }
+        el("info").textContent = (auto ? "Teks otomatis " + s + "% \u00b7 " : "") + (D.labels.length * n) + " label (" + n + " salinan x " + D.labels.length + " satuan) \u00b7 " + (m === "kertas" ? "berjajar dalam satu kertas" : "tiap label dicetak di halaman sendiri") + est;
       }
       ["w", "h", "s", "n", "k", "m"].forEach(function (id) { el(id).addEventListener("input", render); el(id).addEventListener("change", render); });
       render();
