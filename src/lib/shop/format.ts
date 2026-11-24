@@ -90,3 +90,31 @@ export function formatQtyPack(base: number, satuan: string, satuanAlt: string, i
   if (sisa === 0) return `${sign}${besar.toLocaleString("id-ID")} ${satuanAlt}`;
   return `${sign}${besar.toLocaleString("id-ID")} ${satuanAlt} ${sisa.toLocaleString("id-ID")} ${dasar}`;
 }
+
+/** Jumlah dalam satuan dasar ditulis dengan satuan faktur bila lebih besar: 60 Pcs -> "60 Pcs (5 Dus)". */
+export function packQtyText(base: number, satuanFaktur: string, factor: number, satuanDasar: string) {
+  const unit = satuanDasar || satuanFaktur;
+  if (factor <= 1 || satuanFaktur === unit) return `${grouped(base)} ${satuanFaktur}`;
+  const big = Math.floor(base / factor);
+  const rest = base % factor;
+  const pack = big > 0 ? ` (${grouped(big)} ${satuanFaktur}${rest ? ` + ${grouped(rest)} ${unit}` : ""})` : "";
+  return `${grouped(base)} ${unit}${pack}`;
+}
+
+/** Baris faktur pembelian setelah dikurangi retur ke pemasok: jumlah retur, sisa bersih, dan nilai bersihnya. */
+export function fakturLineNet(item: { qty: number; satuan: string; qtyDasar: number; hargaBeli: number; satuanDasar?: string; returQtyDasar?: number; returNilai?: number }) {
+  const factor = Math.max(1, Math.round(Number(item.qtyDasar || 0) / Math.max(1, Number(item.qty || 1))));
+  const retur = Math.max(0, Number(item.returQtyDasar ?? 0));
+  const netDasar = Math.max(0, Number(item.qtyDasar || 0) - retur);
+  const dasar = item.satuanDasar || item.satuan;
+  return {
+    factor,
+    retur,
+    netDasar,
+    returText: retur > 0 ? packQtyText(retur, item.satuan, factor, dasar) : "",
+    netText: packQtyText(netDasar, item.satuan, factor, dasar),
+    gross: Number(item.hargaBeli || 0) * Number(item.qty || 0),
+    returNilai: Number(item.returNilai ?? 0),
+    net: Number(item.hargaBeli || 0) * Number(item.qty || 0) - Number(item.returNilai ?? 0),
+  };
+}

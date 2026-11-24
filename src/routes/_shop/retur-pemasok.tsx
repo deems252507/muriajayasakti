@@ -1,15 +1,16 @@
 import { confirmDialog } from "@/lib/confirm";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
-import { PageBar } from "@/components/shop/page-bar";
-import { createSupplierReturn, deleteSupplierReturn, listPartners, listReturnableLines, listSupplierReturns } from "@/lib/shop/api";
+import { PageBar, useIsWide } from "@/components/shop/page-bar";
+import { PembelianTabs } from "@/components/shop/pembelian-tabs";
+import { createSupplierReturn, deleteSupplierReturn, listPartners, listReturnableLines, listSupplierReceipts, listSupplierReturns } from "@/lib/shop/api";
 import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierReturn, shopBrand } from "@/lib/shop/print";
-import type { Partner, ReturnableLine, SupplierReturn } from "@/lib/shop/types";
+import type { Partner, ReturnableLine, SupplierReceipt, SupplierReturn } from "@/lib/shop/types";
 
 export const Route = createFileRoute("/_shop/retur-pemasok")({
   component: ReturPemasokPage,
@@ -77,6 +78,7 @@ function newDraft(line: ReturnableLine, qty: number): Draft {
 /** Tampilan surat retur (hanya untuk dilihat; Cetak membuat dokumen yang diserahkan ke pemasok). */
 function ReturModal({ row, supplier, canEdit, onClose, onDelete }: { row: SupplierReturn; supplier?: Partner; canEdit: boolean; onClose: () => void; onDelete: () => void }) {
   const brand = shopBrand();
+  const fakturs = [...new Map(row.items.map((item) => [item.invoiceNo, item.receivedAt])).entries()];
   const tanggal = row.returnedAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }).format(new Date(row.returnedAt)) : "-";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
@@ -103,11 +105,20 @@ function ReturModal({ row, supplier, canEdit, onClose, onDelete }: { row: Suppli
                 {row.createdBy ? <p className="text-xs text-slate-600">Dibuat oleh: {row.createdBy}</p> : null}
               </div>
             </div>
-            <div className="mt-4 rounded-lg bg-slate-100 px-3 py-2 text-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Kepada (Pemasok)</p>
-              <p className="text-base font-extrabold">{row.supplierName}</p>
-              {supplier?.alamat ? <p className="text-xs text-slate-600">{supplier.alamat}</p> : null}
-              {supplier?.telp ? <p className="text-xs text-slate-600">Telp: {supplier.telp}</p> : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Kepada (Pemasok)</p>
+                <p className="text-base font-extrabold">{row.supplierName}</p>
+                {supplier?.alamat ? <p className="text-xs text-slate-600">{supplier.alamat}</p> : null}
+                {supplier?.telp ? <p className="text-xs text-slate-600">Telp: {supplier.telp}</p> : null}
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Retur dari Faktur Pembelian</p>
+                {fakturs.map(([no, at]) => (
+                  <p key={no} className="flex flex-wrap items-center gap-x-2"><b className="font-mono text-base">{no}</b><span className="text-xs text-slate-600">{fmtDate(at)}</span></p>
+                ))}
+                <Link to="/pemasok" search={{ inv: fakturs[0]?.[0] }} className="mt-1 inline-block text-xs font-bold text-blue-700 underline">Lihat faktur pembelian</Link>
+              </div>
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
@@ -151,6 +162,7 @@ function ReturPemasokPage() {
   const me = Route.useRouteContext().me;
   const { faktur: fakturParam } = Route.useSearch();
   const navigate = useNavigate();
+  const wide = useIsWide();
   const [suppliers, setSuppliers] = useState<Partner[]>([]);
   const [rows, setRows] = useState<SupplierReturn[]>([]);
   const [q, setQ] = useState("");
@@ -163,13 +175,18 @@ function ReturPemasokPage() {
   const [viewing, setViewing] = useState<SupplierReturn | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Form retur: pemasok -> faktur -> barang di faktur itu. Satu surat retur = satu faktur, supaya jelas asalnya.
   const [formSupplierId, setFormSupplierId] = useState("");
   const [returnedAt, setReturnedAt] = useState(todayInput());
   const [notes, setNotes] = useState("");
+  const [fakturQ, setFakturQ] = useState("");
+  const [fakturs, setFakturs] = useState<SupplierReceipt[]>([]);
+  const [fakturPage, setFakturPage] = useState(1);
+  const [fakturTotal, setFakturTotal] = useState(0);
+  const [fakturBusy, setFakturBusy] = useState(false);
+  const [chosen, setChosen] = useState<{ receiptId: number; invoiceNo: string; receivedAt: string; supplierName: string } | null>(null);
   const [items, setItems] = useState<Draft[]>([]);
-  const [productQ, setProductQ] = useState("");
-  const [hits, setHits] = useState<ReturnableLine[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [fullLines, setFullLines] = useState<ReturnableLine[]>([]);
   const canEdit = me.role === "Admin";
 
   function load(nextPage = page) {
@@ -183,43 +200,51 @@ function ReturPemasokPage() {
   }, []);
   useEffect(() => { load(page); }, [q, supplierId, start, end, page]);
 
-  // Cari barang yang pernah dibeli. Tanpa pemasok dipilih: harus mengetik minimal 2 huruf (nama / part number / no. faktur).
+  // Daftar faktur milik pemasok yang dipilih (bisa disaring dengan no. faktur atau nama barang). Dimuat 15 per halaman.
   useEffect(() => {
-    if (!open) return;
-    const sid = formSupplierId ? Number(formSupplierId) : 0;
-    if (!sid && productQ.trim().length < 2) { setHits([]); return; }
+    if (!open || !formSupplierId || chosen) { if (!formSupplierId) { setFakturs([]); setFakturTotal(0); } return; }
     let alive = true;
-    setSearching(true);
+    setFakturBusy(true);
     const timer = setTimeout(() => {
-      void listReturnableLines({ data: { supplierId: sid, q: productQ } })
-        .then((res) => { if (alive) setHits(res.items as ReturnableLine[]); })
+      void listSupplierReceipts({ data: { supplierId: Number(formSupplierId), q: fakturQ, page: fakturPage } })
+        .then((res) => {
+          if (!alive) return;
+          const list = res.items as SupplierReceipt[];
+          setFakturs((prev) => (fakturPage === 1 ? list : [...prev, ...list.filter((row) => !prev.some((old) => old.id === row.id))]));
+          setFakturTotal(res.total);
+        })
         .catch((error: Error) => { if (alive) toast.error(error.message); })
-        .finally(() => { if (alive) setSearching(false); });
-    }, 200);
+        .finally(() => { if (alive) setFakturBusy(false); });
+    }, fakturPage === 1 ? 200 : 0);
     return () => { alive = false; clearTimeout(timer); };
-  }, [open, productQ, formSupplierId]);
+  }, [open, formSupplierId, fakturQ, fakturPage, chosen]);
 
-  // Dibuka dari Barang Masuk Pemasok: isi form dengan semua barang faktur itu (qty 0 = belum diretur, Admin mengisi sendiri).
-  useEffect(() => {
-    if (!fakturParam) return;
-    let alive = true;
-    void listReturnableLines({ data: { receiptId: fakturParam } })
+  // Pilih faktur: tampilkan SEMUA barang di faktur itu beserta sisa yang masih boleh diretur.
+  function pickFaktur(receiptId: number, fromLink = false) {
+    setFakturBusy(true);
+    void listReturnableLines({ data: { receiptId } })
       .then((res) => {
-        if (!alive) return;
         const lines = res.items as ReturnableLine[];
-        if (!canEdit) toast.error("Hanya Admin yang dapat membuat retur.");
-        else if (!lines.length) toast.error("Faktur tidak ditemukan. Mungkin sudah dihapus.");
-        else {
-          resetForm();
-          setFormSupplierId(String(lines[0].supplierId));
-          setItems(lines.filter((line) => line.sisa > 0).map((line) => newDraft(line, 0)));
-          if (!lines.some((line) => line.sisa > 0)) toast.info(`Semua barang di faktur ${lines[0].invoiceNo} sudah diretur.`);
-          setOpen(true);
-        }
+        if (!lines.length) { toast.error("Faktur tidak ditemukan. Mungkin sudah dihapus."); return; }
+        const first = lines[0];
+        if (fromLink) setFormSupplierId(String(first.supplierId));
+        setChosen({ receiptId, invoiceNo: first.invoiceNo, receivedAt: first.receivedAt, supplierName: first.supplierName });
+        setFullLines(lines);
+        setItems(lines.filter((line) => line.sisa > 0).map((line) => newDraft(line, 0)));
+        if (!lines.some((line) => line.sisa > 0)) toast.info(`Semua barang di faktur ${first.invoiceNo} sudah diretur.`);
       })
       .catch((error: Error) => toast.error(error.message))
-      .finally(() => { if (alive) void navigate({ to: "/retur-pemasok", search: {}, replace: true }); });
-    return () => { alive = false; };
+      .finally(() => setFakturBusy(false));
+  }
+
+  // Dibuka dari tab Faktur Pembelian (tombol Retur): langsung masuk ke faktur itu.
+  useEffect(() => {
+    if (!fakturParam) return;
+    if (!canEdit) { toast.error("Hanya Admin yang dapat membuat retur."); void navigate({ to: "/retur-pemasok", search: {}, replace: true }); return; }
+    resetForm();
+    setOpen(true);
+    pickFaktur(fakturParam, true);
+    void navigate({ to: "/retur-pemasok", search: {}, replace: true });
   }, [fakturParam]);
 
   function resetForm() {
@@ -227,35 +252,32 @@ function ReturPemasokPage() {
     setReturnedAt(todayInput());
     setNotes("");
     setItems([]);
-    setProductQ("");
-    setHits([]);
+    setFullLines([]);
+    setChosen(null);
+    setFakturQ("");
+    setFakturs([]);
+    setFakturPage(1);
+    setFakturTotal(0);
   }
 
-  function addLine(line: ReturnableLine, qty = 1, silent = false) {
-    if (line.sisa <= 0) { if (!silent) toast.error("Barang ini sudah habis diretur dari faktur tersebut."); return false; }
-    if (items.length && formSupplierId && Number(formSupplierId) !== line.supplierId) {
-      if (!silent) toast.error("Satu surat retur untuk satu pemasok. Barang dari pemasok lain dibuat di surat retur terpisah.");
-      return false;
-    }
-    if (items.some((item) => item.line.lineId === line.lineId)) { if (!silent) toast.info("Barang dari faktur ini sudah ada di daftar retur."); return false; }
-    if (!formSupplierId) setFormSupplierId(String(line.supplierId));
-    setItems((prev) => (prev.some((item) => item.line.lineId === line.lineId) ? prev : [...prev, newDraft(line, qty)]));
-    return true;
-  }
-
-  function addAll(lines: ReturnableLine[]) {
-    const ok = lines.filter((line) => line.sisa > 0 && !items.some((item) => item.line.lineId === line.lineId));
-    if (!ok.length) return;
-    if (items.length && formSupplierId && Number(formSupplierId) !== ok[0].supplierId) {
-      toast.error("Satu surat retur untuk satu pemasok. Barang dari pemasok lain dibuat di surat retur terpisah.");
-      return;
-    }
-    if (!formSupplierId) setFormSupplierId(String(ok[0].supplierId));
-    setItems((prev) => [...prev, ...ok.filter((line) => !prev.some((item) => item.line.lineId === line.lineId)).map((line) => newDraft(line, 0))]);
+  function backToFakturList() {
+    setChosen(null);
+    setItems([]);
+    setFullLines([]);
+    setFakturPage(1);
   }
 
   function patchItem(lineId: number, fn: (row: Draft) => Draft) {
     setItems((prev) => prev.map((row) => (row.line.lineId === lineId ? fn(row) : row)));
+  }
+
+  // Isi semua barang dengan sisa maksimal (satuan terbesar yang pas), lalu Admin tinggal mengurangi yang tidak diretur.
+  function fillAll() {
+    setItems((prev) => prev.map((row) => {
+      const satuan = row.line.sisa >= row.line.factor ? row.line.satuan : row.line.satuanDasar;
+      const next: Draft = { ...row, satuan, qty: Math.floor(row.line.sisa / unitFactor(row.line, satuan)) };
+      return { ...next, dari: pickSource(row.line, needBase(next)) };
+    }));
   }
 
   // Stok yang diminta per barang + sumber (toko/gudang). Barang yang sama dari dua faktur memakai stok yang sama.
@@ -282,18 +304,7 @@ function ReturPemasokPage() {
   const filled = items.filter((item) => item.qty > 0);
   const hasProblem = filled.some((item) => rowProblem(item) !== "");
   const grandTotal = filled.reduce((sum, item) => sum + item.qty * unitPrice(item.line, item.satuan), 0);
-  const supplierName = suppliers.find((s) => String(s.id) === formSupplierId)?.nama ?? items[0]?.line.supplierName ?? "";
-
-  // Hasil pencarian dikelompokkan per faktur: nama pemasok + no. faktur + tanggal selalu terlihat di atas barangnya.
-  const groups = useMemo(() => {
-    const list: Array<{ receiptId: number; invoiceNo: string; receivedAt: string; supplierName: string; lines: ReturnableLine[] }> = [];
-    for (const hit of hits) {
-      let group = list.find((g) => g.receiptId === hit.receiptId);
-      if (!group) { group = { receiptId: hit.receiptId, invoiceNo: hit.invoiceNo, receivedAt: hit.receivedAt, supplierName: hit.supplierName, lines: [] }; list.push(group); }
-      group.lines.push(hit);
-    }
-    return list;
-  }, [hits]);
+  const habis = fullLines.filter((line) => line.sisa <= 0);
 
   async function removeReturn(row: SupplierReturn) {
     if (!(await confirmDialog(`Hapus retur ${row.returNo}? Barang yang diretur dikembalikan ke stok (toko / gudang) seperti sebelum diretur.`, { title: "Hapus retur?", danger: true }))) return;
@@ -303,7 +314,7 @@ function ReturPemasokPage() {
   }
 
   function save() {
-    if (busy) return;
+    if (busy || !chosen) return;
     setBusy(true);
     void createSupplierReturn({
       data: {
@@ -314,7 +325,7 @@ function ReturPemasokPage() {
       },
     })
       .then(async (res) => {
-        toast.success(`Retur ${res.returNo} tersimpan`, { description: "Stok sudah dikurangi. Surat retur siap dicetak." });
+        toast.success(`Retur ${res.returNo} tersimpan`, { description: `Stok sudah dikurangi dan faktur ${chosen.invoiceNo} dicatat ada retur. Surat retur siap dicetak.` });
         setOpen(false);
         resetForm();
         setPage(1);
@@ -327,69 +338,132 @@ function ReturPemasokPage() {
       .finally(() => setBusy(false));
   }
 
+  function printRow(row: SupplierReturn) {
+    try { printSupplierReturn(row, suppliers.find((s) => s.id === row.supplierId)); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); }
+  }
+
   if (me.role === "Kasir") return <Panel><p>Halaman Retur ke Pemasok hanya untuk Admin.</p></Panel>;
+
+  // Bagian isian satu barang: dipakai di tampilan tabel (layar lebar) dan kartu (HP). Fungsi biasa (bukan komponen) supaya kolom isian tidak hilang fokus tiap ketikan.
+  function qtyControls(item: Draft) {
+    const max = maxQty(item);
+    const h = "h-12";
+    return (
+      <>
+        {unitOptions(item.line).length > 1 ? (
+          <select className={`${h} rounded-lg border border-line bg-white px-2 text-sm font-semibold`} aria-label="Satuan retur" value={item.satuan} onChange={(e) => {
+            const satuan = e.target.value;
+            patchItem(item.line.lineId, (row) => ({ ...row, satuan, qty: Math.min(row.qty, Math.max(0, Math.floor(row.line.sisa / unitFactor(row.line, satuan)))) }));
+          }}>
+            {unitOptions(item.line).map((unit) => <option key={unit} value={unit}>{unit === item.line.satuan && item.line.factor > 1 ? `${unit} (isi ${item.line.factor} ${item.line.satuanDasar})` : unit}</option>)}
+          </select>
+        ) : <span className="text-sm font-semibold">{item.satuan}</span>}
+        <div className="flex items-center gap-2">
+          <input
+            className={`num ${h} w-24 rounded-lg border text-center text-base selection:bg-amber-200 selection:text-slate-900 ${item.qty > max ? "border-red-400 bg-red-50" : "border-line"}`}
+            inputMode="numeric"
+            aria-label="Jumlah retur"
+            value={item.qty}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => { const qty = digits(e.target.value); patchItem(item.line.lineId, (row) => ({ ...row, qty })); }}
+          />
+          <button type="button" className="h-12 rounded-lg border border-line bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50" onClick={() => patchItem(item.line.lineId, (row) => ({ ...row, qty: maxQty(row), dari: pickSource(row.line, maxQty(row) * unitFactor(row.line, row.satuan)) }))}>Maks {grouped(max)}</button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="space-y-4">
+      <PembelianTabs active="retur" returCount={total || undefined} />
       <Panel>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted">Transaksi & Persediaan</p>
-            <h2 className="text-xl font-extrabold">Retur ke Pemasok</h2>
-            <p className="mt-1 text-sm text-muted">Barang dikembalikan ke pemasok dan dicatat terhadap faktur pembeliannya. Stok otomatis berkurang setelah disimpan.</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted">Pembelian</p>
+            <h2 className="text-xl font-extrabold">Retur Pembelian</h2>
+            <p className="mt-1 text-sm text-muted">Barang dikembalikan ke pemasok dan dicatat terhadap faktur pembeliannya. Stok otomatis berkurang dan faktur pembelian ikut menunjukkan jumlah retur.</p>
           </div>
           {canEdit ? <ExpandGroup align="end" className="self-start"><ExpandButton size="md" variant="primary" label="Retur Baru" icon={<Plus />} onClick={() => { resetForm(); setOpen(true); }} /></ExpandGroup> : null}
         </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
-          <input className={inputClass} placeholder="Cari no. retur, faktur, pemasok, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <input className={`${inputClass} sm:col-span-2 lg:col-span-1`} placeholder="Cari no. retur, faktur, pemasok, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
           <select className={inputClass} value={supplierId} onChange={(e) => { setPage(1); setSupplierId(e.target.value); }}>
             <option value="">Semua pemasok</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
           </select>
-          <input className={inputClass} type="date" value={start} onChange={(e) => { setPage(1); setStart(e.target.value); }} />
-          <input className={inputClass} type="date" value={end} onChange={(e) => { setPage(1); setEnd(e.target.value); }} />
+          <input className={inputClass} type="date" aria-label="Dari tanggal" value={start} onChange={(e) => { setPage(1); setStart(e.target.value); }} />
+          <input className={inputClass} type="date" aria-label="Sampai tanggal" value={end} onChange={(e) => { setPage(1); setEnd(e.target.value); }} />
           <ExpandGroup align="start" className="self-start"><ExpandButton size="md" label="Reset" icon={<RotateCcw />} onClick={() => { setQ(""); setSupplierId(""); setStart(""); setEnd(""); setPage(1); }} /></ExpandGroup>
         </div>
       </Panel>
 
       <Panel className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-            <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Retur</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3">Faktur Asal</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dibuat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? <tr><td colSpan={9} className="py-8 text-center text-muted">Belum ada retur ke pemasok sesuai filter.</td></tr> : null}
+        {rows.length === 0 ? <p className="py-8 text-center text-sm text-muted">Belum ada retur ke pemasok sesuai filter.</p> : null}
+        {rows.length > 0 && !wide ? (
+          <div className="space-y-3">
             {rows.map((row) => {
               const invoices = [...new Set(row.items.map((item) => item.invoiceNo))];
               return (
-                <tr key={row.id} className="cursor-pointer border-t border-line align-top" title="Klik baris untuk melihat surat retur" onClick={() => { if (!window.getSelection()?.toString()) setViewing(row); }}>
-                  <td className="px-2 py-3 whitespace-nowrap">{new Date(row.returnedAt).toLocaleDateString("id-ID")}</td>
-                  <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
-                  <td className="px-2 py-3 font-mono text-xs font-bold">{row.returNo}</td>
-                  <td className="max-w-[320px] px-2 py-3">
-                    {row.items[0] ? (
-                      <div className="leading-snug">
-                        <p className="truncate text-sm font-bold" title={row.items.map((i) => i.nama).join("\n")}>{row.items[0].nama}</p>
-                        <p className="truncate text-xs text-slate-600">PN: <span className="font-mono">{row.items[0].partNumber || "-"}</span></p>
-                        {row.items.length > 1 ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} barang lainnya</span> : null}
-                      </div>
-                    ) : "-"}
-                  </td>
-                  <td className="px-2 py-3 font-mono text-xs font-semibold">{invoices.slice(0, 2).join(", ")}{invoices.length > 2 ? ` +${invoices.length - 2}` : ""}</td>
-                  <td className="px-2 py-3 text-center font-semibold">{grouped(row.totalQty)}</td>
-                  <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
-                  <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                  <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <ExpandGroup align="start">
-                      <ExpandButton label="Cetak" icon={<Printer />} onClick={() => { try { printSupplierReturn(row, suppliers.find((s) => s.id === row.supplierId)); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); } }} />
-                      {canEdit ? <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => void removeReturn(row)} /> : null}
-                    </ExpandGroup>
-                  </td>
-                </tr>
+                <div key={row.id} role="button" tabIndex={0} className="rounded-xl border border-line bg-white p-3 active:bg-blue-50" onClick={() => setViewing(row)} onKeyDown={(e) => { if (e.key === "Enter") setViewing(row); }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold">{row.supplierName}</p>
+                      <p className="font-mono text-xs font-bold text-slate-600">{row.returNo} · {new Date(row.returnedAt).toLocaleDateString("id-ID")}</p>
+                    </div>
+                    <p className="num shrink-0 text-sm font-extrabold">{rupiah(row.totalValue)}</p>
+                  </div>
+                  <p className="mt-1 text-xs"><span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-800">Dari faktur {invoices.slice(0, 2).join(", ")}{invoices.length > 2 ? ` +${invoices.length - 2}` : ""}</span></p>
+                  {row.items[0] ? <p className="mt-2 truncate text-sm font-semibold">{row.items[0].nama}{row.items.length > 1 ? <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} lainnya</span> : null}</p> : null}
+                  <div className="mt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-xs text-muted">{grouped(row.totalQty)} qty · {row.createdBy || "-"}</span>
+                    <div className="flex gap-2">
+                      <button type="button" className="h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => printRow(row)}>Cetak</button>
+                      {canEdit ? <button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700" onClick={() => void removeReturn(row)}>Hapus</button> : null}
+                    </div>
+                  </div>
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        ) : null}
+        {rows.length > 0 && wide ? (
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
+              <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Retur</th><th className="px-2 py-3">Faktur Asal</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Dibuat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const invoices = [...new Set(row.items.map((item) => item.invoiceNo))];
+                return (
+                  <tr key={row.id} className="cursor-pointer border-t border-line align-top" title="Klik baris untuk melihat surat retur" onClick={() => { if (!window.getSelection()?.toString()) setViewing(row); }}>
+                    <td className="px-2 py-3 whitespace-nowrap">{new Date(row.returnedAt).toLocaleDateString("id-ID")}</td>
+                    <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
+                    <td className="px-2 py-3 font-mono text-xs font-bold">{row.returNo}</td>
+                    <td className="px-2 py-3 font-mono text-xs font-semibold"><span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{invoices.slice(0, 2).join(", ")}{invoices.length > 2 ? ` +${invoices.length - 2}` : ""}</span></td>
+                    <td className="max-w-[300px] px-2 py-3">
+                      {row.items[0] ? (
+                        <div className="leading-snug">
+                          <p className="truncate text-sm font-bold" title={row.items.map((i) => i.nama).join("\n")}>{row.items[0].nama}</p>
+                          <p className="truncate text-xs text-slate-600">PN: <span className="font-mono">{row.items[0].partNumber || "-"}</span></p>
+                          {row.items.length > 1 ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} barang lainnya</span> : null}
+                        </div>
+                      ) : "-"}
+                    </td>
+                    <td className="px-2 py-3 text-center font-semibold">{grouped(row.totalQty)}</td>
+                    <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
+                    <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
+                    <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <ExpandGroup align="start">
+                        <ExpandButton label="Cetak" icon={<Printer />} onClick={() => printRow(row)} />
+                        {canEdit ? <ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => void removeReturn(row)} /> : null}
+                      </ExpandGroup>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
         <PageBar page={page} total={total} perPage={perPage} unit="retur" onPage={setPage} />
       </Panel>
 
@@ -404,154 +478,179 @@ function ReturPemasokPage() {
       ) : null}
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex bg-ink/40 p-2 sm:p-4">
-          <div className="mx-auto flex h-full max-h-[96vh] w-full max-w-[1500px] flex-col rounded-2xl bg-panel shadow-2xl">
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
-              <div>
-                <h3 className="text-xl font-extrabold">Retur Barang ke Pemasok</h3>
-                <p className="text-sm text-muted">Pilih barang dari faktur pembeliannya. Jumlah retur tidak bisa melebihi sisa yang dibeli di faktur itu.</p>
+        <div className="fixed inset-0 z-50 flex bg-ink/40 p-0 sm:p-4">
+          <div className="mx-auto flex h-full w-full max-w-[1200px] flex-col bg-panel shadow-2xl sm:max-h-[96vh] sm:rounded-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-extrabold sm:text-xl">Retur Barang ke Pemasok</h3>
+                <p className="text-xs text-muted sm:text-sm">Pilih pemasok, pilih faktur pembeliannya, lalu isi jumlah barang yang diretur. Satu surat retur untuk satu faktur.</p>
               </div>
-              <button className="h-11 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => setOpen(false)}>Tutup</button>
+              <button className="h-11 shrink-0 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => setOpen(false)}>Tutup</button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Field label="Pemasok">
-                  <select className={inputClass} value={formSupplierId} disabled={items.length > 0} onChange={(e) => setFormSupplierId(e.target.value)} title={items.length ? "Kosongkan daftar retur dulu untuk mengganti pemasok" : ""}>
-                    <option value="">Semua pemasok (terisi otomatis dari barang pertama)</option>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="1. Pemasok *">
+                  <select className={inputClass} value={formSupplierId} disabled={Boolean(chosen)} onChange={(e) => { setFormSupplierId(e.target.value); setFakturPage(1); setFakturQ(""); }} title={chosen ? "Klik Ganti faktur dulu untuk mengganti pemasok" : ""}>
+                    <option value="">Pilih pemasok</option>
                     {suppliers.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
                   </select>
                 </Field>
                 <Field label="Tanggal Retur *"><input className={inputClass} type="date" value={returnedAt} onChange={(e) => setReturnedAt(e.target.value)} /></Field>
-                <Field label="Keterangan"><input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsional" /></Field>
+                <div className="sm:col-span-2 lg:col-span-1"><Field label="Keterangan"><input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsional" /></Field></div>
               </div>
 
-              <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(360px,1fr)_2fr]">
-                <section className="rounded-xl border border-line bg-slate-50 p-4">
-                  <h4 className="text-base font-extrabold">1. Cari Barang yang Pernah Dibeli</h4>
-                  <input
-                    className="mt-3 h-12 w-full rounded-lg border border-line bg-white px-3 text-base outline-none focus:border-blue-500"
-                    placeholder="Ketik nama barang / part number / no. faktur"
-                    value={productQ}
-                    onChange={(e) => setProductQ(e.target.value)}
-                  />
-                  <p className="mt-2 text-xs text-muted">Tiap hasil menampilkan pemasok, no. faktur, dan tanggal belinya. Kalau barang yang sama pernah dibeli dari beberapa pemasok, pilih faktur yang sesuai dengan barang fisiknya.</p>
-                  <div className="mt-3 max-h-[56vh] overflow-y-auto rounded-lg border border-line bg-white">
-                    {!formSupplierId && productQ.trim().length < 2 ? <p className="px-3 py-6 text-center text-sm text-muted">Ketik minimal 2 huruf, atau pilih pemasok untuk melihat semua pembeliannya.</p> : null}
-                    {(formSupplierId || productQ.trim().length >= 2) && !searching && hits.length === 0 ? <p className="px-3 py-6 text-center text-sm text-muted">Tidak ada pembelian yang cocok.</p> : null}
-                    {groups.map((group) => (
-                      <div key={group.receiptId} className="border-b border-line last:border-b-0">
-                        <div className="flex items-start justify-between gap-2 bg-slate-100 px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-extrabold">{group.supplierName}</p>
-                            <p className="text-xs text-slate-600"><span className="font-mono font-bold">{group.invoiceNo}</span> · {fmtDate(group.receivedAt)} <span className="text-muted">({ageText(group.receivedAt)})</span></p>
-                          </div>
-                          {group.lines.filter((line) => line.sisa > 0).length > 1 ? (
-                            <button type="button" className="shrink-0 rounded-lg border border-line bg-white px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-50" onClick={() => addAll(group.lines)}>Tambah semua</button>
-                          ) : null}
-                        </div>
-                        {group.lines.map((line) => {
-                          const added = items.some((item) => item.line.lineId === line.lineId);
+              {/* 2. Pilih faktur */}
+              {!chosen ? (
+                <section className="mt-5 rounded-xl border border-line bg-slate-50 p-3 sm:p-4">
+                  <h4 className="text-base font-extrabold">2. Pilih Faktur Pembelian</h4>
+                  {!formSupplierId ? <p className="mt-3 rounded-lg border border-dashed border-line bg-white px-3 py-6 text-center text-sm text-muted">Pilih pemasok dulu. Semua faktur pembelian pemasok itu akan muncul di sini.</p> : (
+                    <>
+                      <input
+                        className="mt-3 h-12 w-full rounded-lg border border-line bg-white px-3 text-base outline-none focus:border-blue-500"
+                        placeholder="Cari no. faktur atau nama barang (di pemasok ini)"
+                        value={fakturQ}
+                        onChange={(e) => { setFakturPage(1); setFakturQ(e.target.value); }}
+                      />
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {fakturs.map((row) => {
+                          const first = row.items[0];
                           return (
-                            <div key={line.lineId} className="flex items-start justify-between gap-3 border-t border-line px-3 py-3">
-                              <div className="min-w-0 leading-snug">
-                                <p className="text-sm font-semibold"><Mark text={line.nama} q={productQ} /></p>
-                                <p className="mt-0.5 text-xs text-muted">
-                                  {line.kodePajak ? <span className="mr-1 rounded bg-slate-200 px-1.5 py-px font-mono font-bold text-slate-800">[{line.kodePajak}]</span> : null}
-                                  PN: <Mark text={line.partNumber || "-"} q={productQ} />{line.merek ? ` · ${line.merek}` : ""}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-700">Dibeli <b>{grouped(line.qty)} {line.satuan}</b> @ {rupiah(line.hargaBeli)} · sudah diretur {qtyText(line.sudahRetur, line)}</p>
-                                <p className={`text-xs font-bold ${line.sisa > 0 ? "text-emerald-700" : "text-red-600"}`}>Sisa bisa diretur: {qtyText(line.sisa, line)}</p>
-                                {line.selisih > 0 ? <p className="text-[11px] text-amber-700">Selisih {grouped(line.selisih)} {line.satuanDasar} sudah tercatat saat barang masuk (tidak ikut diretur di sini).</p> : null}
-                                <p className="text-[11px] text-muted">Stok sekarang: toko {grouped(line.stokToko)} · gudang {grouped(line.stokGudang)} {line.satuanDasar}</p>
+                            <button key={row.id} type="button" disabled={fakturBusy} className="rounded-xl border border-line bg-white p-3 text-left transition hover:border-blue-400 hover:bg-blue-50 active:bg-blue-50" onClick={() => pickFaktur(row.id)}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-mono text-sm font-extrabold"><Mark text={row.invoiceNo} q={fakturQ} /></p>
+                                  <p className="text-xs text-slate-600">{fmtDate(row.receivedAt)} <span className="text-muted">({ageText(row.receivedAt)})</span></p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="num text-sm font-extrabold">{rupiah(row.totalValue)}</p>
+                                  <p className="text-[11px] text-muted">{row.items.length} barang</p>
+                                </div>
                               </div>
-                              {added ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">Sudah ditambah</span>
-                                : line.sisa <= 0 ? <span className="shrink-0 rounded-full bg-red-50 px-2 py-1 text-[11px] font-bold text-red-600">Habis diretur</span>
-                                : <button type="button" className="shrink-0 rounded-lg bg-accent px-3 py-2 text-xs font-bold text-white" onClick={() => addLine(line)}>Tambah</button>}
-                            </div>
+                              {first ? <p className="mt-1 truncate text-xs text-slate-700"><Mark text={first.nama} q={fakturQ} />{row.items.length > 1 ? ` +${row.items.length - 1} lainnya` : ""}</p> : null}
+                              {row.nRetur ? <p className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">↩ sudah ada {row.nRetur} retur</p> : null}
+                            </button>
                           );
                         })}
                       </div>
-                    ))}
-                  </div>
+                      {fakturBusy && fakturs.length === 0 ? <p className="py-6 text-center text-sm text-muted">Memuat faktur...</p> : null}
+                      {!fakturBusy && fakturs.length === 0 ? <p className="py-6 text-center text-sm text-muted">Tidak ada faktur pembelian yang cocok untuk pemasok ini.</p> : null}
+                      {fakturs.length < fakturTotal ? (
+                        <button type="button" disabled={fakturBusy} className="mt-3 h-11 w-full rounded-lg border border-line bg-white text-sm font-bold text-blue-700 disabled:opacity-50" onClick={() => setFakturPage((p) => p + 1)}>{fakturBusy ? "Memuat..." : `Tampilkan faktur lainnya (${fakturs.length} dari ${fakturTotal})`}</button>
+                      ) : null}
+                    </>
+                  )}
                 </section>
+              ) : (
+                <section className="mt-5 flex flex-col gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-emerald-600 text-white"><Check className="size-4" /></span>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Retur dari Faktur Pembelian</p>
+                      <p className="text-base font-extrabold"><span className="font-mono">{chosen.invoiceNo}</span> <span className="text-sm font-semibold text-slate-700">· {chosen.supplierName}</span></p>
+                      <p className="text-xs text-slate-700">{fmtDate(chosen.receivedAt)} ({ageText(chosen.receivedAt)}) · {fullLines.length} barang di faktur ini</p>
+                    </div>
+                  </div>
+                  <button type="button" className="h-11 rounded-lg border border-emerald-400 bg-white px-4 text-sm font-bold text-emerald-800" onClick={() => { if (filled.length && !window.confirm("Isian retur akan dikosongkan. Ganti faktur?")) return; backToFakturList(); }}>Ganti faktur</button>
+                </section>
+              )}
 
-                <section className="rounded-xl border border-line bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h4 className="text-base font-extrabold">2. Isi Retur <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{filled.length} barang</span></h4>
-                    <span className="text-base font-extrabold">{rupiah(grandTotal)}</span>
+              {/* 3. Barang di faktur */}
+              {chosen ? (
+                <section className="mt-5 rounded-xl border border-line bg-white p-3 sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-base font-extrabold">3. Isi Jumlah yang Diretur <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{filled.length} dari {items.length} barang</span></h4>
+                    {items.length > 0 ? <button type="button" className="h-10 rounded-lg border border-line bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-50" onClick={fillAll}>Retur semua sisa</button> : null}
                   </div>
-                  {supplierName ? <p className="mt-1 text-sm text-slate-700">Kepada: <b>{supplierName}</b></p> : null}
-                  <div className="no-row-hover mt-3 max-h-[60vh] overflow-auto rounded-lg border border-line">
-                    <table className="w-full min-w-[980px] text-sm">
-                      <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
-                        <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang & Faktur Asal</th><th className="px-2 py-2">Satuan</th><th className="px-2 py-2">Qty</th><th className="px-2 py-2 text-left">Diambil dari</th><th className="px-2 py-2 text-left">Alasan</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-14"></th></tr>
-                      </thead>
-                      <tbody>
-                        {items.length === 0 ? <tr><td colSpan={8} className="py-10 text-center text-muted">Belum ada barang. Cari barang di sebelah kiri lalu klik Tambah.</td></tr> : items.map((item, index) => {
-                          const problem = rowProblem(item);
-                          const max = maxQty(item);
-                          return (
-                            <tr key={item.line.lineId} className={`border-t border-line align-top ${item.qty <= 0 ? "bg-amber-50" : ""}`}>
-                              <td className="px-2 py-3 text-muted">{index + 1}</td>
-                              <td className="min-w-[240px] px-2 py-3 leading-snug">
-                                <b className="block text-sm">{item.line.nama}</b>
-                                <span className="block text-xs text-slate-600">PN: <span className="font-mono font-semibold">{item.line.partNumber || "-"}</span>{item.line.merek ? ` · ${item.line.merek}` : ""}</span>
-                                <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">Faktur <b className="font-mono">{item.line.invoiceNo}</b> · {fmtDate(item.line.receivedAt)} · sisa {qtyText(item.line.sisa, item.line)}</span>
-                                {problem ? <span className="mt-1 block text-xs font-bold text-red-600">{problem}</span> : null}
-                                {item.qty <= 0 ? <span className="mt-1 block text-xs font-semibold text-amber-700">Isi qty. Baris dengan qty 0 tidak ikut diretur.</span> : null}
-                              </td>
-                              <td className="px-2 py-3 text-center">
-                                {unitOptions(item.line).length > 1 ? (
-                                  <select className="h-12 rounded-lg border border-line bg-white px-2 text-sm font-semibold" value={item.satuan} onChange={(e) => {
-                                    const satuan = e.target.value;
-                                    patchItem(item.line.lineId, (row) => ({ ...row, satuan, qty: Math.min(row.qty, Math.max(0, Math.floor(row.line.sisa / unitFactor(row.line, satuan)))) }));
-                                  }}>
-                                    {unitOptions(item.line).map((unit) => <option key={unit} value={unit}>{unit === item.line.satuan && item.line.factor > 1 ? `${unit} (isi ${item.line.factor} ${item.line.satuanDasar})` : unit}</option>)}
+                  <p className="mt-1 text-xs text-muted">Semua isi faktur ditampilkan. Kosongkan (0) barang yang tidak diretur; baris qty 0 tidak ikut disimpan.</p>
+
+                  {items.length === 0 ? <p className="py-8 text-center text-sm text-muted">Semua barang di faktur ini sudah habis diretur.</p> : null}
+
+                  {items.length > 0 && !wide ? (
+                    <div className="mt-3 space-y-3">
+                      {items.map((item, index) => {
+                        const problem = rowProblem(item);
+                        return (
+                          <div key={item.line.lineId} className={`rounded-xl border p-3 ${item.qty > 0 ? "border-blue-300 bg-blue-50/40" : "border-line bg-white"}`}>
+                            <p className="text-sm font-extrabold"><span className="mr-1 text-muted">{index + 1}.</span>{item.line.nama}</p>
+                            <p className="mt-0.5 text-xs text-slate-600">{item.line.kodePajak ? <span className="mr-1 rounded bg-slate-200 px-1.5 py-px font-mono font-bold text-slate-800">[{item.line.kodePajak}]</span> : null}PN: <span className="font-mono font-semibold">{item.line.partNumber || "-"}</span>{item.line.merek ? ` · ${item.line.merek}` : ""}</p>
+                            <p className="mt-1 text-xs text-slate-700">Dibeli <b>{grouped(item.line.qty)} {item.line.satuan}</b> @ {rupiah(item.line.hargaBeli)} · sudah diretur {qtyText(item.line.sudahRetur, item.line)}</p>
+                            <p className="text-xs font-bold text-emerald-700">Sisa bisa diretur: {qtyText(item.line.sisa, item.line)}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">{qtyControls(item)}</div>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <select className="h-11 rounded-lg border border-line bg-white px-2 text-sm" aria-label="Diambil dari" value={item.dari} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, dari: e.target.value === "gudang" ? "gudang" : "toko" }))}>
+                                <option value="toko">Toko (stok {grouped(item.line.stokToko)})</option>
+                                <option value="gudang">Gudang (stok {grouped(item.line.stokGudang)})</option>
+                              </select>
+                              <input className="h-11 rounded-lg border border-line px-2 text-sm" list="alasan-retur" placeholder="Alasan, mis. rusak" value={item.alasan} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, alasan: e.target.value }))} />
+                            </div>
+                            {problem ? <p className="mt-2 text-xs font-bold text-red-600">{problem}</p> : null}
+                            <p className="num mt-2 text-right text-sm font-extrabold">{rupiah(item.qty * unitPrice(item.line, item.satuan))}<span className="ml-1 text-[11px] font-normal text-muted">@ {rupiah(unitPrice(item.line, item.satuan))}</span></p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {items.length > 0 && wide ? (
+                    <div className="no-row-hover mt-3 max-h-[52vh] overflow-auto rounded-lg border border-line">
+                      <table className="w-full min-w-[900px] text-sm">
+                        <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] tracking-wide text-muted uppercase">
+                          <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Barang</th><th className="px-2 py-2 text-left">Dibeli / Sisa</th><th className="px-2 py-2 text-left">Retur (satuan & qty)</th><th className="px-2 py-2 text-left">Diambil dari</th><th className="px-2 py-2 text-left">Alasan</th><th className="px-2 py-2 text-right">Subtotal</th></tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item, index) => {
+                            const problem = rowProblem(item);
+                            return (
+                              <tr key={item.line.lineId} className={`border-t border-line align-top ${item.qty > 0 ? "bg-blue-50/40" : ""}`}>
+                                <td className="px-2 py-3 text-muted">{index + 1}</td>
+                                <td className="min-w-[220px] px-2 py-3 leading-snug">
+                                  <b className="block text-sm">{item.line.nama}</b>
+                                  <span className="block text-xs text-slate-600">{item.line.kodePajak ? <span className="mr-1 rounded bg-slate-200 px-1.5 py-px font-mono font-bold text-slate-800">[{item.line.kodePajak}]</span> : null}PN: <span className="font-mono font-semibold">{item.line.partNumber || "-"}</span>{item.line.merek ? ` · ${item.line.merek}` : ""}</span>
+                                  {problem ? <span className="mt-1 block text-xs font-bold text-red-600">{problem}</span> : null}
+                                </td>
+                                <td className="min-w-[170px] px-2 py-3 text-xs leading-snug">
+                                  <span className="block">Dibeli <b>{grouped(item.line.qty)} {item.line.satuan}</b> @ {rupiah(item.line.hargaBeli)}</span>
+                                  <span className="block text-slate-600">sudah diretur {qtyText(item.line.sudahRetur, item.line)}</span>
+                                  <span className="block font-bold text-emerald-700">sisa {qtyText(item.line.sisa, item.line)}</span>
+                                </td>
+                                <td className="px-2 py-3"><div className="flex items-center gap-2">{qtyControls(item)}</div></td>
+                                <td className="px-2 py-3">
+                                  <select className="h-12 w-44 rounded-lg border border-line bg-white px-2 text-sm" aria-label="Diambil dari" value={item.dari} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, dari: e.target.value === "gudang" ? "gudang" : "toko" }))}>
+                                    <option value="toko">Toko (stok {grouped(item.line.stokToko)})</option>
+                                    <option value="gudang">Gudang (stok {grouped(item.line.stokGudang)})</option>
                                   </select>
-                                ) : item.satuan}
-                              </td>
-                              <td className="px-2 py-3">
-                                <input
-                                  className={`num h-12 w-24 rounded-lg border text-center text-base selection:bg-amber-200 selection:text-slate-900 ${item.qty > max ? "border-red-400 bg-red-50" : "border-line"}`}
-                                  inputMode="numeric"
-                                  value={item.qty}
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={(e) => { const qty = digits(e.target.value); patchItem(item.line.lineId, (row) => ({ ...row, qty })); }}
-                                />
-                                <span className="mt-1 block text-center text-[11px] text-muted">maks {grouped(max)}</span>
-                              </td>
-                              <td className="px-2 py-3">
-                                <select className="h-12 w-44 rounded-lg border border-line bg-white px-2 text-sm" value={item.dari} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, dari: e.target.value === "gudang" ? "gudang" : "toko" }))}>
-                                  <option value="toko">Toko (stok {grouped(item.line.stokToko)})</option>
-                                  <option value="gudang">Gudang (stok {grouped(item.line.stokGudang)})</option>
-                                </select>
-                              </td>
-                              <td className="px-2 py-3">
-                                <input className="h-12 w-44 rounded-lg border border-line px-2 text-sm" list="alasan-retur" placeholder="Mis. rusak" value={item.alasan} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, alasan: e.target.value }))} />
-                              </td>
-                              <td className="num px-2 py-3 text-right font-semibold">{rupiah(item.qty * unitPrice(item.line, item.satuan))}<span className="block text-[11px] font-normal text-muted">@ {rupiah(unitPrice(item.line, item.satuan))}</span></td>
-                              <td className="px-2 py-3 text-right"><ExpandGroup align="end"><ExpandButton type="button" variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => setItems((prev) => prev.filter((row) => row.line.lineId !== item.line.lineId))} /></ExpandGroup></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    <datalist id="alasan-retur">{ALASAN.map((text) => <option key={text} value={text} />)}</datalist>
-                  </div>
+                                </td>
+                                <td className="px-2 py-3"><input className="h-12 w-40 rounded-lg border border-line px-2 text-sm" list="alasan-retur" placeholder="Mis. rusak" value={item.alasan} onChange={(e) => patchItem(item.line.lineId, (row) => ({ ...row, alasan: e.target.value }))} /></td>
+                                <td className="num px-2 py-3 text-right font-semibold">{rupiah(item.qty * unitPrice(item.line, item.satuan))}<span className="block text-[11px] font-normal text-muted">@ {rupiah(unitPrice(item.line, item.satuan))}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                  <datalist id="alasan-retur">{ALASAN.map((text) => <option key={text} value={text} />)}</datalist>
+
+                  {habis.length > 0 && items.length > 0 ? (
+                    <details className="mt-3 rounded-lg border border-line bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      <summary className="cursor-pointer font-bold">{habis.length} barang lain di faktur ini sudah habis diretur</summary>
+                      <ul className="mt-1 list-disc pl-5">{habis.map((line) => <li key={line.lineId}>{line.nama}</li>)}</ul>
+                    </details>
+                  ) : null}
                 </section>
-              </div>
+              ) : null}
             </div>
 
-            <div className="flex shrink-0 flex-col gap-3 border-t border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-3 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
               <div className="text-sm">
                 <span className="text-muted">{filled.length} barang · {grouped(filled.reduce((sum, item) => sum + item.qty, 0))} qty · Total</span>
                 <b className="ml-2 text-lg">{rupiah(grandTotal)}</b>
-                {items.length > filled.length ? <span className="ml-3 text-xs font-semibold text-amber-700">{items.length - filled.length} baris qty 0 diabaikan</span> : null}
+                {chosen ? <span className="ml-0 block text-xs text-slate-600 sm:ml-3 sm:inline">dari faktur <b className="font-mono">{chosen.invoiceNo}</b></span> : null}
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
                 <button className="h-12 rounded-lg border border-line px-5" onClick={() => setOpen(false)}>Batal</button>
-                <PrimaryButton disabled={busy || !formSupplierId || filled.length === 0 || hasProblem} onClick={save}>{busy ? "Menyimpan..." : "Simpan Retur"}</PrimaryButton>
+                <PrimaryButton disabled={busy || !chosen || filled.length === 0 || hasProblem} onClick={save}>{busy ? "Menyimpan..." : "Simpan Retur"}</PrimaryButton>
               </div>
             </div>
           </div>

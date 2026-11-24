@@ -88,7 +88,16 @@ export type SupplierReceiptItem = {
   merek?: string;
   kodePajak?: string;
   partNumbersAlt?: string;
+  /** Satuan dasar barang (mis. Pcs); dipakai menampilkan jumlah retur bila satuan faktur lebih besar (Dus). */
+  satuanDasar?: string;
+  /** Jumlah (satuan dasar) baris faktur ini yang sudah diretur ke pemasok. */
+  returQtyDasar?: number;
+  /** Nilai rupiah retur untuk baris ini. */
+  returNilai?: number;
 };
+
+/** Ringkasan satu surat retur yang mengambil barang dari sebuah faktur pembelian. */
+export type SupplierReceiptRetur = { id: number; returNo: string; returnedAt: string; total: number };
 
 export type SupplierReceipt = {
   id: number;
@@ -107,6 +116,10 @@ export type SupplierReceipt = {
   nGudang?: number;
   /** Jumlah surat retur ke pemasok yang mengambil barang dari faktur ini. */
   nRetur?: number;
+  /** Total nilai retur dari faktur ini (0 = belum ada retur). */
+  returTotal?: number;
+  /** Daftar surat retur dari faktur ini, supaya faktur dan cetakannya bisa menyebut nomor returnya. */
+  returs?: SupplierReceiptRetur[];
 };
 
 /** Satu baris faktur pembelian beserta sisa yang masih boleh diretur (semua jumlah "dasar" dalam satuan dasar barang). */

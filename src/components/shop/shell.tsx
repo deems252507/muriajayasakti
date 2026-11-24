@@ -2,6 +2,7 @@ import { clearPersistedState } from "@/lib/persist";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   History,
@@ -10,7 +11,6 @@ import {
   MessageCircle,
   Package,
   PackageCheck,
-  PackageMinus,
   PackagePlus,
   Percent,
   Receipt,
@@ -50,15 +50,23 @@ const ADMIN = [
     ],
   },
   {
-    label: "Transaksi & Persediaan",
+    // Faktur Pembelian + Retur Pembelian satu menu (tab di dalam halaman), seperti grup Pembelian di Accurate.
+    label: "Pembelian",
+    items: [{ to: "/pemasok", label: "Pembelian (Faktur & Retur)", icon: PackagePlus }],
+  },
+  {
+    label: "Persediaan",
+    items: [
+      { to: "/barang", label: "Daftar Sparepart", icon: Package },
+      { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
+      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Transaksi",
     items: [
       { to: "/manual", label: "Transaksi Manual", icon: ArrowLeftRight },
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
-      { to: "/barang", label: "Daftar Sparepart", icon: Package },
-      { to: "/pemasok", label: "Barang Masuk Pemasok", icon: PackagePlus },
-      { to: "/retur-pemasok", label: "Retur ke Pemasok", icon: PackageMinus },
-      { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
-      { to: "/opname", label: "Stok Opname", icon: ClipboardCheck },
     ],
   },
   {
@@ -148,6 +156,9 @@ const KASIR = [
   { label: "Gudang", items: [{ to: "/gudang", label: "Stok Gudang", icon: Warehouse }] },
   { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
 ] as const;
+
+/** Halaman yang tampil sebagai tab di dalam menu lain (menu samping tetap menyala di induknya). */
+const PATH_ALIAS: Record<string, string> = { "/retur-pemasok": "/pemasok" };
 
 export function Mark({ text, q }: { text: string; q: string }) {
   const query = q.trim();
@@ -240,6 +251,16 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   const [chatBadge, setChatBadge] = useState(0);
   const [tagBadge, setTagBadge] = useState(0);
   const [alokBadge, setAlokBadge] = useState(0);
+  // Grup menu yang dilipat/dibuka sendiri oleh pengguna (diingat di perangkat ini). Grup yang berisi halaman aktif selalu terbuka.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try { setFolded(JSON.parse(localStorage.getItem("mjs-nav-folded") || "{}") as Record<string, boolean>); } catch { /* abaikan */ }
+  }, []);
+  const toggleGroup = (label: string) => setFolded((prev) => {
+    const next = { ...prev, [label]: !prev[label] };
+    try { localStorage.setItem("mjs-nav-folded", JSON.stringify(next)); } catch { /* abaikan */ }
+    return next;
+  });
   const navigate = useNavigate();
   const navRef = useRef(navigate);
   navRef.current = navigate;
@@ -447,12 +468,13 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   // Alokasi Faktur muncul tepat di bawah Stok Gudang untuk Admin dan staf/kasir yang diberi izin Stok Gudang.
   const alokasiItem = { to: "/alokasi", label: "Alokasi Faktur", icon: PackageCheck } as const;
   const baseGroups = (me.canGudang && me.role !== "Owner"
-    ? roleGroups.map((group) => ({ ...group, items: group.items.flatMap((item) => (item.to === "/gudang" ? [item, alokasiItem] : [item])) }))
+    ? roleGroups.map((group) => ({ ...group, items: (group.items as readonly { to: string; label: string; icon: unknown }[]).flatMap((item) => (item.to === "/gudang" ? [item, alokasiItem] : [item])) }))
     : roleGroups) as unknown as typeof roleGroups;
   // Pengaturan hanya terlihat oleh Admin 1 (Admin yang dicentang kelola akun).
   // Staf, Admin lain, dan Owner juga melihat Pengaturan, tetapi isinya hanya Nama dan Foto Akun. Kasir tidak.
-  const groups = (me.canManageStaff || me.role !== "Kasir" ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as typeof baseGroups;
-  const current = groups.flatMap((group) => [...group.items]).find((item) => path === item.to)?.label ?? brand;
+  const groups = (me.canManageStaff || me.role !== "Kasir" ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as unknown as typeof baseGroups;
+  const navPath = PATH_ALIAS[path] ?? path;
+  const current = path === "/retur-pemasok" ? "Pembelian · Retur" : path === "/pemasok" ? "Pembelian · Faktur" : groups.flatMap((group) => [...group.items]).find((item) => navPath === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas", "/laporan-gudang"].includes(path);
   useEffect(() => {
     function apply(profile: { nama?: string; alamat?: string; telepon?: string; tagline?: string; logo?: string; icon?: string }) {
@@ -480,32 +502,53 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
             <X className="size-5" />
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {groups.map((group) => (
-            <div key={group.label} className="mt-3">
-              <p className="px-3 text-[10px] font-semibold tracking-[0.18em] text-white/35 uppercase">{group.label}</p>
-              <div className="mt-1 flex flex-col gap-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = path === item.to;
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setOpen(false)}
-                      aria-current={active ? "page" : undefined}
-                      className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white text-ink shadow-sm font-semibold" : "text-white/75 hover:bg-white/20 hover:text-white"}`}
-                    >
-                      <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
-                      {item.label}
-                      {item.to === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
-                      {item.to === "/alokasi" && alokBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" aria-label={`${alokBadge} faktur perlu tindakan`}>{alokBadge > 99 ? "99+" : alokBadge}</span> : null}
-                    </Link>
-                  );
-                })}
+        <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Menu utama">
+          {groups.map((group) => {
+            const single = group.items.length === 1;
+            const hasActive = group.items.some((item) => navPath === item.to);
+            const collapsed = !single && !hasActive && Boolean(folded[group.label]);
+            const groupBadge = group.items.reduce((sum, item) => sum + ((item.to as string) === "/chat" ? chatBadge : (item.to as string) === "/alokasi" ? alokBadge : 0), 0);
+            return (
+              <div key={group.label} className="mt-2">
+                {single ? (
+                  <p className="px-3 text-[10px] font-semibold tracking-[0.18em] text-white/35 uppercase">{group.label}</p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    aria-expanded={!collapsed}
+                    className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[10px] font-semibold tracking-[0.18em] text-white/45 uppercase transition hover:bg-white/10 hover:text-white/80"
+                  >
+                    <span className="flex-1">{group.label}</span>
+                    {collapsed && groupBadge > 0 ? <span className="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold tracking-normal text-white">{groupBadge > 99 ? "99+" : groupBadge}</span> : null}
+                    <ChevronDown className={`size-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                  </button>
+                )}
+                {collapsed ? null : (
+                  <div className="mt-1 flex flex-col gap-0.5">
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      const active = navPath === item.to;
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setOpen(false)}
+                          aria-current={active ? "page" : undefined}
+                          className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white text-ink shadow-sm font-semibold" : "text-white/75 hover:bg-white/20 hover:text-white"}`}
+                        >
+                          <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
+                          {item.label}
+                          {(item.to as string) === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
+                          {(item.to as string) === "/alokasi" && alokBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" aria-label={`${alokBadge} faktur perlu tindakan`}>{alokBadge > 99 ? "99+" : alokBadge}</span> : null}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
         <div className="mt-auto border-t border-white/10 px-4 py-3">
           <p className="text-[11px] leading-5 text-white/70">Developed by Rizky Dwi Maulana</p>
@@ -576,7 +619,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
           />
         ) : null}
         <main className="px-3 py-4 md:px-6 md:py-5">
-          {me.role === "Admin" && ["/barang", "/stok", "/riwayat", "/bon", "/mitra", "/pemasok", "/retur", "/kas"].includes(path) ? (
+          {me.role === "Admin" && ["/barang", "/stok", "/riwayat", "/bon", "/mitra", "/pemasok", "/retur-pemasok", "/retur", "/kas"].includes(path) ? (
             <p className="no-print mb-3 text-[11px] text-slate-500">💬 Mau memberi catatan atau men-tag Admin lain? Klik kanan baris (di HP: tekan lama baris), lalu pilih Komentar.</p>
           ) : null}
           {children}

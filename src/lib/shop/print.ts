@@ -1,3 +1,5 @@
+import { fakturLineNet } from "./format";
+
 const shop = {
   nama: "MURIA JAYA SAKTI",
   alamat: "Jl. Raja Alam RT.13 No.22",
@@ -881,7 +883,11 @@ export function printSalesReport(
   );
 }
 
-/** Cetak satu faktur pembelian (barang masuk dari pemasok) dengan tampilan modern. */
+/**
+ * Cetak satu faktur pembelian (barang masuk dari pemasok) dengan tampilan modern.
+ * Kalau faktur ini sudah punya retur ke pemasok, cetakannya menampilkan kolom Retur, nilai bersih setelah retur,
+ * dan nomor surat retur yang mengambil barang dari faktur ini, supaya jelas retur itu berasal dari faktur yang mana.
+ */
 export function printSupplierInvoice(
   row: {
     invoiceNo: string;
@@ -891,23 +897,36 @@ export function printSupplierInvoice(
     createdBy?: string;
     totalQty: number;
     totalValue: number;
-    items: Array<{ nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; qty: number; satuan: string; hargaBeli: number }>;
+    items: Array<{ nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; qty: number; satuan: string; qtyDasar?: number; hargaBeli: number; satuanDasar?: string; returQtyDasar?: number; returNilai?: number }>;
+    returTotal?: number;
+    returs?: Array<{ returNo: string; returnedAt?: string; total: number }>;
   },
   supplier?: { alamat?: string; telp?: string },
 ) {
   const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
   const date = row.receivedAt ? new Date(row.receivedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
-  const lines = row.items.map((item, index) => `<tr>
+  const shortDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "short", year: "numeric" }) : "-");
+  const hasRetur = Number(row.returTotal || 0) > 0 || row.items.some((item) => Number(item.returQtyDasar || 0) > 0);
+  const nets = row.items.map((item) => fakturLineNet({ ...item, qtyDasar: Number(item.qtyDasar ?? item.qty) }));
+  const lines = row.items.map((item, index) => {
+    const net = nets[index];
+    return `<tr>
     <td class="c muted">${index + 1}</td>
     <td class="mono">${esc(item.kodePajak || "-")}</td>
     <td><b>${esc(item.nama)}</b>${item.merek ? `<span class="chip">${esc(item.merek)}</span>` : ""}<span class="sub">PN: ${esc(item.partNumber || "-")}${item.partNumbersAlt ? ` · Alt: ${esc(item.partNumbersAlt)}` : ""}</span></td>
     <td class="r">${Number(item.qty).toLocaleString("id-ID")} ${esc(item.satuan)}</td>
+    ${hasRetur ? `<td class="r">${net.retur > 0 ? `<b style="color:#b91c1c">- ${esc(net.returText)}</b><span class="sub">sisa ${esc(net.netText)}</span>` : "-"}</td>` : ""}
     <td class="r">${money(item.hargaBeli)}</td>
-    <td class="r b">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
-  </tr>`).join("");
+    <td class="r b">${money(hasRetur ? net.net : net.gross)}</td>
+  </tr>`;
+  }).join("");
+  const returTotal = hasRetur ? Number(row.returTotal || nets.reduce((sum, net) => sum + net.returNilai, 0)) : 0;
+  const returList = hasRetur && row.returs?.length
+    ? `<div class="notes" style="margin-top:8px"><span class="lbl">Retur ke pemasok dari faktur ini</span>${row.returs.map((t) => `<p><b class="mono">${esc(t.returNo)}</b> · ${esc(shortDate(t.returnedAt))} · ${money(t.total)}</p>`).join("")}</div>`
+    : "";
   openModernPrint(
     `Faktur Pembelian ${row.invoiceNo}`,
-    `<div class="doc-title"><div><h2>Faktur Pembelian</h2><p>No. ${esc(row.invoiceNo)}</p></div></div>
+    `<div class="doc-title"><div><h2>Faktur Pembelian</h2><p>No. ${esc(row.invoiceNo)}${hasRetur ? " · ada retur ke pemasok" : ""}</p></div></div>
     <div class="cards">
       <div class="card"><span class="lbl">Dari (Pemasok)</span><b class="big">${esc(row.supplierName)}</b>${supplier?.alamat ? `<p>${esc(supplier.alamat)}</p>` : ""}${supplier?.telp ? `<p>Telp: ${esc(supplier.telp)}</p>` : ""}</div>
       <div class="card meta">
@@ -917,14 +936,14 @@ export function printSupplierInvoice(
       </div>
     </div>
     <table class="grid">
-      <thead><tr><th class="c" style="width:30px">No</th><th style="width:86px">Kode</th><th>Nama Barang</th><th class="r" style="width:80px">Kts</th><th class="r" style="width:96px">@Harga</th><th class="r" style="width:110px">Total Harga</th></tr></thead>
+      <thead><tr><th class="c" style="width:30px">No</th><th style="width:86px">Kode</th><th>Nama Barang</th><th class="r" style="width:80px">Kts</th>${hasRetur ? `<th class="r" style="width:110px">Retur</th>` : ""}<th class="r" style="width:96px">@Harga</th><th class="r" style="width:110px">${hasRetur ? "Total (Bersih)" : "Total Harga"}</th></tr></thead>
       <tbody>${lines}</tbody>
     </table>
     <div class="bottom">
-      <div class="notes"><span class="lbl">Keterangan</span><p>${esc(row.notes || "-")}</p></div>
+      <div class="notes"><span class="lbl">Keterangan</span><p>${esc(row.notes || "-")}</p>${returList}</div>
       <div class="totals">
         <div class="trow"><span>Total Qty</span><span>${Number(row.totalQty || 0).toLocaleString("id-ID")}</span></div>
-        <div class="trow grand"><span>Total</span><span>${money(row.totalValue)}</span></div>
+        ${hasRetur ? `<div class="trow"><span>Total Faktur</span><span>${money(row.totalValue)}</span></div><div class="trow"><span>Retur</span><span style="color:#b91c1c">- ${money(returTotal)}</span></div><div class="trow grand"><span>Total Bersih</span><span>${money(Number(row.totalValue || 0) - returTotal)}</span></div>` : `<div class="trow grand"><span>Total</span><span>${money(row.totalValue)}</span></div>`}
       </div>
     </div>
     <div class="sign"><div><p>Bagian Pembelian,</p><i></i></div><div><p>Disetujui,</p><i></i></div></div>`,
@@ -960,14 +979,17 @@ export function printSupplierReturn(
     <td class="r b">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
     <td>${esc(item.alasan || "-")}</td>
   </tr>`).join("");
+  const fakturs = [...new Map(row.items.map((item) => [item.invoiceNo, item.receivedAt])).entries()];
+  const fakturText = fakturs.map(([no]) => no).join(", ");
   openModernPrint(
     `Retur Pembelian ${row.returNo}`,
-    `<div class="doc-title"><div><h2>Retur Pembelian</h2><p>No. ${esc(row.returNo)}</p></div></div>
+    `<div class="doc-title"><div><h2>Retur Pembelian</h2><p>No. ${esc(row.returNo)}${fakturText ? ` · dari Faktur Pembelian ${esc(fakturText)}` : ""}</p></div></div>
     <div class="cards">
       <div class="card"><span class="lbl">Kepada (Pemasok)</span><b class="big">${esc(row.supplierName)}</b>${supplier?.alamat ? `<p>${esc(supplier.alamat)}</p>` : ""}${supplier?.telp ? `<p>Telp: ${esc(supplier.telp)}</p>` : ""}</div>
       <div class="card meta">
         <div><span>No. Retur</span><b class="mono">${esc(row.returNo)}</b></div>
-        <div><span>Tanggal</span><b>${esc(date)}</b></div>
+        <div><span>Tanggal Retur</span><b>${esc(date)}</b></div>
+        ${fakturs.map(([no, at]) => `<div><span>Faktur Asal</span><b class="mono">${esc(no)} · ${esc(fmt(at))}</b></div>`).join("")}
         ${row.createdBy ? `<div><span>Dibuat oleh</span><b>${esc(row.createdBy)}</b></div>` : ""}
       </div>
     </div>

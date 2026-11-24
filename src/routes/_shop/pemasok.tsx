@@ -7,8 +7,10 @@ import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
 import { StatusBadge } from "@/components/shop/alokasi-badge";
+import { PembelianTabs } from "@/components/shop/pembelian-tabs";
+import { PageBar, useIsWide } from "@/components/shop/page-bar";
 import { createSupplierReceipt, deleteSupplierReceipt, listPartners, listSupplierReceipts, searchProducts, updateSupplierReceipt } from "@/lib/shop/api";
-import { digits, grouped, rupiah, todayInput } from "@/lib/shop/format";
+import { digits, fakturLineNet, grouped, rupiah, todayInput } from "@/lib/shop/format";
 import { printSupplierInvoice, printSupplierReceiptReport, shopBrand } from "@/lib/shop/print";
 import type { Partner, Product, SupplierReceipt } from "@/lib/shop/types";
 
@@ -62,6 +64,8 @@ function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kateg
 /** Tampilan faktur pembelian per invoice (hanya untuk dilihat; Admin bisa lanjut ke Ubah). */
 function FakturModal({ row, supplier, canEdit, onClose, onEdit, onRetur }: { row: SupplierReceipt; supplier?: Partner; canEdit: boolean; onClose: () => void; onEdit: () => void; onRetur: () => void }) {
   const brand = shopBrand();
+  const returTotal = Number(row.returTotal ?? 0);
+  const hasRetur = returTotal > 0 || row.items.some((item) => Number(item.returQtyDasar ?? 0) > 0);
   const tanggal = row.receivedAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }).format(new Date(row.receivedAt)) : "-";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-3" onClick={onClose}>
@@ -83,7 +87,7 @@ function FakturModal({ row, supplier, canEdit, onClose, onEdit, onRetur }: { row
                 <p className="text-xs text-slate-600">{[brand.alamat, brand.telepon].filter(Boolean).join(" | ")}</p>
               </div>
               <div className="text-left sm:text-right">
-                <p className="text-xl font-bold">Faktur Pembelian</p>
+                <p className="text-xl font-bold">Faktur Pembelian{hasRetur ? <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[11px] font-bold text-amber-800">ada retur</span> : null}</p>
                 <p className="mt-1 text-sm">No. Invoice: <b className="font-mono">{row.invoiceNo}</b></p>
                 <p className="text-sm">Tanggal: <b>{tanggal}</b></p>
                 {row.createdBy ? <p className="text-xs text-slate-600">Dicatat oleh: {row.createdBy}</p> : null}
@@ -98,19 +102,23 @@ function FakturModal({ row, supplier, canEdit, onClose, onEdit, onRetur }: { row
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
-                  <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Kode</th><th className="px-2 py-2 text-left">Nama Barang</th><th className="px-2 py-2 text-right">Kts</th><th className="px-2 py-2 text-right">@Harga</th><th className="px-2 py-2 text-right">Total Harga</th></tr>
+                  <tr><th className="w-10 px-2 py-2 text-left">No</th><th className="px-2 py-2 text-left">Kode</th><th className="px-2 py-2 text-left">Nama Barang</th><th className="px-2 py-2 text-right">Kts</th>{hasRetur ? <th className="px-2 py-2 text-right">Retur</th> : null}<th className="px-2 py-2 text-right">@Harga</th><th className="px-2 py-2 text-right">{hasRetur ? "Total (Bersih)" : "Total Harga"}</th></tr>
                 </thead>
                 <tbody>
-                  {row.items.map((item, index) => (
-                    <tr key={`${item.productId}-${index}`} className="align-top">
-                      <td className="px-2 py-2 text-muted">{index + 1}</td>
-                      <td className="px-2 py-2 font-mono text-xs font-semibold">{item.kodePajak || "-"}</td>
-                      <td className="px-2 py-2"><ProductInfo nama={item.nama} partNumber={item.partNumber} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kategori={item.kategori} /></td>
-                      <td className="px-2 py-2 text-right font-semibold">{grouped(item.qty)} {item.satuan}</td>
-                      <td className="num px-2 py-2 text-right">{rupiah(item.hargaBeli)}</td>
-                      <td className="num px-2 py-2 text-right font-semibold">{rupiah(item.hargaBeli * item.qty)}</td>
-                    </tr>
-                  ))}
+                  {row.items.map((item, index) => {
+                    const net = fakturLineNet(item);
+                    return (
+                      <tr key={`${item.productId}-${index}`} className="align-top">
+                        <td className="px-2 py-2 text-muted">{index + 1}</td>
+                        <td className="px-2 py-2 font-mono text-xs font-semibold">{item.kodePajak || "-"}</td>
+                        <td className="px-2 py-2"><ProductInfo nama={item.nama} partNumber={item.partNumber} partNumbersAlt={item.partNumbersAlt} merek={item.merek} kategori={item.kategori} /></td>
+                        <td className="px-2 py-2 text-right font-semibold">{grouped(item.qty)} {item.satuan}</td>
+                        {hasRetur ? <td className="px-2 py-2 text-right text-xs">{net.retur > 0 ? <><b className="block text-red-700">- {net.returText}</b><span className="block text-slate-600">sisa {net.netText}</span></> : <span className="text-muted">-</span>}</td> : null}
+                        <td className="num px-2 py-2 text-right">{rupiah(item.hargaBeli)}</td>
+                        <td className="num px-2 py-2 text-right font-semibold">{hasRetur && net.returNilai > 0 ? <><span className="block text-xs font-normal text-slate-500 line-through">{rupiah(net.gross)}</span>{rupiah(net.net)}</> : rupiah(net.gross)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -118,9 +126,25 @@ function FakturModal({ row, supplier, canEdit, onClose, onEdit, onRetur }: { row
               <div className="flex-1 text-sm"><p className="font-bold">Keterangan</p><p className="text-slate-700">{row.notes || "-"}</p></div>
               <div className="w-full rounded-lg border border-line sm:w-64">
                 <div className="flex justify-between px-3 py-1.5 text-sm"><span>Total Qty</span><span>{grouped(row.totalQty)}</span></div>
-                <div className="flex justify-between border-t-2 border-slate-800 px-3 py-2 text-base font-extrabold"><span>Total</span><span className="num">{rupiah(row.totalValue)}</span></div>
+                {hasRetur ? (
+                  <>
+                    <div className="flex justify-between border-t border-line px-3 py-1.5 text-sm"><span>Total Faktur</span><span className="num">{rupiah(row.totalValue)}</span></div>
+                    <div className="flex justify-between px-3 py-1.5 text-sm text-red-700"><span>Retur</span><span className="num">- {rupiah(returTotal)}</span></div>
+                    <div className="flex justify-between border-t-2 border-slate-800 px-3 py-2 text-base font-extrabold"><span>Total Bersih</span><span className="num">{rupiah(row.totalValue - returTotal)}</span></div>
+                  </>
+                ) : (
+                  <div className="flex justify-between border-t-2 border-slate-800 px-3 py-2 text-base font-extrabold"><span>Total</span><span className="num">{rupiah(row.totalValue)}</span></div>
+                )}
               </div>
             </div>
+            {hasRetur && row.returs?.length ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Retur ke pemasok dari faktur ini</p>
+                {row.returs.map((t) => (
+                  <p key={t.id} className="flex flex-wrap items-center gap-x-3"><Link to="/retur-pemasok" search={{}} className="font-mono font-bold text-blue-700 underline">{t.returNo}</Link><span className="text-xs text-slate-600">{new Date(t.returnedAt).toLocaleDateString("id-ID")}</span><span className="num ml-auto font-semibold">{rupiah(t.total)}</span></p>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -171,6 +195,7 @@ function PemasokPage() {
   const me = Route.useRouteContext().me;
   const { inv, edit: editParam } = Route.useSearch();
   const navigate = useNavigate();
+  const wide = useIsWide();
   const [suppliers, setSuppliers] = useState<Partner[]>([]);
   const [rows, setRows] = useState<SupplierReceipt[]>([]);
   const [q, setQ] = useState(inv ?? "");
@@ -244,7 +269,6 @@ function PemasokPage() {
     el?.select();
   }, [justAdded]);
 
-  const pages = Math.max(1, Math.ceil(total / perPage));
   const grandTotal = useMemo(() => items.reduce((sum, item) => sum + item.qty * item.hargaBeli, 0), [items]);
 
   function resetForm() {
@@ -373,17 +397,18 @@ function PemasokPage() {
 
   return (
     <div className="space-y-4">
+      <PembelianTabs active="faktur" />
       <Panel>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted">Transaksi & Persediaan</p>
-            <h2 className="text-xl font-extrabold">Barang Masuk Pemasok</h2>
-            <p className="mt-1 text-sm text-muted">Penerimaan dari supplier dicatat terpisah dari Riwayat Transaksi. Stok barang otomatis bertambah setelah disimpan.</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted">Pembelian</p>
+            <h2 className="text-xl font-extrabold">Faktur Pembelian (Barang Masuk)</h2>
+            <p className="mt-1 text-sm text-muted">Penerimaan dari supplier dicatat terpisah dari Riwayat Transaksi. Stok barang otomatis bertambah setelah disimpan. Kalau ada barang yang dikembalikan, buat dari tombol Retur di faktur yang bersangkutan.</p>
           </div>
           {canEdit ? <ExpandGroup align="end" className="self-start"><ExpandButton size="md" variant="primary" label="Barang Masuk" icon={<Plus />} onClick={() => { resetForm(); setOpen(true); }} /></ExpandGroup> : null}
         </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
-          <input className={inputClass} placeholder="Cari invoice, supplier, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <input className={`${inputClass} sm:col-span-2 lg:col-span-1`} placeholder="Cari invoice, supplier, atau barang" value={q} onChange={(e) => { setPage(1); setQ(e.target.value); }} />
           <SupplierPicker suppliers={suppliers} value={supplierId} onChange={(id) => { setPage(1); setSupplierId(id); }} placeholder="Ketik nama pemasok" />
           <input className={inputClass} type="date" value={start} onChange={(e) => { setPage(1); setStart(e.target.value); }} />
           <input className={inputClass} type="date" value={end} onChange={(e) => { setPage(1); setEnd(e.target.value); }} />
@@ -401,12 +426,47 @@ function PemasokPage() {
       </Panel>
 
       <Panel className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        {rows.length === 0 ? <p className="py-8 text-center text-sm text-muted">Belum ada barang masuk pemasok sesuai filter.</p> : null}
+        {rows.length > 0 && !wide ? <div className="space-y-3">
+            {rows.map((row) => (
+              <div
+                key={row.id}
+                {...comments.row(row.id, `Barang masuk ${row.invoiceNo} · ${row.supplierName}`)}
+                role="button"
+                tabIndex={0}
+                className="rounded-xl border border-line bg-white p-3 active:bg-blue-50"
+                onClick={() => { if (!window.getSelection()?.toString()) setViewing(row); }}
+                onKeyDown={(e) => { if (e.key === "Enter") setViewing(row); }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-extrabold">{row.supplierName}</p>
+                    <p className="font-mono text-xs font-bold text-slate-600">{row.invoiceNo} · {new Date(row.receivedAt).toLocaleDateString("id-ID")}</p>
+                  </div>
+                  <p className="num shrink-0 text-right text-sm font-extrabold">{row.returTotal ? <><span className="block text-[11px] font-normal text-slate-500 line-through">{rupiah(row.totalValue)}</span>{rupiah(row.totalValue - row.returTotal)}</> : rupiah(row.totalValue)}</p>
+                </div>
+                {row.items[0] ? <p className="mt-2 truncate text-sm font-semibold">{row.items[0].nama}{row.items.length > 1 ? <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">+{row.items.length - 1} lainnya</span> : null}</p> : null}
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]" onClick={(e) => e.stopPropagation()}>
+                  <Link to="/alokasi" search={{ faktur: row.id }} className="inline-flex items-center gap-1"><StatusBadge status={row.alokasiStatus ?? "selesai"} /><span className="text-slate-600">{row.nGudang ? `${row.nGudang} ke gudang` : "semua di toko"}</span></Link>
+                  {row.nRetur ? <Link to="/retur-pemasok" search={{}} className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-800">↩ {row.nRetur} retur · - {rupiah(row.returTotal ?? 0)}</Link> : null}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-xs text-muted">{row.items.length} item · {grouped(row.totalQty)} qty · {row.createdBy || "-"}</span>
+                  <div className="flex items-center gap-1.5">
+                    <CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} />
+                    {canEdit ? <button type="button" className="h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => void navigate({ to: "/retur-pemasok", search: { faktur: row.id } })}>Retur</button> : null}
+                    {canEdit ? <button type="button" className="h-10 rounded-lg border border-line px-3 text-xs font-bold" onClick={() => openEdit(row)}>Edit</button> : null}
+                    {canEdit ? <button type="button" className="h-10 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700" onClick={() => removeReceipt(row)}>Hapus</button> : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div> : null}
+        {rows.length > 0 && wide ? <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted">
             <tr><th className="px-2 py-3">Tanggal</th><th className="px-2 py-3">Pemasok</th><th className="px-2 py-3">No. Invoice</th><th className="px-2 py-3">Barang</th><th className="px-2 py-3 text-center">Item</th><th className="px-2 py-3 text-center">Qty</th><th className="px-2 py-3 text-right">Nilai</th><th className="px-2 py-3">Alokasi</th><th className="px-2 py-3">Dicatat Oleh</th><th className="px-2 py-3">Aksi</th></tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={10} className="py-8 text-center text-muted">Belum ada barang masuk pemasok sesuai filter.</td></tr> : null}
             {rows.map((row) => (
               <tr
                 key={row.id}
@@ -417,7 +477,7 @@ function PemasokPage() {
               >
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
-                <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}{row.nRetur ? <Link to="/retur-pemasok" onClick={(e) => e.stopPropagation()} title="Faktur ini sudah punya retur ke pemasok" className="mt-1 block w-fit rounded-full bg-amber-100 px-2 py-0.5 font-sans text-[11px] font-bold text-amber-800">↩ {row.nRetur} retur</Link> : null}</td>
+                <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}{row.nRetur ? <Link to="/retur-pemasok" search={{}} onClick={(e) => e.stopPropagation()} title="Faktur ini sudah punya retur ke pemasok" className="mt-1 block w-fit rounded-full bg-amber-100 px-2 py-0.5 font-sans text-[11px] font-bold text-amber-800">↩ {row.nRetur} retur</Link> : null}</td>
                 <td className="max-w-[360px] px-2 py-3">
                   {row.items[0] ? (
                     <div className="leading-snug">
@@ -430,7 +490,7 @@ function PemasokPage() {
                 </td>
                 <td className="px-2 py-3 text-center text-xs font-semibold text-slate-600">{row.items.length}</td>
                 <td className="px-2 py-3 text-center font-semibold">{row.totalQty}</td>
-                <td className="num px-2 py-3 text-right font-semibold">{rupiah(row.totalValue)}</td>
+                <td className="num px-2 py-3 text-right font-semibold">{row.returTotal ? <><span className="block text-xs font-normal text-slate-500 line-through">{rupiah(row.totalValue)}</span>{rupiah(row.totalValue - row.returTotal)}<span className="block text-[11px] font-bold text-red-700">retur - {rupiah(row.returTotal)}</span></> : rupiah(row.totalValue)}</td>
                 <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <Link to="/alokasi" search={{ faktur: row.id }} title="Buka alokasi faktur" className="inline-flex flex-col items-start gap-0.5">
                     <StatusBadge status={row.alokasiStatus ?? "selesai"} />
@@ -442,11 +502,8 @@ function PemasokPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <span className="text-muted">Menampilkan {rows.length} dari {total} penerimaan</span>
-          <div className="flex items-center gap-2"><button className="h-11 rounded-lg border border-line px-3" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</button><span>Hal: {page}/{pages}</span><button className="h-11 rounded-lg border border-line px-3" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Berikutnya</button></div>
-        </div>
+        </table> : null}
+        <PageBar page={page} total={total} perPage={perPage} unit="penerimaan" onPage={setPage} />
       </Panel>
 
       {viewing ? (

@@ -1781,12 +1781,21 @@ export async function listSupplierReceipts(data: any) {
       r.alokasi_status, r.alokasi_nama, r.cek_nama, r.catatan_kembali,
       (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
       (select count(distinct x.return_id)::int from supplier_return_lines x join supplier_receipt_lines rl on rl.id = x.receipt_line_id where rl.receipt_id = r.id) as n_retur,
+      coalesce((select sum(x.harga_beli * x.qty) from supplier_return_lines x join supplier_receipt_lines rl on rl.id = x.receipt_line_id where rl.receipt_id = r.id), 0) as retur_total,
+      coalesce((select json_agg(json_build_object('id', t.id, 'returNo', t.retur_no, 'returnedAt', t.returned_at, 'total', t.sub) order by t.returned_at, t.id)
+        from (select sr.id, sr.retur_no, sr.returned_at, sum(x.harga_beli * x.qty) as sub
+              from supplier_return_lines x
+                join supplier_receipt_lines rl on rl.id = x.receipt_line_id
+                join supplier_returns sr on sr.id = x.return_id
+              where rl.receipt_id = r.id group by sr.id, sr.retur_no, sr.returned_at) t), '[]'::json) as returs,
       coalesce((select sum(l.qty_dasar) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_qty,
       coalesce((select sum(l.harga_beli * l.qty) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_value,
       coalesce((select json_agg(json_build_object(
         'productId', l.product_id, 'nama', pr.nama, 'partNumber', pr.part_number, 'kategori', pr.kategori,
         'merek', pr.merek, 'kodePajak', pr.kode_pajak, 'partNumbersAlt', pr.part_numbers_alt,
-        'qty', l.qty, 'satuan', l.satuan, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli
+        'qty', l.qty, 'satuan', l.satuan, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli, 'satuanDasar', pr.satuan,
+        'returQtyDasar', coalesce((select sum(x.qty_dasar) from supplier_return_lines x where x.receipt_line_id = l.id), 0)::int,
+        'returNilai', coalesce((select sum(x.harga_beli * x.qty) from supplier_return_lines x where x.receipt_line_id = l.id), 0)
       ) order by lower(pr.nama)) from supplier_receipt_lines l join products pr on pr.id = l.product_id where l.receipt_id = r.id), '[]'::json) as items
      from supplier_receipts r join partners p on p.id = r.supplier_id
      where ${clause}
@@ -1801,6 +1810,8 @@ export async function listSupplierReceipts(data: any) {
       supplierId: Number(row.supplier_id), supplierName: String(row.supplier_name ?? ''), notes: String(row.notes ?? ''), createdBy: String(row.created_by ?? ''),
       totalQty: Number(row.total_qty ?? 0), totalValue: Number(row.total_value ?? 0), items: Array.isArray(row.items) ? row.items : [],
       alokasiStatus: String(row.alokasi_status ?? 'selesai'), nGudang: Number(row.n_gudang ?? 0), nRetur: Number(row.n_retur ?? 0),
+      returTotal: Number(row.retur_total ?? 0),
+      returs: (Array.isArray(row.returs) ? row.returs : []).map((t: any) => ({ id: Number(t.id), returNo: String(t.returNo ?? ''), returnedAt: t.returnedAt ? new Date(String(t.returnedAt)).toISOString() : '', total: Number(t.total ?? 0) })),
     })),
   };
 }
