@@ -23,6 +23,9 @@ export const Route = createFileRoute("/_shop/retur-pemasok")({
 
 type Draft = { line: ReturnableLine; qty: number; satuan: string; dari: "toko" | "gudang"; alasan: string };
 
+/** Jumlah faktur per halaman di pemilih faktur (harus sama dengan perPage di server: 15). */
+const FAKTUR_PER_PAGE = 15;
+
 const ALASAN = ["Rusak / cacat", "Salah barang", "Salah pesan", "Kelebihan kirim", "Kadaluarsa", "Tidak laku"];
 
 function fmtDate(iso: string) {
@@ -210,12 +213,12 @@ function ReturPemasokPage() {
         .then((res) => {
           if (!alive) return;
           const list = res.items as SupplierReceipt[];
-          setFakturs((prev) => (fakturPage === 1 ? list : [...prev, ...list.filter((row) => !prev.some((old) => old.id === row.id))]));
+          setFakturs(list);
           setFakturTotal(res.total);
         })
         .catch((error: Error) => { if (alive) toast.error(error.message); })
         .finally(() => { if (alive) setFakturBusy(false); });
-    }, fakturPage === 1 ? 200 : 0);
+    }, 200);
     return () => { alive = false; clearTimeout(timer); };
   }, [open, formSupplierId, fakturQ, fakturPage, chosen]);
 
@@ -512,31 +515,54 @@ function ReturPemasokPage() {
                         value={fakturQ}
                         onChange={(e) => { setFakturPage(1); setFakturQ(e.target.value); }}
                       />
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-slate-600">
+                        <span>{fakturTotal ? `Faktur ${(fakturPage - 1) * FAKTUR_PER_PAGE + 1}–${(fakturPage - 1) * FAKTUR_PER_PAGE + fakturs.length} dari ${fakturTotal}` : ""}</span>
+                        <span className="text-muted">Klik satu faktur untuk memilih</span>
+                      </div>
+                      <div className={`mt-2 grid gap-3 md:grid-cols-2 ${fakturBusy && fakturs.length ? "opacity-60" : ""}`}>
                         {fakturs.map((row) => {
-                          const first = row.items[0];
+                          const shown = row.items.slice(0, 3);
+                          const more = row.items.length - shown.length;
                           return (
-                            <button key={row.id} type="button" disabled={fakturBusy} className="rounded-xl border border-line bg-white p-3 text-left transition hover:border-blue-400 hover:bg-blue-50 active:bg-blue-50" onClick={() => pickFaktur(row.id)}>
-                              <div className="flex items-start justify-between gap-2">
+                            <button key={row.id} type="button" disabled={fakturBusy} className="block w-full overflow-hidden rounded-xl border border-slate-300 bg-white text-left shadow-sm transition hover:border-blue-500 hover:bg-blue-50/40 hover:shadow disabled:cursor-wait" onClick={() => pickFaktur(row.id)}>
+                              {/* Kepala: no. faktur + total */}
+                              <div className="flex w-full items-start justify-between gap-3 border-b border-slate-200 bg-slate-100 px-3 py-2">
                                 <div className="min-w-0">
-                                  <p className="font-mono text-sm font-extrabold"><Mark text={row.invoiceNo} q={fakturQ} /></p>
-                                  <p className="text-xs text-slate-600">{fmtDate(row.receivedAt)} <span className="text-muted">({ageText(row.receivedAt)})</span></p>
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">No. Faktur</p>
+                                  <p className="break-all font-mono text-base font-extrabold leading-tight text-blue-800"><Mark text={row.invoiceNo} q={fakturQ} /></p>
                                 </div>
                                 <div className="shrink-0 text-right">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total</p>
                                   <p className="num text-sm font-extrabold">{rupiah(row.totalValue)}</p>
-                                  <p className="text-[11px] text-muted">{row.items.length} barang</p>
                                 </div>
                               </div>
-                              {first ? <p className="mt-1 truncate text-xs text-slate-700"><Mark text={first.nama} q={fakturQ} />{row.items.length > 1 ? ` +${row.items.length - 1} lainnya` : ""}</p> : null}
-                              {row.nRetur ? <p className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">↩ sudah ada {row.nRetur} retur</p> : null}
+                              {/* Isi: daftar barang */}
+                              <ul className="w-full space-y-0.5 px-3 py-2 text-xs text-slate-800">
+                                {shown.map((it, i) => (
+                                  <li key={i} className="flex gap-1.5"><span className="text-slate-400">•</span><span className="min-w-0 truncate"><Mark text={it.nama} q={fakturQ} /></span></li>
+                                ))}
+                                {more > 0 ? <li className="pl-3 font-semibold text-slate-500">+{more} barang lainnya</li> : null}
+                              </ul>
+                              {/* Kaki: tanggal, jumlah barang, status retur */}
+                              <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                                <span>{fmtDate(row.receivedAt)} <span className="text-muted">({ageText(row.receivedAt)})</span></span>
+                                <span className="flex items-center gap-2">
+                                  <span className="font-semibold">{row.items.length} barang</span>
+                                  {row.nRetur ? <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-800">↩ sudah ada {row.nRetur} retur</span> : null}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
                       </div>
                       {fakturBusy && fakturs.length === 0 ? <p className="py-6 text-center text-sm text-muted">Memuat faktur...</p> : null}
                       {!fakturBusy && fakturs.length === 0 ? <p className="py-6 text-center text-sm text-muted">Tidak ada faktur pembelian yang cocok untuk pemasok ini.</p> : null}
-                      {fakturs.length < fakturTotal ? (
-                        <button type="button" disabled={fakturBusy} className="mt-3 h-11 w-full rounded-lg border border-line bg-white text-sm font-bold text-blue-700 disabled:opacity-50" onClick={() => setFakturPage((p) => p + 1)}>{fakturBusy ? "Memuat..." : `Tampilkan faktur lainnya (${fakturs.length} dari ${fakturTotal})`}</button>
+                      {fakturTotal > FAKTUR_PER_PAGE ? (
+                        <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                          <button type="button" disabled={fakturBusy || fakturPage <= 1} className="h-11 rounded-lg border border-line bg-white px-3 text-sm font-bold text-blue-700 disabled:opacity-40 sm:px-4" onClick={() => setFakturPage((p) => Math.max(1, p - 1))}>← Sebelumnya</button>
+                          <span className="text-center text-xs font-semibold text-slate-700 sm:text-sm">Hal {fakturPage} / {Math.ceil(fakturTotal / FAKTUR_PER_PAGE)}</span>
+                          <button type="button" disabled={fakturBusy || fakturPage >= Math.ceil(fakturTotal / FAKTUR_PER_PAGE)} className="h-11 rounded-lg border border-line bg-white px-3 text-sm font-bold text-blue-700 disabled:opacity-40 sm:px-4" onClick={() => setFakturPage((p) => p + 1)}>Selanjutnya →</button>
+                        </div>
                       ) : null}
                     </>
                   )}
