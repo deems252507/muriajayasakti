@@ -28,6 +28,7 @@ import { Route as ShopLaporanPenjualanRouteImport } from './routes/_shop/laporan
 import { Route as ShopPemasokRouteImport } from './routes/_shop/pemasok'
 import { Route as ShopPengaturanRouteImport } from './routes/_shop/pengaturan'
 import { Route as ShopReturRouteImport } from './routes/_shop/retur'
+import { Route as ShopReturPemasokRouteImport } from './routes/_shop/retur-pemasok'
 import { Route as ShopRiwayatRouteImport } from './routes/_shop/riwayat'
 import { Route as ShopStokRouteImport } from './routes/_shop/stok'
 import { Route as ShopOpnameRouteImport } from './routes/_shop/opname'
@@ -129,6 +130,11 @@ const ShopReturRoute = ShopReturRouteImport.update({
   path: '/retur',
   getParentRoute: () => ShopRoute,
 } as any)
+const ShopReturPemasokRoute = ShopReturPemasokRouteImport.update({
+  id: '/retur-pemasok',
+  path: '/retur-pemasok',
+  getParentRoute: () => ShopRoute,
+} as any)
 const ShopRiwayatRoute = ShopRiwayatRouteImport.update({
   id: '/riwayat',
   path: '/riwayat',
@@ -179,6 +185,7 @@ export interface FileRoutesByFullPath {
   '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
+  '/retur-pemasok': typeof ShopReturPemasokRoute
   '/riwayat': typeof ShopRiwayatRoute
   '/stok': typeof ShopStokRoute
   '/opname': typeof ShopOpnameRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/pemasok': typeof ShopPemasokRoute
   '/pengaturan': typeof ShopPengaturanRoute
   '/retur': typeof ShopReturRoute
+  '/retur-pemasok': typeof ShopReturPemasokRoute
   '/riwayat': typeof ShopRiwayatRoute
   '/stok': typeof ShopStokRoute
   '/opname': typeof ShopOpnameRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/_shop/pemasok': typeof ShopPemasokRoute
   '/_shop/pengaturan': typeof ShopPengaturanRoute
   '/_shop/retur': typeof ShopReturRoute
+  '/_shop/retur-pemasok': typeof ShopReturPemasokRoute
   '/_shop/riwayat': typeof ShopRiwayatRoute
   '/_shop/stok': typeof ShopStokRoute
   '/_shop/opname': typeof ShopOpnameRoute
@@ -261,6 +270,7 @@ export interface FileRouteTypes {
     | '/pemasok'
     | '/pengaturan'
     | '/retur'
+    | '/retur-pemasok'
     | '/riwayat'
     | '/stok'
     | '/opname'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/pemasok'
     | '/pengaturan'
     | '/retur'
+    | '/retur-pemasok'
     | '/riwayat'
     | '/stok'
     | '/opname'
@@ -314,6 +325,7 @@ export interface FileRouteTypes {
     | '/_shop/pemasok'
     | '/_shop/pengaturan'
     | '/_shop/retur'
+    | '/_shop/retur-pemasok'
     | '/_shop/riwayat'
     | '/_shop/stok'
     | '/_shop/opname'
@@ -464,6 +476,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShopReturRouteImport
       parentRoute: typeof ShopRoute
     }
+    '/_shop/retur-pemasok': {
+      id: '/_shop/retur-pemasok'
+      path: '/retur-pemasok'
+      fullPath: '/retur-pemasok'
+      preLoaderRoute: typeof ShopReturPemasokRouteImport
+      parentRoute: typeof ShopRoute
+    }
     '/_shop/riwayat': {
       id: '/_shop/riwayat'
       path: '/riwayat'
@@ -525,6 +544,7 @@ interface ShopRouteChildren {
   ShopPemasokRoute: typeof ShopPemasokRoute
   ShopPengaturanRoute: typeof ShopPengaturanRoute
   ShopReturRoute: typeof ShopReturRoute
+  ShopReturPemasokRoute: typeof ShopReturPemasokRoute
   ShopRiwayatRoute: typeof ShopRiwayatRoute
   ShopStokRoute: typeof ShopStokRoute
   ShopOpnameRoute: typeof ShopOpnameRoute
@@ -549,6 +569,7 @@ const ShopRouteChildren: ShopRouteChildren = {
   ShopPemasokRoute: ShopPemasokRoute,
   ShopPengaturanRoute: ShopPengaturanRoute,
   ShopReturRoute: ShopReturRoute,
+  ShopReturPemasokRoute: ShopReturPemasokRoute,
   ShopRiwayatRoute: ShopRiwayatRoute,
   ShopStokRoute: ShopStokRoute,
   ShopOpnameRoute: ShopOpnameRoute,

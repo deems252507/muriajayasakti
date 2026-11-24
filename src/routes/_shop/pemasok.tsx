@@ -2,7 +2,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Plus, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { Pencil, Plus, Printer, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { ExpandButton, ExpandGroup } from "@/components/ui/button-7";
 import { Field, inputClass, Mark, Panel, PrimaryButton } from "@/components/shop/shell";
 import { CommentButton, useCommentFinder, useComments } from "@/components/shop/comment-ui";
@@ -60,7 +60,7 @@ function ProductInfo({ nama, partNumber, partNumbersAlt, merek, kodePajak, kateg
 }
 
 /** Tampilan faktur pembelian per invoice (hanya untuk dilihat; Admin bisa lanjut ke Ubah). */
-function FakturModal({ row, supplier, canEdit, onClose, onEdit }: { row: SupplierReceipt; supplier?: Partner; canEdit: boolean; onClose: () => void; onEdit: () => void }) {
+function FakturModal({ row, supplier, canEdit, onClose, onEdit, onRetur }: { row: SupplierReceipt; supplier?: Partner; canEdit: boolean; onClose: () => void; onEdit: () => void; onRetur: () => void }) {
   const brand = shopBrand();
   const tanggal = row.receivedAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }).format(new Date(row.receivedAt)) : "-";
   return (
@@ -70,6 +70,7 @@ function FakturModal({ row, supplier, canEdit, onClose, onEdit }: { row: Supplie
           <h3 className="text-lg font-extrabold">Faktur Pembelian</h3>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={() => { try { printSupplierInvoice(row, supplier); } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal mencetak"); } }}>Cetak</button>
+            {canEdit ? <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onRetur}>Retur ke Pemasok</button> : null}
             {canEdit ? <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onEdit}>Ubah</button> : null}
             <button type="button" className="h-10 rounded-lg border border-line px-4 text-sm font-medium" onClick={onClose}>Tutup</button>
           </div>
@@ -416,7 +417,7 @@ function PemasokPage() {
               >
                 <td className="px-2 py-3 whitespace-nowrap">{new Date(row.receivedAt).toLocaleDateString("id-ID")}</td>
                 <td className="px-2 py-3 font-semibold">{row.supplierName}</td>
-                <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}</td>
+                <td className="px-2 py-3 font-mono text-xs font-bold">{row.invoiceNo}{row.nRetur ? <Link to="/retur-pemasok" onClick={(e) => e.stopPropagation()} title="Faktur ini sudah punya retur ke pemasok" className="mt-1 block w-fit rounded-full bg-amber-100 px-2 py-0.5 font-sans text-[11px] font-bold text-amber-800">↩ {row.nRetur} retur</Link> : null}</td>
                 <td className="max-w-[360px] px-2 py-3">
                   {row.items[0] ? (
                     <div className="leading-snug">
@@ -437,7 +438,7 @@ function PemasokPage() {
                   </Link>
                 </td>
                 <td className="px-2 py-3 text-xs">{row.createdBy || "-"}</td>
-                <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
+                <td className="px-2 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}><span className="mr-2 inline-block align-middle"><CommentButton kind="masuk" refId={row.id} label={`Barang masuk ${row.invoiceNo} · ${row.supplierName}`} mark={comments.marks[String(row.id)]} /></span>{canEdit ? <ExpandGroup align="start"><ExpandButton label="Retur" icon={<Undo2 />} onClick={() => void navigate({ to: "/retur-pemasok", search: { faktur: row.id } })} /><ExpandButton label="Edit" icon={<Pencil />} onClick={() => openEdit(row)} /><ExpandButton variant="danger" label="Hapus" icon={<Trash2 />} onClick={() => removeReceipt(row)} /></ExpandGroup> : null}</td>
               </tr>
             ))}
           </tbody>
@@ -455,6 +456,7 @@ function PemasokPage() {
           canEdit={canEdit}
           onClose={() => setViewing(null)}
           onEdit={() => { const r = viewing; setViewing(null); openEdit(r); }}
+          onRetur={() => { const r = viewing; setViewing(null); void navigate({ to: "/retur-pemasok", search: { faktur: r.id } }); }}
         />
       ) : null}
 

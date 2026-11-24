@@ -1678,6 +1678,7 @@ export async function updateSupplierReceipt(data: any) {
   if (!invoiceNo) throw new Error('Nomor invoice barang masuk wajib diisi.');
   if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
   if (!items.length) throw new Error('Minimal satu barang harus dimasukkan.');
+  await assertFakturBelumDiretur(db, id);
   const info = await fakturInfo(db, id);
   try {
     const [row] = await db.query<{ shop_update_supplier_receipt: unknown }>(
@@ -1730,6 +1731,7 @@ export async function deleteSupplierReceipt(data: any) {
   const db = await sql();
   const id = Number(data.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error('Penerimaan tidak ditemukan.');
+  await assertFakturBelumDiretur(db, id);
   const info = await fakturInfo(db, id);
   try {
     const [row] = await db.query<{ shop_delete_supplier_receipt: unknown }>(
@@ -1778,6 +1780,7 @@ export async function listSupplierReceipts(data: any) {
     `select r.id, r.invoice_no, r.received_at, r.notes, r.created_by, p.id as supplier_id, p.nama as supplier_name,
       r.alokasi_status, r.alokasi_nama, r.cek_nama, r.catatan_kembali,
       (select count(*)::int from supplier_receipt_lines l where l.receipt_id = r.id and l.ke_gudang > 0) as n_gudang,
+      (select count(distinct x.return_id)::int from supplier_return_lines x join supplier_receipt_lines rl on rl.id = x.receipt_line_id where rl.receipt_id = r.id) as n_retur,
       coalesce((select sum(l.qty_dasar) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_qty,
       coalesce((select sum(l.harga_beli * l.qty) from supplier_receipt_lines l where l.receipt_id = r.id), 0) as total_value,
       coalesce((select json_agg(json_build_object(
@@ -1797,7 +1800,194 @@ export async function listSupplierReceipts(data: any) {
       id: Number(row.id), invoiceNo: String(row.invoice_no), receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : '',
       supplierId: Number(row.supplier_id), supplierName: String(row.supplier_name ?? ''), notes: String(row.notes ?? ''), createdBy: String(row.created_by ?? ''),
       totalQty: Number(row.total_qty ?? 0), totalValue: Number(row.total_value ?? 0), items: Array.isArray(row.items) ? row.items : [],
-      alokasiStatus: String(row.alokasi_status ?? 'selesai'), nGudang: Number(row.n_gudang ?? 0),
+      alokasiStatus: String(row.alokasi_status ?? 'selesai'), nGudang: Number(row.n_gudang ?? 0), nRetur: Number(row.n_retur ?? 0),
+    })),
+  };
+}
+
+/* ===== Retur ke Pemasok (retur pembelian) ===== */
+
+/** Faktur yang sudah dipakai untuk retur tidak boleh diubah / dihapus: sebut nomor returnya supaya jelas mana yang harus dibatalkan dulu. */
+async function assertFakturBelumDiretur(db: ChatDb, receiptId: number) {
+  const rows = await db.query<{ retur_no: string }>(
+    `select distinct r.retur_no from supplier_return_lines l
+       join supplier_receipt_lines rl on rl.id = l.receipt_line_id
+       join supplier_returns r on r.id = l.return_id
+     where rl.receipt_id = $1 order by r.retur_no`,
+    [receiptId],
+  );
+  if (rows.length) {
+    throw new Error(`Faktur ini sudah dipakai untuk retur ke pemasok (${rows.map((r) => r.retur_no).join(', ')}). Hapus retur itu dulu di menu Retur ke Pemasok, baru faktur bisa diubah atau dihapus.`);
+  }
+}
+
+function assertNotKasir(me: Staff) {
+  if (me.role === 'Kasir') throw new Error('Retur ke Pemasok hanya untuk Admin dan Owner.');
+}
+
+/**
+ * Baris faktur pembelian yang bisa diretur, lengkap dengan asalnya (pemasok, nomor faktur, tanggal), jumlah dibeli,
+ * yang sudah diretur, dan sisa yang masih boleh diretur. Dicari per pemasok, per faktur, atau per nama / part number barang.
+ */
+export async function listReturnableLines(data: any) {
+  const me = await requireStaff();
+  assertNotKasir(me);
+  const db = await sql();
+  const supplierId = Number(data.supplierId) > 0 ? Number(data.supplierId) : 0;
+  const receiptId = Number(data.receiptId) > 0 ? Number(data.receiptId) : 0;
+  const q = String(data.q ?? '').trim();
+  if (!supplierId && !receiptId && q.length < 2) return { items: [] };
+  const where: string[] = ['1=1'];
+  const params: unknown[] = [];
+  if (supplierId) { params.push(supplierId); where.push(`r.supplier_id = $${params.length}`); }
+  if (receiptId) { params.push(receiptId); where.push(`r.id = $${params.length}`); }
+  if (q) where.push(...tokenClauses(q, params, (m) => m(`lower(concat_ws(' ', r.invoice_no, pr.nama, pr.part_number, pr.part_numbers_alt, pr.merek, pr.kode_pajak, pr.kode, p.nama))`)));
+  const rows = await db.query<Record<string, unknown>>(
+    `select l.id as line_id, r.id as receipt_id, r.invoice_no, r.received_at, p.id as supplier_id, p.nama as supplier_name,
+            pr.id as product_id, pr.nama, pr.part_number, pr.part_numbers_alt, pr.merek, pr.kode_pajak, pr.kategori,
+            pr.satuan as satuan_dasar, pr.stok as stok_toko, coalesce(g.stok, 0) as stok_gudang,
+            l.qty, l.satuan, l.qty_dasar, l.harga_beli, l.selisih, l.ke_gudang,
+            coalesce((select sum(x.qty_dasar) from supplier_return_lines x where x.receipt_line_id = l.id), 0)::int as sudah_retur
+     from supplier_receipt_lines l
+       join supplier_receipts r on r.id = l.receipt_id
+       join partners p on p.id = r.supplier_id
+       join products pr on pr.id = l.product_id
+       left join gudang_items g on g.product_id = pr.id
+     where ${where.join(' and ')}
+     order by r.received_at desc, r.id desc, l.id asc
+     limit 80`,
+    params,
+  );
+  return {
+    items: rows.map((row) => {
+      const qtyDasar = Number(row.qty_dasar ?? 0);
+      const qty = Math.max(1, Number(row.qty ?? 1));
+      const selisih = Number(row.selisih ?? 0);
+      const sudahRetur = Number(row.sudah_retur ?? 0);
+      return {
+        lineId: Number(row.line_id), receiptId: Number(row.receipt_id), invoiceNo: String(row.invoice_no ?? ''),
+        receivedAt: row.received_at ? new Date(String(row.received_at)).toISOString() : '',
+        supplierId: Number(row.supplier_id), supplierName: String(row.supplier_name ?? ''),
+        productId: Number(row.product_id), nama: String(row.nama ?? ''), partNumber: String(row.part_number ?? ''),
+        partNumbersAlt: String(row.part_numbers_alt ?? ''), merek: String(row.merek ?? ''), kodePajak: String(row.kode_pajak ?? ''), kategori: String(row.kategori ?? ''),
+        satuanDasar: String(row.satuan_dasar ?? 'Pcs'), stokToko: Number(row.stok_toko ?? 0), stokGudang: Number(row.stok_gudang ?? 0),
+        qty, satuan: String(row.satuan ?? 'Pcs'), qtyDasar, factor: Math.max(1, Math.round(qtyDasar / qty)), hargaBeli: Number(row.harga_beli ?? 0),
+        selisih, keGudang: Number(row.ke_gudang ?? 0), sudahRetur,
+        // Dalam satuan dasar: dibeli - selisih yang tercatat saat penerimaan (tidak pernah masuk stok) - retur sebelumnya.
+        sisa: Math.max(0, qtyDasar - selisih - sudahRetur),
+      };
+    }),
+  };
+}
+
+export async function createSupplierReturn(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const supplierId = Number(data.supplierId);
+  const returnedAt = String(data.returnedAt ?? '').trim();
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!Number.isInteger(supplierId) || supplierId <= 0) throw new Error('Pemasok wajib dipilih.');
+  if (!items.length) throw new Error('Minimal satu barang harus diretur.');
+  try {
+    const [row] = await db.query<{ shop_return_supplier: unknown }>(
+      `select shop_return_supplier($1::jsonb) as shop_return_supplier`,
+      [JSON.stringify({
+        supplierId,
+        returnedAt: returnedAt ? `${returnedAt}T12:00:00+08:00` : '',
+        notes: String(data.notes ?? '').trim(),
+        createdBy: me.name,
+        actor: me.username,
+        items: items.map((item: any) => ({
+          receiptLineId: Number(item.receiptLineId),
+          qty: Number(item.qty),
+          satuan: String(item.satuan ?? ''),
+          dari: item.dari === 'gudang' ? 'gudang' : 'toko',
+          alasan: String(item.alasan ?? '').trim(),
+        })),
+      })],
+    );
+    const result = row?.shop_return_supplier as { id?: number; returNo?: string };
+    await audit(me, `Retur ke pemasok ${result?.returNo ?? ''}`.trim());
+    return { ok: true, id: Number(result?.id ?? 0), returNo: String(result?.returNo ?? '') };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+export async function deleteSupplierReturn(data: any) {
+  const me = await requireStaff();
+  assertAdmin(me);
+  const db = await sql();
+  const id = Number(data.id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Retur tidak ditemukan.');
+  try {
+    const [row] = await db.query<{ shop_delete_supplier_return: unknown }>(
+      `select shop_delete_supplier_return($1::jsonb) as shop_delete_supplier_return`,
+      [JSON.stringify({ id, actor: me.username, createdBy: me.name })],
+    );
+    const result = row?.shop_delete_supplier_return as { returNo?: string };
+    await audit(me, `Hapus retur ke pemasok ${result?.returNo ?? id}`);
+    return { ok: true, id };
+  } catch (error) {
+    throw new Error(cleanError(error));
+  }
+}
+
+export async function listSupplierReturns(data: any) {
+  const me = await requireStaff();
+  assertNotKasir(me);
+  const db = await sql();
+  const where: string[] = ['1=1'];
+  const params: unknown[] = [];
+  if (Number(data.id) > 0) { params.push(Number(data.id)); where.push(`t.id = $${params.length}`); }
+  if (Number(data.supplierId) > 0) { params.push(Number(data.supplierId)); where.push(`t.supplier_id = $${params.length}`); }
+  if (Number(data.receiptId) > 0) {
+    params.push(Number(data.receiptId));
+    where.push(`exists (select 1 from supplier_return_lines xl join supplier_receipt_lines xr on xr.id = xl.receipt_line_id where xl.return_id = t.id and xr.receipt_id = $${params.length})`);
+  }
+  if (data.start) { params.push(String(data.start)); where.push(`t.returned_at >= ($${params.length}::date::timestamp at time zone 'Asia/Makassar')`); }
+  if (data.end) { params.push(String(data.end)); where.push(`t.returned_at < (($${params.length}::date + 1)::timestamp at time zone 'Asia/Makassar')`); }
+  if (data.q) {
+    where.push(...tokenClauses(String(data.q), params, (m) =>
+      `(${m(`lower(concat_ws(' ', t.retur_no, p.nama))`)} or exists (
+        select 1 from supplier_return_lines lq
+          join supplier_receipt_lines rq on rq.id = lq.receipt_line_id
+          join supplier_receipts fq on fq.id = rq.receipt_id
+          join products pq on pq.id = lq.product_id
+        where lq.return_id = t.id and ${m(`lower(concat_ws(' ', fq.invoice_no, pq.nama, pq.part_number, pq.part_numbers_alt, pq.merek, pq.kode_pajak))`)}))`));
+  }
+  const clause = where.join(' and ');
+  const perPage = data.all ? 100000 : 15;
+  const page = Math.max(1, Number(data.page ?? 1) || 1);
+  const [countRow] = await db.query<{ n: number }>(`select count(*)::int as n from supplier_returns t join partners p on p.id = t.supplier_id where ${clause}`, params);
+  const rows = await db.query<Record<string, unknown>>(
+    `select t.id, t.retur_no, t.returned_at, t.notes, t.created_by, p.id as supplier_id, p.nama as supplier_name,
+      coalesce((select sum(l.qty_dasar) from supplier_return_lines l where l.return_id = t.id), 0) as total_qty,
+      coalesce((select sum(l.harga_beli * l.qty) from supplier_return_lines l where l.return_id = t.id), 0) as total_value,
+      coalesce((select json_agg(json_build_object(
+        'lineId', l.id, 'productId', l.product_id, 'nama', pr.nama, 'partNumber', pr.part_number, 'partNumbersAlt', pr.part_numbers_alt,
+        'merek', pr.merek, 'kodePajak', pr.kode_pajak, 'kategori', pr.kategori,
+        'qty', l.qty, 'satuan', l.satuan, 'qtyDasar', l.qty_dasar, 'hargaBeli', l.harga_beli, 'dari', l.dari, 'alasan', l.alasan,
+        'receiptId', f.id, 'invoiceNo', f.invoice_no, 'receivedAt', f.received_at
+      ) order by l.id)
+      from supplier_return_lines l
+        join products pr on pr.id = l.product_id
+        join supplier_receipt_lines rl on rl.id = l.receipt_line_id
+        join supplier_receipts f on f.id = rl.receipt_id
+      where l.return_id = t.id), '[]'::json) as items
+     from supplier_returns t join partners p on p.id = t.supplier_id
+     where ${clause}
+     order by t.returned_at desc, t.id desc
+     limit ${perPage} offset ${(page - 1) * perPage}`, params);
+  return {
+    total: Number(countRow?.n ?? 0),
+    page,
+    perPage,
+    items: rows.map((row) => ({
+      id: Number(row.id), returNo: String(row.retur_no), returnedAt: row.returned_at ? new Date(String(row.returned_at)).toISOString() : '',
+      supplierId: Number(row.supplier_id), supplierName: String(row.supplier_name ?? ''), notes: String(row.notes ?? ''), createdBy: String(row.created_by ?? ''),
+      totalQty: Number(row.total_qty ?? 0), totalValue: Number(row.total_value ?? 0), items: Array.isArray(row.items) ? row.items : [],
     })),
   };
 }

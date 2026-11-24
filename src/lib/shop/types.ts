@@ -105,6 +105,73 @@ export type SupplierReceipt = {
   alokasiStatus?: AlokasiStatus;
   /** Jumlah barang pada faktur yang sebagian atau seluruhnya dialokasikan ke gudang. */
   nGudang?: number;
+  /** Jumlah surat retur ke pemasok yang mengambil barang dari faktur ini. */
+  nRetur?: number;
+};
+
+/** Satu baris faktur pembelian beserta sisa yang masih boleh diretur (semua jumlah "dasar" dalam satuan dasar barang). */
+export type ReturnableLine = {
+  lineId: number;
+  receiptId: number;
+  invoiceNo: string;
+  receivedAt: string;
+  supplierId: number;
+  supplierName: string;
+  productId: number;
+  nama: string;
+  partNumber: string;
+  partNumbersAlt: string;
+  merek: string;
+  kodePajak: string;
+  kategori: string;
+  satuanDasar: string;
+  stokToko: number;
+  stokGudang: number;
+  /** Jumlah dan satuan seperti di faktur (mis. 5 Dus). */
+  qty: number;
+  satuan: string;
+  qtyDasar: number;
+  /** Isi satuan faktur dalam satuan dasar (Dus isi 12 -> 12; Pcs -> 1). */
+  factor: number;
+  hargaBeli: number;
+  selisih: number;
+  keGudang: number;
+  sudahRetur: number;
+  sisa: number;
+};
+
+export type SupplierReturnItem = {
+  lineId: number;
+  productId: number;
+  nama: string;
+  partNumber: string;
+  partNumbersAlt?: string;
+  merek?: string;
+  kodePajak?: string;
+  kategori?: string;
+  qty: number;
+  satuan: string;
+  qtyDasar: number;
+  hargaBeli: number;
+  dari: "toko" | "gudang";
+  alasan: string;
+  /** Faktur pembelian asal barang ini. */
+  receiptId: number;
+  invoiceNo: string;
+  receivedAt: string;
+};
+
+export type SupplierReturn = {
+  id: number;
+  returNo: string;
+  returnedAt: string;
+  supplierId: number;
+  supplierName: string;
+  notes: string;
+  createdBy: string;
+  totalQty: number;
+  totalValue: number;
+  items: SupplierReturnItem[];
 };
 
 export type AlokasiStatus = "perlu_alokasi" | "menunggu_cek" | "dikembalikan" | "selesai";

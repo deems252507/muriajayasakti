@@ -931,6 +931,61 @@ export function printSupplierInvoice(
   );
 }
 
+/**
+ * Surat Retur Pembelian: bukti barang dikembalikan ke pemasok. Tiap baris menyebut faktur pembelian asalnya
+ * (nomor + tanggal), supaya pemasok dan kita sama-sama bisa menelusuri barang itu berasal dari pengiriman yang mana.
+ */
+export function printSupplierReturn(
+  row: {
+    returNo: string;
+    returnedAt: string;
+    supplierName: string;
+    notes?: string;
+    createdBy?: string;
+    totalQty: number;
+    totalValue: number;
+    items: Array<{ nama: string; partNumber?: string; partNumbersAlt?: string; merek?: string; kodePajak?: string; qty: number; satuan: string; hargaBeli: number; alasan?: string; invoiceNo: string; receivedAt?: string }>;
+  },
+  supplier?: { alamat?: string; telp?: string },
+) {
+  const money = (value: unknown) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+  const fmt = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "short", year: "numeric" }) : "-");
+  const date = row.returnedAt ? new Date(row.returnedAt).toLocaleDateString("id-ID", { timeZone: "Asia/Makassar", day: "2-digit", month: "long", year: "numeric" }) : "-";
+  const lines = row.items.map((item, index) => `<tr>
+    <td class="c muted">${index + 1}</td>
+    <td><b>${esc(item.nama)}</b>${item.merek ? `<span class="chip">${esc(item.merek)}</span>` : ""}${item.kodePajak ? `<span class="chip">[${esc(item.kodePajak)}]</span>` : ""}<span class="sub">PN: ${esc(item.partNumber || "-")}${item.partNumbersAlt ? ` · Alt: ${esc(item.partNumbersAlt)}` : ""}</span></td>
+    <td><span class="mono">${esc(item.invoiceNo)}</span><span class="sub">${esc(fmt(item.receivedAt))}</span></td>
+    <td class="r">${Number(item.qty).toLocaleString("id-ID")} ${esc(item.satuan)}</td>
+    <td class="r">${money(item.hargaBeli)}</td>
+    <td class="r b">${money(Number(item.hargaBeli || 0) * Number(item.qty || 0))}</td>
+    <td>${esc(item.alasan || "-")}</td>
+  </tr>`).join("");
+  openModernPrint(
+    `Retur Pembelian ${row.returNo}`,
+    `<div class="doc-title"><div><h2>Retur Pembelian</h2><p>No. ${esc(row.returNo)}</p></div></div>
+    <div class="cards">
+      <div class="card"><span class="lbl">Kepada (Pemasok)</span><b class="big">${esc(row.supplierName)}</b>${supplier?.alamat ? `<p>${esc(supplier.alamat)}</p>` : ""}${supplier?.telp ? `<p>Telp: ${esc(supplier.telp)}</p>` : ""}</div>
+      <div class="card meta">
+        <div><span>No. Retur</span><b class="mono">${esc(row.returNo)}</b></div>
+        <div><span>Tanggal</span><b>${esc(date)}</b></div>
+        ${row.createdBy ? `<div><span>Dibuat oleh</span><b>${esc(row.createdBy)}</b></div>` : ""}
+      </div>
+    </div>
+    <table class="grid">
+      <thead><tr><th class="c" style="width:30px">No</th><th>Nama Barang</th><th style="width:104px">Faktur Asal</th><th class="r" style="width:70px">Kts</th><th class="r" style="width:88px">@Harga</th><th class="r" style="width:100px">Total Harga</th><th style="width:110px">Alasan</th></tr></thead>
+      <tbody>${lines}</tbody>
+    </table>
+    <div class="bottom">
+      <div class="notes"><span class="lbl">Keterangan</span><p>${esc(row.notes || "-")}</p></div>
+      <div class="totals">
+        <div class="trow"><span>Total Qty</span><span>${Number(row.totalQty || 0).toLocaleString("id-ID")}</span></div>
+        <div class="trow grand"><span>Total Retur</span><span>${money(row.totalValue)}</span></div>
+      </div>
+    </div>
+    <div class="sign"><div><p>Dibuat oleh,</p><i></i></div><div><p>Pengantar / pengirim,</p><i></i></div><div><p>Diterima pemasok,</p><i></i></div></div>`,
+  );
+}
+
 /** Laporan Stok Opname (landscape). Dipanggil dari tab Laporan di menu Stok Opname. */
 export function printOpnameReport(
   items: Array<{

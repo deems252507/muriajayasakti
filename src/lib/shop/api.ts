@@ -419,6 +419,53 @@ export const listSupplierReceipts = createServerFn({ method: "GET" })
     return run(data);
   });
 
+/** Baris faktur pembelian yang bisa diretur (per pemasok, per faktur, atau per nama / part number barang). */
+export const listReturnableLines = createServerFn({ method: "GET" })
+  .validator((input: { supplierId?: number | string; receiptId?: number; q?: string }) => ({
+    supplierId: input?.supplierId ? Number(input.supplierId) : 0,
+    receiptId: Number(input?.receiptId) > 0 ? Number(input.receiptId) : 0,
+    q: String(input?.q ?? "").trim(),
+  }))
+  .handler(async ({ data }) => {
+    const { listReturnableLines: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const createSupplierReturn = createServerFn({ method: "POST" })
+  .validator((input: { supplierId: number; returnedAt: string; notes?: string; items: Array<{ receiptLineId: number; qty: number; satuan: string; dari: "toko" | "gudang"; alasan?: string }> }) => ({
+    supplierId: Number(input?.supplierId),
+    returnedAt: String(input?.returnedAt ?? "").trim(),
+    notes: String(input?.notes ?? "").trim(),
+    items: Array.isArray(input?.items) ? input.items.map((item) => ({ receiptLineId: Number(item.receiptLineId), qty: Number(item.qty), satuan: String(item.satuan ?? ""), dari: (item.dari === "gudang" ? "gudang" : "toko") as "toko" | "gudang", alasan: String(item.alasan ?? "").trim() })) : [],
+  }))
+  .handler(async ({ data }) => {
+    const { createSupplierReturn: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const deleteSupplierReturn = createServerFn({ method: "POST" })
+  .validator((input: { id: number }) => ({ id: Number(input?.id) }))
+  .handler(async ({ data }) => {
+    const { deleteSupplierReturn: run } = await import("./logic.server");
+    return run(data);
+  });
+
+export const listSupplierReturns = createServerFn({ method: "GET" })
+  .validator((input: { id?: number; receiptId?: number; q?: string; supplierId?: number | string; start?: string; end?: string; page?: number; all?: boolean }) => ({
+    id: Number(input?.id) > 0 ? Number(input.id) : 0,
+    receiptId: Number(input?.receiptId) > 0 ? Number(input.receiptId) : 0,
+    q: String(input?.q ?? "").trim(),
+    supplierId: input?.supplierId ? Number(input.supplierId) : 0,
+    start: String(input?.start ?? "").trim(),
+    end: String(input?.end ?? "").trim(),
+    page: Math.max(1, Number(input?.page ?? 1) || 1),
+    all: Boolean(input?.all),
+  }))
+  .handler(async ({ data }) => {
+    const { listSupplierReturns: run } = await import("./logic.server");
+    return run(data);
+  });
+
 export const listInvoices = createServerFn({ method: "GET" })
   .validator((input: { q?: string; tujuan?: string; source?: string; status?: string; jenis?: string; start?: string; end?: string; page?: number; all?: boolean }) => ({
     q: String(input?.q ?? "").trim(),
