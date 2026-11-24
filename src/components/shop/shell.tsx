@@ -3,6 +3,8 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
   ClipboardCheck,
   ClipboardList,
   History,
@@ -24,6 +26,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
@@ -216,6 +219,27 @@ export function MarkWords({ text, q }: { text: string; q: string }) {
   return <>{parts}</>;
 }
 
+/** Tooltip nama menu untuk sidebar mini. Memakai portal supaya tidak terpotong oleh container sidebar. */
+function NavTip({ label, enabled, children }: { label: string; enabled: boolean; children: React.ReactNode }) {
+  return (
+    <Tooltip.Root delayDuration={80}>
+      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      {enabled ? (
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="right"
+            sideOffset={14}
+            className="z-[200] rounded-lg border border-blue-400/30 bg-[#0b1220] px-3 py-1.5 text-xs font-semibold text-white shadow-xl shadow-black/40"
+          >
+            {label}
+            <Tooltip.Arrow className="fill-[#0b1220]" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      ) : null}
+    </Tooltip.Root>
+  );
+}
+
 export function Shell({ me, children }: { me: Staff; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
@@ -261,6 +285,36 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
     try { localStorage.setItem("mjs-nav-folded", JSON.stringify(next)); } catch { /* abaikan */ }
     return next;
   });
+  // Sidebar mini (desktop saja). Pilihan disimpan di perangkat ini. Tanpa pilihan: tablet (<1024px) mulai mini.
+  const [miniPref, setMiniPref] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [animReady, setAnimReady] = useState(false); // animasi baru aktif setelah dimuat, supaya tidak "meluncur" saat halaman dibuka
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem("mjs-sidebar-mini"); } catch { /* abaikan */ }
+    setMiniPref(stored === null ? window.innerWidth < 1024 : stored === "1");
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    const timer = window.setTimeout(() => setAnimReady(true), 200);
+    return () => { mq.removeEventListener("change", sync); window.clearTimeout(timer); };
+  }, []);
+  const mini = miniPref && isDesktop; // di HP sidebar selalu penuh (off-canvas)
+  const toggleMini = () => setMiniPref((prev) => {
+    const next = !prev;
+    try { localStorage.setItem("mjs-sidebar-mini", next ? "1" : "0"); } catch { /* abaikan */ }
+    return next;
+  });
+  // HP: Esc menutup menu, dan halaman di belakang tidak ikut ter-scroll saat menu terbuka.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
+  }, [open]);
   const navigate = useNavigate();
   const navRef = useRef(navigate);
   navRef.current = navigate;
@@ -490,72 +544,117 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   }, []);
 
   return (
-    <div className="app-shell min-h-screen bg-paper text-ink md:grid md:grid-cols-[260px_1fr]">
-      <aside className={`no-print fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col bg-gradient-to-b from-[#121a2b] to-[#0b1220] text-white shadow-2xl transition-transform duration-200 md:static md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
-          <img src={logo} alt="" className="h-11 w-11 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/15" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-wide">{brand}</p>
-            <p className="text-[11px] text-white/45">Sistem Manajemen Stok</p>
+    <div className="app-shell min-h-screen bg-paper text-ink md:flex">
+      <aside
+        className={`no-print fixed inset-y-0 left-0 z-40 w-[280px] max-w-[85vw] bg-gradient-to-b from-[#121a2b] to-[#0b1220] text-white shadow-2xl md:sticky md:top-0 md:h-dvh md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none ${mini ? "md:w-[72px]" : "md:w-[270px]"} ${open ? "translate-x-0" : "-translate-x-full"} ${animReady ? "transition-[width,transform] duration-300 ease-in-out" : ""}`}
+      >
+        {/* Tombol kecilkan / perbesar (desktop), menempel di tepi sidebar */}
+        <button
+          type="button"
+          onClick={toggleMini}
+          aria-label={mini ? "Perbesar menu samping" : "Kecilkan menu samping"}
+          aria-expanded={!mini}
+          title={mini ? "Perbesar menu" : "Kecilkan menu"}
+          className="absolute top-7 -right-3.5 z-50 hidden size-7 place-items-center rounded-full border border-white/20 bg-[#16203a] text-white/80 shadow-lg transition-colors hover:bg-blue-600 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-400 md:grid"
+        >
+          {mini ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+        </button>
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="flex h-[84px] shrink-0 items-center gap-3 border-b border-white/10 px-[14px]">
+            <img src={logo} alt="" className="size-11 shrink-0 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/15" />
+            <div className={`min-w-0 flex-1 transition-opacity duration-200 ${mini ? "opacity-0" : "opacity-100 delay-100"}`} aria-hidden={mini}>
+              <p className="truncate text-sm font-bold tracking-wide">{brand}</p>
+              <p className="truncate text-[11px] text-white/45">Sistem Manajemen Stok</p>
+            </div>
+            <button className="ml-auto rounded-lg p-2 hover:bg-white/10 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup menu">
+              <X className="size-5" />
+            </button>
           </div>
-          <button className="ml-auto rounded-lg p-2 hover:bg-white/10 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup menu">
-            <X className="size-5" />
-          </button>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Menu utama">
-          {groups.map((group) => {
-            const single = group.items.length === 1;
-            const hasActive = group.items.some((item) => navPath === item.to);
-            const collapsed = !single && !hasActive && Boolean(folded[group.label]);
-            const groupBadge = group.items.reduce((sum, item) => sum + ((item.to as string) === "/chat" ? chatBadge : (item.to as string) === "/alokasi" ? alokBadge : 0), 0);
-            return (
-              <div key={group.label} className="mt-2">
-                {single ? (
-                  <p className="px-3 text-[10px] font-semibold tracking-[0.18em] text-white/35 uppercase">{group.label}</p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.label)}
-                    aria-expanded={!collapsed}
-                    className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[10px] font-semibold tracking-[0.18em] text-white/45 uppercase transition hover:bg-white/10 hover:text-white/80"
-                  >
-                    <span className="flex-1">{group.label}</span>
-                    {collapsed && groupBadge > 0 ? <span className="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold tracking-normal text-white">{groupBadge > 99 ? "99+" : groupBadge}</span> : null}
-                    <ChevronDown className={`size-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
-                  </button>
-                )}
-                {collapsed ? null : (
-                  <div className="mt-1 flex flex-col gap-0.5">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const active = navPath === item.to;
-                      return (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => setOpen(false)}
-                          aria-current={active ? "page" : undefined}
-                          className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white text-ink shadow-sm font-semibold" : "text-white/75 hover:bg-white/20 hover:text-white"}`}
-                        >
-                          <Icon className={`size-4 shrink-0 ${active ? "text-accent" : ""}`} />
-                          {item.label}
-                          {(item.to as string) === "/chat" && chatBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
-                          {(item.to as string) === "/alokasi" && alokBadge > 0 ? <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" aria-label={`${alokBadge} faktur perlu tindakan`}>{alokBadge > 99 ? "99+" : alokBadge}</span> : null}
-                        </Link>
-                      );
-                    })}
+          <Tooltip.Provider delayDuration={80} skipDelayDuration={300}>
+            <nav
+              className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 ${mini ? "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : ""}`}
+              aria-label="Menu utama"
+            >
+              {groups.map((group) => {
+                const single = group.items.length === 1;
+                const hasActive = group.items.some((item) => navPath === item.to);
+                // Lipatan grup hanya berlaku di sidebar penuh. Di mode mini semua ikon tampil, status lipatan tidak diubah.
+                const collapsed = !single && !hasActive && Boolean(folded[group.label]);
+                const showItems = mini || !collapsed;
+                const groupBadge = group.items.reduce((sum, item) => sum + ((item.to as string) === "/chat" ? chatBadge : (item.to as string) === "/alokasi" ? alokBadge : 0), 0);
+                return (
+                  <div key={group.label} className="mt-1">
+                    <div className={`relative overflow-hidden ${animReady ? "transition-[height] duration-300 ease-in-out" : ""} ${mini ? "h-3" : "h-9"}`}>
+                      <div className={`absolute inset-x-3 top-1/2 h-px -translate-y-1/2 bg-white/10 transition-opacity duration-300 ${mini ? "opacity-100" : "opacity-0"}`} aria-hidden />
+                      <div className={`transition-opacity duration-200 ${mini ? "pointer-events-none opacity-0" : "opacity-100 delay-100"}`} aria-hidden={mini}>
+                        {single ? (
+                          <p className="flex h-9 items-center px-3 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap text-white/35 uppercase">{group.label}</p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.label)}
+                            aria-expanded={!collapsed}
+                            disabled={mini}
+                            tabIndex={mini ? -1 : 0}
+                            className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap text-white/45 uppercase transition-colors hover:bg-white/10 hover:text-white/80"
+                          >
+                            <span className="flex-1">{group.label}</span>
+                            {collapsed && groupBadge > 0 ? <span className="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold tracking-normal text-white">{groupBadge > 99 ? "99+" : groupBadge}</span> : null}
+                            <ChevronDown className={`size-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {showItems ? (
+                      <div className="flex flex-col gap-0.5">
+                        {group.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = navPath === item.to;
+                          const badge = (item.to as string) === "/chat" ? chatBadge : (item.to as string) === "/alokasi" ? alokBadge : 0;
+                          const badgeText = badge > 99 ? "99+" : String(badge);
+                          const tip = badge > 0 ? `${item.label} (${badgeText})` : item.label;
+                          return (
+                            <NavTip key={item.to} label={tip} enabled={mini}>
+                              <Link
+                                to={item.to}
+                                onClick={() => setOpen(false)}
+                                aria-current={active ? "page" : undefined}
+                                aria-label={mini ? tip : undefined}
+                                className={`relative flex h-10 items-center gap-3 rounded-xl pr-3 pl-[15px] text-sm transition-colors ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600/80 font-semibold text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                              >
+                                {active ? <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-sky-300" aria-hidden /> : null}
+                                <span className="relative grid size-[18px] shrink-0 place-items-center">
+                                  <Icon className="size-[18px]" />
+                                  {mini && badge > 0 ? <span className="absolute -top-1.5 -right-2 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[9px] leading-4 font-bold text-white ring-2 ring-[#101829]">{badgeText}</span> : null}
+                                </span>
+                                <span className={`min-w-0 flex-1 truncate transition-opacity duration-200 ${mini ? "opacity-0" : "opacity-100 delay-100"}`}>{item.label}</span>
+                                {!mini && badge > 0 ? <span className="grid min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white" aria-label={`${badge} perlu perhatian`}>{badgeText}</span> : null}
+                              </Link>
+                            </NavTip>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-        <div className="mt-auto border-t border-white/10 px-4 py-3">
-          <p className="text-[11px] leading-5 text-white/70">Developed by Rizky Dwi Maulana</p>
+                );
+              })}
+            </nav>
+          </Tooltip.Provider>
+          <div className="mt-auto shrink-0 overflow-hidden border-t border-white/10 px-4 py-3">
+            <p className={`text-[11px] leading-5 whitespace-nowrap text-white/70 transition-opacity duration-200 ${mini ? "opacity-0" : "opacity-100 delay-100"}`} aria-hidden={mini}>Developed by Rizky Dwi Maulana</p>
+          </div>
         </div>
       </aside>
-      {open ? <button className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={() => setOpen(false)} aria-label="Tutup" /> : null}
-      <div className="min-w-0">
+      {/* Overlay gelap (HP): klik untuk menutup menu */}
+      <button
+        type="button"
+        tabIndex={open ? 0 : -1}
+        aria-hidden={!open}
+        onClick={() => setOpen(false)}
+        aria-label="Tutup menu"
+        className={`no-print fixed inset-0 z-30 bg-black/55 backdrop-blur-[2px] transition-opacity duration-300 md:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+      />
+      <div className="min-w-0 md:flex-1">
         <header ref={headerRef} className="no-print sticky top-0 z-20 border-b border-white/60 bg-white/80 px-3 py-3 backdrop-blur-md sm:px-5">
           <div className="flex items-center gap-3">
             <button className="grid size-11 place-items-center rounded-xl border border-line bg-white md:hidden" onClick={() => setOpen(true)} aria-label="Menu">
