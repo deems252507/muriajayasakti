@@ -1,4 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowLeftRight, Banknote, CalendarDays, PackageCheck, PackagePlus, PackageX, Receipt, ShoppingCart, TriangleAlert } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { iconAnim } from "@/components/shop/nav-icon";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getDashboard } from "@/lib/shop/api";
@@ -146,8 +149,11 @@ function AdminDash({ data, readOnly = false }: { data: NonNullable<Awaited<Retur
         <Stat label="Tunai Hari Ini" value={rupiah(data.today.tunai)} hint="Penjualan cash" tone="ok" />
         <Stat label="Transfer Hari Ini" value={rupiah(data.today.transfer)} hint="Transfer / Split" />
         <Stat label="Bon / Piutang" value={rupiah(data.today.bon)} hint="Hari ini" tone="danger" />
-        <div className="rounded-xl border border-line bg-panel p-4 text-left shadow-sm">
-          <p className="text-[9px] font-bold tracking-wider text-muted uppercase">Barang Masuk</p>
+        <div className="group rounded-xl border border-line bg-panel p-4 text-left shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[9px] font-bold tracking-wider text-muted uppercase">Barang Masuk</p>
+            <StatIcon icon={PackagePlus} bg="bg-amber-50" color="text-amber-600" />
+          </div>
           <p className="num mt-2 text-xl font-black text-amber-600">{data.monthIn.qty} item</p>
           <p className="mt-1 text-[9px] text-muted">Bulan berjalan{readOnly ? "" : " · lihat di Transaksi Manual"}</p>
         </div>
@@ -306,11 +312,36 @@ function TopProducts({ items, compact = false }: { items: Array<{ nama: string; 
   );
 }
 
+const STAT_ICON: Record<string, LucideIcon> = {
+  "Penjualan Hari Ini": ShoppingCart,
+  "Penjualan Bulan": CalendarDays,
+  Tunai: Banknote,
+  "Tunai Hari Ini": Banknote,
+  "Transfer Hari Ini": ArrowLeftRight,
+  "Bon / Piutang": Receipt,
+  "Barang Terjual": PackageCheck,
+  "Stok Kritis": TriangleAlert,
+  "Stok Habis": PackageX,
+};
+
+function StatIcon({ icon: Icon, bg, color }: { icon: LucideIcon; bg: string; color: string }) {
+  return (
+    <span className={`grid size-7 shrink-0 place-items-center rounded-lg sm:size-8 ${bg} ${color}`} aria-hidden>
+      <Icon className={`size-[var(--mjs-ico-card)] ${iconAnim(Icon)}`} />
+    </span>
+  );
+}
+
 function Stat({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "ok" | "danger" | "warn" | "info" }) {
   const color = tone === "ok" ? "text-emerald-600" : tone === "danger" ? "text-rose-600" : tone === "warn" ? "text-orange-500" : tone === "info" ? "text-blue-600" : "text-ink";
+  const bg = tone === "ok" ? "bg-emerald-50" : tone === "danger" ? "bg-rose-50" : tone === "warn" ? "bg-orange-50" : tone === "info" ? "bg-blue-50" : "bg-slate-100";
+  const Icon = STAT_ICON[label];
   return (
-    <section className="rounded-xl border border-line bg-panel p-4 shadow-sm">
-      <p className="text-[9px] font-bold tracking-wider text-muted uppercase">{label}</p>
+    <section className="group rounded-xl border border-line bg-panel p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[9px] font-bold tracking-wider text-muted uppercase">{label}</p>
+        {Icon ? <StatIcon icon={Icon} bg={bg} color={color} /> : null}
+      </div>
       <p className={`num mt-2 text-sm leading-tight font-black break-words sm:text-lg ${color}`}>{value}</p>
       <p className="mt-1 text-[9px] text-muted">{hint}</p>
     </section>

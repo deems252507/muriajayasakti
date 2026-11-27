@@ -1,16 +1,22 @@
 import {
   ArrowLeftRight,
+  Banknote,
   CalendarDays,
   ClipboardCheck,
   ClipboardList,
   Coins,
   History,
   MessageCircle,
+  PackageCheck,
+  PackagePlus,
+  PackageX,
+  Receipt,
   RefreshCw,
   ScrollText,
   Settings,
   ShoppingCart,
   TrendingUp,
+  TriangleAlert,
   Undo2,
   Wallet,
 } from "lucide-react";
@@ -32,6 +38,12 @@ const ANIM = new Map<unknown, string>([
   [TrendingUp, "rise"],
   [Coins, "hop"],
   [RefreshCw, "cw"],
+  [Banknote, "hop"],
+  [TriangleAlert, "wiggle"],
+  [PackageX, "wiggle"],
+  [PackagePlus, "hop"],
+  [PackageCheck, "pop"],
+  [Receipt, "pop"],
 ]);
 
 export function iconAnim(icon: unknown): string {
