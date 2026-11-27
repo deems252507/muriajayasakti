@@ -649,3 +649,45 @@ button.xbtn:active:not(:disabled) {
     animation: none;
   }
 }
+
+
+/* Ikon sidebar & header: ukuran menyesuaikan lebar layar + animasi hover/tap (gaya AnimateIcons) */
+:root { --mjs-ico-nav: clamp(18px, 0.4vw + 15px, 20px); --mjs-ico-hdr: clamp(16px, 0.4vw + 13px, 20px); }
+.mjs-ico { transform-origin: center; transform-box: fill-box; }
+@keyframes mjs-k-pop { 0% { transform: scale(1); } 30% { transform: scale(0.82); } 65% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes mjs-k-nudge { 0%, 100% { transform: translateX(0) rotate(0); } 40% { transform: translateX(3px) rotate(-6deg); } 70% { transform: translateX(-1px) rotate(2deg); } }
+@keyframes mjs-k-undo { 0% { transform: rotate(0); } 40% { transform: rotate(-28deg); } 100% { transform: rotate(0); } }
+@keyframes mjs-k-hop { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-3px); } 65% { transform: translateY(0.5px); } }
+@keyframes mjs-k-swap { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(3px); } 65% { transform: translateX(-3px); } }
+@keyframes mjs-k-ccw { 0% { transform: rotate(0); } 100% { transform: rotate(-360deg); } }
+@keyframes mjs-k-cw { 0% { transform: rotate(0); } 100% { transform: rotate(180deg); } }
+@keyframes mjs-k-cog { 0% { transform: rotate(0); } 100% { transform: rotate(90deg); } }
+@keyframes mjs-k-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 55% { transform: rotate(8deg); } 80% { transform: rotate(-3deg); } }
+@keyframes mjs-k-tilt { 0%, 100% { transform: scale(1) rotate(0); } 40% { transform: scale(1.14) rotate(-8deg); } 70% { transform: scale(1.06) rotate(4deg); } }
+@keyframes mjs-k-rise { 0%, 100% { transform: translate(0, 0); } 45% { transform: translate(2px, -2px); } }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .group:hover .mjs-i-pop { animation: mjs-k-pop 0.6s cubic-bezier(0.34, 1.4, 0.64, 1); }
+  .group:hover .mjs-i-nudge { animation: mjs-k-nudge 0.7s ease-in-out; }
+  .group:hover .mjs-i-undo { animation: mjs-k-undo 0.6s ease-in-out; }
+  .group:hover .mjs-i-hop { animation: mjs-k-hop 0.6s ease-out; }
+  .group:hover .mjs-i-swap { animation: mjs-k-swap 0.7s ease-in-out; }
+  .group:hover .mjs-i-ccw { animation: mjs-k-ccw 0.8s ease-in-out; }
+  .group:hover .mjs-i-cw { animation: mjs-k-cw 0.5s ease-in-out forwards; }
+  .group:hover .mjs-i-cog { animation: mjs-k-cog 0.6s ease-in-out; }
+  .group:hover .mjs-i-wiggle { animation: mjs-k-wiggle 0.6s ease-in-out; }
+  .group:hover .mjs-i-tilt { animation: mjs-k-tilt 0.6s ease-in-out; }
+  .group:hover .mjs-i-rise { animation: mjs-k-rise 0.6s ease-out; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .group:active .mjs-i-pop { animation: mjs-k-pop 0.6s cubic-bezier(0.34, 1.4, 0.64, 1); }
+  .group:active .mjs-i-nudge { animation: mjs-k-nudge 0.7s ease-in-out; }
+  .group:active .mjs-i-undo { animation: mjs-k-undo 0.6s ease-in-out; }
+  .group:active .mjs-i-hop { animation: mjs-k-hop 0.6s ease-out; }
+  .group:active .mjs-i-swap { animation: mjs-k-swap 0.7s ease-in-out; }
+  .group:active .mjs-i-ccw { animation: mjs-k-ccw 0.8s ease-in-out; }
+  .group:active .mjs-i-cw { animation: mjs-k-cw 0.5s ease-in-out forwards; }
+  .group:active .mjs-i-cog { animation: mjs-k-cog 0.6s ease-in-out; }
+  .group:active .mjs-i-wiggle { animation: mjs-k-wiggle 0.6s ease-in-out; }
+  .group:active .mjs-i-tilt { animation: mjs-k-tilt 0.6s ease-in-out; }
+  .group:active .mjs-i-rise { animation: mjs-k-rise 0.6s ease-out; }
+}

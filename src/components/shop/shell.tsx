@@ -1,12 +1,15 @@
 import { clearPersistedState } from "@/lib/persist";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { iconAnim } from "@/components/shop/nav-icon";
 import {
   ArrowLeftRight,
+  CalendarDays,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   ClipboardCheck,
   ClipboardList,
+  Coins,
   History,
   LayoutDashboard,
   Menu,
@@ -20,6 +23,7 @@ import {
   ScrollText,
   Settings,
   ShoppingCart,
+  TrendingUp,
   Undo2,
   Users,
   Wallet,
@@ -75,11 +79,11 @@ const ADMIN = [
   {
     label: "Keuangan & Laporan",
     items: [
-      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
-      { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
+      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: TrendingUp },
+      { to: "/laporan-kas", label: "Laporan Kas Harian", icon: CalendarDays },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
-      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Warehouse },
+      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Coins },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
@@ -104,11 +108,11 @@ const OWNER = [
     label: "Laporan",
     items: [
       { to: "/riwayat", label: "Riwayat Transaksi", icon: History },
-      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: ClipboardList },
-      { to: "/laporan-kas", label: "Laporan Kas Harian", icon: ClipboardList },
+      { to: "/laporan-penjualan", label: "Laporan Barang Terjual", icon: TrendingUp },
+      { to: "/laporan-kas", label: "Laporan Kas Harian", icon: CalendarDays },
       { to: "/bon", label: "Bon / Piutang", icon: Receipt },
       { to: "/stok", label: "Laporan Stok", icon: ClipboardList },
-      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Warehouse },
+      { to: "/laporan-gudang", label: "Nilai Stok Toko & Gudang", icon: Coins },
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
@@ -620,11 +624,11 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                                 onClick={() => setOpen(false)}
                                 aria-current={active ? "page" : undefined}
                                 aria-label={mini ? tip : undefined}
-                                className={`relative flex h-10 items-center gap-3 rounded-xl pr-3 pl-[15px] text-sm transition-colors ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600/80 font-semibold text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                                className={`group relative flex h-10 items-center gap-3 rounded-xl pr-3 pl-[15px] text-sm transition-colors ${active ? "bg-gradient-to-r from-blue-600 to-indigo-600/80 font-semibold text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
                               >
                                 {active ? <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-sky-300" aria-hidden /> : null}
-                                <span className="relative grid size-[18px] shrink-0 place-items-center">
-                                  <Icon className="size-[18px]" />
+                                <span className="relative grid size-[var(--mjs-ico-nav)] shrink-0 place-items-center">
+                                  <Icon className={`size-[var(--mjs-ico-nav)] ${iconAnim(Icon)}`} />
                                   {mini && badge > 0 ? <span className="absolute -top-1.5 -right-2 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[9px] leading-4 font-bold text-white ring-2 ring-[#101829]">{badgeText}</span> : null}
                                 </span>
                                 <span className={`min-w-0 flex-1 truncate transition-opacity duration-200 ${mini ? "opacity-0" : "opacity-100 delay-100"}`}>{item.label}</span>
@@ -658,7 +662,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
         <header ref={headerRef} className="no-print sticky top-0 z-20 border-b border-white/60 bg-white/80 px-3 py-3 backdrop-blur-md sm:px-5">
           <div className="flex items-center gap-3">
             <button className="grid size-11 place-items-center rounded-xl border border-line bg-white md:hidden" onClick={() => setOpen(true)} aria-label="Menu">
-              <Menu className="size-5" />
+              <Menu className="size-[var(--mjs-ico-hdr)]" />
             </button>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">{me.role}</p>
@@ -682,8 +686,8 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 {chatBadge > 0 ? <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
               </Link>
               {me.role === "Admin" ? <CommentHost unread={tagBadge} /> : null}
-              <button className="grid size-10 place-items-center rounded-xl border border-line bg-white text-muted" onClick={() => window.location.reload()} aria-label="Muat ulang">
-                <RefreshCw className="size-4" />
+              <button className="group grid size-10 place-items-center rounded-xl border border-line bg-white text-muted" onClick={() => window.location.reload()} aria-label="Muat ulang">
+                <RefreshCw className={`size-[var(--mjs-ico-hdr)] ${iconAnim(RefreshCw)}`} />
               </button>
               <ProfileMenu
                 me={me}
