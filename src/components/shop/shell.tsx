@@ -682,7 +682,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 aria-label={chatBadge > 0 ? `Chat Staff, ${chatBadge} pesan belum dibaca` : "Chat Staff"}
                 className={`group relative grid size-10 place-items-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 ${chatBadge > 0 ? "mjs-attn-green" : ""} ${path === "/chat" ? "ring-2 ring-emerald-500 ring-offset-2" : ""}`}
               >
-                <WhatsappLineIcon className={`size-[calc(var(--mjs-ico-hdr)+4px)] ${iconAnim(WhatsappLineIcon)}`} />
+                <WhatsappLineIcon className={`size-[var(--mjs-ico-hdr)] ${iconAnim(WhatsappLineIcon)}`} />
                 {chatBadge > 0 ? <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
               </Link>
               {me.role === "Admin" ? <CommentHost unread={tagBadge} /> : null}
