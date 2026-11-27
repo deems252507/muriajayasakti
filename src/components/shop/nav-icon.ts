@@ -20,6 +20,7 @@ import {
   Undo2,
   Wallet,
 } from "lucide-react";
+import { WhatsappLineIcon } from "@/components/shop/whatsapp-icon";
 
 // Animasi hover ikon (gaya AnimateIcons, murni CSS: tanpa paket tambahan). Keyframes ada di styles.css.
 // Ikon yang tidak terdaftar memakai "pop". Parent ikon harus punya class `group`.
@@ -34,6 +35,7 @@ const ANIM = new Map<unknown, string>([
   [CalendarDays, "wiggle"],
   [Settings, "cog"],
   [MessageCircle, "tilt"],
+  [WhatsappLineIcon, "tilt"],
   [ScrollText, "hop"],
   [TrendingUp, "rise"],
   [Coins, "hop"],

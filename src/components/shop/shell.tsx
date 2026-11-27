@@ -1,6 +1,7 @@
 import { clearPersistedState } from "@/lib/persist";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { iconAnim } from "@/components/shop/nav-icon";
+import { WhatsappLineIcon } from "@/components/shop/whatsapp-icon";
 import {
   ArrowLeftRight,
   CalendarDays,
@@ -13,7 +14,6 @@ import {
   History,
   LayoutDashboard,
   Menu,
-  MessageCircle,
   Package,
   PackageCheck,
   PackagePlus,
@@ -94,7 +94,7 @@ const ADMIN = [
   {
     label: "Sistem",
     items: [
-      { to: "/chat", label: "Chat Staff", icon: MessageCircle },
+      { to: "/chat", label: "Chat Staff", icon: WhatsappLineIcon },
       { to: "/jejak", label: "Riwayat Aktivitas", icon: ScrollText },
       { to: "/pengaturan", label: "Pengaturan", icon: Settings },
     ],
@@ -116,7 +116,7 @@ const OWNER = [
       { to: "/pajak", label: "Data Pajak Internal", icon: Percent },
     ],
   },
-  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: WhatsappLineIcon }] },
   {
     label: "Data (lihat saja)",
     items: [
@@ -139,7 +139,7 @@ const STAF = [
       { to: "/gudang", label: "Stok Gudang", icon: Warehouse },
     ],
   },
-  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: WhatsappLineIcon }] },
   { label: "Akun", items: [{ to: "/pengaturan", label: "Pengaturan", icon: Settings }] },
 ] as const;
 
@@ -161,7 +161,7 @@ const KASIR = [
     ],
   },
   { label: "Gudang", items: [{ to: "/gudang", label: "Stok Gudang", icon: Warehouse }] },
-  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: MessageCircle }] },
+  { label: "Komunikasi", items: [{ to: "/chat", label: "Chat Staff", icon: WhatsappLineIcon }] },
 ] as const;
 
 /** Halaman yang tampil sebagai tab di dalam menu lain (menu samping tetap menyala di induknya). */
@@ -680,9 +680,9 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
                 key={`chat-${chatBadge > 0 ? "n" : "0"}`}
                 title="Chat Staff"
                 aria-label={chatBadge > 0 ? `Chat Staff, ${chatBadge} pesan belum dibaca` : "Chat Staff"}
-                className={`relative grid size-10 place-items-center rounded-xl transition-transform hover:scale-105 ${chatBadge > 0 ? "mjs-attn-green" : ""} ${path === "/chat" ? "ring-2 ring-emerald-500 ring-offset-2" : ""}`}
+                className={`group relative grid size-10 place-items-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 ${chatBadge > 0 ? "mjs-attn-green" : ""} ${path === "/chat" ? "ring-2 ring-emerald-500 ring-offset-2" : ""}`}
               >
-                <img src="/brand/whatsapp.png" alt="" width="40" height="40" className="size-10 rounded-xl" draggable={false} />
+                <WhatsappLineIcon className={`size-[calc(var(--mjs-ico-hdr)+4px)] ${iconAnim(WhatsappLineIcon)}`} />
                 {chatBadge > 0 ? <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white">{chatBadge > 99 ? "99+" : chatBadge}</span> : null}
               </Link>
               {me.role === "Admin" ? <CommentHost unread={tagBadge} /> : null}
