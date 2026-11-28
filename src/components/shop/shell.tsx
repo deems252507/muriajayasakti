@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { useEffect, useRef, useState } from "react";
+import { useQuickKeys } from "@/components/shop/quick-keys";
+import { QuickProducts } from "@/components/shop/quick-products";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
 import { alokasiInbox, chatUnread, itemCommentInbox, logout, listMasters } from "@/lib/shop/api";
@@ -531,6 +533,8 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   // Pengaturan hanya terlihat oleh Admin 1 (Admin yang dicentang kelola akun).
   // Staf, Admin lain, dan Owner juga melihat Pengaturan, tetapi isinya hanya Nama dan Foto Akun. Kasir tidak.
   const groups = (me.canManageStaff || me.role !== "Kasir" ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as unknown as typeof baseGroups;
+  const [quickOpen, setQuickOpen] = useState(false);
+  useQuickKeys((to) => { void navRef.current({ to } as never); }, groups.flatMap((group) => group.items.map((item) => item.to as string)), () => setQuickOpen((v) => !v));
   const navPath = PATH_ALIAS[path] ?? path;
   const current = path === "/retur-pemasok" ? "Pembelian · Retur" : path === "/pemasok" ? "Pembelian · Faktur" : groups.flatMap((group) => [...group.items]).find((item) => navPath === item.to)?.label ?? brand;
   const printable = ["/laporan-kas", "/stok", "/pajak", "/riwayat", "/bon", "/kas", "/laporan-gudang"].includes(path);
@@ -698,6 +702,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
             </div>
           </div>
         </header>
+        <QuickProducts open={quickOpen} onClose={() => setQuickOpen(false)} />
         {askLogout ? (
           <LogoutDialog
             name={me.name}
