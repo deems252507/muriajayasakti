@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { useEffect, useRef, useState } from "react";
-import { useQuickKeys } from "@/components/shop/quick-keys";
+import { useCloseDropdownsOutside, useQuickKeys } from "@/components/shop/quick-keys";
 import { QuickProducts } from "@/components/shop/quick-products";
 import { toast } from "sonner";
 import { installStockAlerts } from "@/lib/shop/alerts";
@@ -534,6 +534,7 @@ export function Shell({ me, children }: { me: Staff; children: React.ReactNode }
   // Staf, Admin lain, dan Owner juga melihat Pengaturan, tetapi isinya hanya Nama dan Foto Akun. Kasir tidak.
   const groups = (me.canManageStaff || me.role !== "Kasir" ? baseGroups : baseGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.to !== "/pengaturan") }))) as unknown as typeof baseGroups;
   const [quickOpen, setQuickOpen] = useState(false);
+  useCloseDropdownsOutside();
   useQuickKeys((to) => { void navRef.current({ to } as never); }, groups.flatMap((group) => group.items.map((item) => item.to as string)), () => setQuickOpen((v) => !v));
   const navPath = PATH_ALIAS[path] ?? path;
   const current = path === "/retur-pemasok" ? "Pembelian · Retur" : path === "/pemasok" ? "Pembelian · Faktur" : groups.flatMap((group) => [...group.items]).find((item) => navPath === item.to)?.label ?? brand;

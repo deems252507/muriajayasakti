@@ -105,3 +105,28 @@ export function useQuickKeys(go: (to: string) => void, allowed: string[], onList
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 }
+
+// Dropdown berbentuk <details> (Kategori, Urutan, Jenis pajak, dll.): tutup otomatis saat klik/sentuh di luar
+// dropdown atau menekan Esc. Hanya <details> yang isinya melayang (class "absolute"); akordeon biasa tidak disentuh.
+export function useCloseDropdownsOutside() {
+  useEffect(() => {
+    const floating = () =>
+      Array.from(document.querySelectorAll<HTMLDetailsElement>("details[open]")).filter((d) =>
+        Array.from(d.children).some((c) => c.tagName !== "SUMMARY" && c.classList.contains("absolute")),
+      );
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      for (const d of floating()) if (target && !d.contains(target)) d.open = false;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      for (const d of floating()) d.open = false;
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+}
