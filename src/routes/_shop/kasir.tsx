@@ -58,6 +58,9 @@ function KasirPage() {
   const [productOpen, setProductOpen] = useState(false);
   const [ambil, setAmbil] = useState<Product | null>(null);
   const [searchTick, setSearchTick] = useState(0);
+  // Tampilan HP: keranjang & pembayaran muncul sebagai panel dari bawah (tampilan saja, alur tidak berubah).
+  const [cartOpen, setCartOpen] = useState(false);
+  useEffect(() => { if (cart.length === 0) setCartOpen(false); }, [cart.length]);
   const [scanConfirm, setScanConfirm] = useState<{ product: Product; unit: "pcs" | "dus" | null } | null>(null);
   const scanLock = useRef(false);
   // true hanya kalau isi kolom datang dari alat scan (ketikan sangat cepat), tempel, atau kamera.
@@ -274,13 +277,10 @@ function KasirPage() {
 
   if (me.role === "Owner") return <Panel><p>Halaman ini untuk operasional Admin/Kasir. Akun Owner hanya melihat laporan.</p></Panel>;
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Panel className="lg:col-span-2">
-        <div className="mb-3 flex justify-end">
-          <Link to="/retur" className="inline-flex items-center gap-2 rounded-lg bg-red-100 px-4 py-2 text-sm font-bold text-red-600">Proses Retur/Tukar</Link>
-        </div>
+    <div className="grid gap-4 pb-24 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:pb-0 xl:grid-cols-[minmax(0,1fr)_440px]">
+      <Panel className="min-w-0">
         <input
-          className={inputClass}
+          className={`${inputClass} h-14! rounded-2xl! border-2! border-slate-300! text-base! shadow-sm`}
           placeholder="Ketik nama, part, kategori (oli), atau scan barcode..."
           value={q}
           onChange={(e) => onSearchChange(e.target.value)}
@@ -310,12 +310,15 @@ function KasirPage() {
             <button className="absolute top-2 right-2 rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" onClick={() => setCamera(false)}>Tutup Kamera</button>
           </div>
         ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {me.role !== "Kasir" ? (
-            <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500" onClick={() => setProductOpen(true)}>Tambah Baru</button>
+            <button className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setProductOpen(true)}>+ Tambah Baru</button>
           ) : null}
-          <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-purple-300 text-xs text-purple-500" onClick={() => setCustomOpen(true)}>Jasa / Item Custom</button>
-          {!camera ? <button className="flex min-h-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-green-300 text-xs text-green-500" onClick={() => setCamera(true)}>Scan Barcode (Kamera)</button> : null}
+          <button className="inline-flex h-10 items-center justify-center rounded-xl border border-purple-200 bg-purple-50 px-3 text-xs font-bold text-purple-700 hover:bg-purple-100" onClick={() => setCustomOpen(true)}>Jasa / Item Custom</button>
+          {!camera ? <button className="inline-flex h-10 items-center justify-center rounded-xl border border-green-200 bg-green-50 px-3 text-xs font-bold text-green-700 hover:bg-green-100" onClick={() => setCamera(true)}>Scan Barcode (Kamera)</button> : null}
+          <Link to="/retur" className="ml-auto inline-flex h-10 items-center justify-center rounded-xl bg-red-100 px-3 text-xs font-bold text-red-600">Proses Retur/Tukar</Link>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {hits.map((item) => {
             const dusOk = Boolean(item.satuanAlt && item.isiSatuanAlt > 0);
             const dusStok = dusOk ? Math.floor(item.stok / item.isiSatuanAlt) : 0;
@@ -359,7 +362,11 @@ function KasirPage() {
           })}
         </div>
       </Panel>
-      <Panel className={`flex flex-col ${metode === "Bon" ? "ring-2 ring-red-500" : ""}`}>
+      <Panel className={`${cartOpen ? "fixed inset-x-0 bottom-0 z-40 flex max-h-[90dvh] overflow-y-auto rounded-b-none! rounded-t-3xl!" : "hidden"} flex-col lg:sticky lg:inset-x-auto lg:top-24 lg:bottom-auto lg:z-auto lg:flex lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:rounded-2xl! ${metode === "Bon" ? "ring-2 ring-red-500" : ""}`}>
+        <div className="mb-3 flex items-center justify-between lg:hidden">
+          <span className="text-base font-extrabold">Keranjang &amp; Pembayaran</span>
+          <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold" onClick={() => setCartOpen(false)}>Tutup</button>
+        </div>
         <Field label="Kasir (Shift)">
           <select className={`${inputClass} font-bold text-blue-600`} value={shiftId} onChange={(e) => setShiftId(e.target.value)} disabled={me.role === "Kasir"}>
             {shifts.length === 0 ? <option value="">Tidak ada shift aktif</option> : null}
@@ -395,7 +402,7 @@ function KasirPage() {
             </select>
           </Field>
         </div>
-        <ul className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-slate-100">
+        <ul className="mt-3 max-h-56 overflow-y-auto xl:max-h-80 rounded-lg border border-slate-100">
           {cart.length === 0 ? <li className="p-4 text-center text-xs text-slate-400">Keranjang kosong</li> : null}
           {cart.map((line) => (
             <li key={line.key} className="row-hover-flat border-b border-slate-100 p-2">
@@ -477,7 +484,7 @@ function KasirPage() {
                 ["Split", "bg-indigo-500"],
                 ["Bon", "bg-red-500"],
               ] as const).map(([item, color]) => (
-                <button key={item} className={`rounded-md py-2 text-xs font-bold ${metode === item ? `${color} text-white` : "border border-slate-200 bg-white text-slate-600"}`} onClick={() => setMetode(item)}>{item}</button>
+                <button key={item} className={`rounded-md py-3 text-xs font-bold lg:py-2 ${metode === item ? `${color} text-white` : "border border-slate-200 bg-white text-slate-600"}`} onClick={() => setMetode(item)}>{item}</button>
               ))}
             </div>
             {metode === "Tunai" ? (
@@ -486,9 +493,9 @@ function KasirPage() {
                   <input className={`${inputClass} num text-right font-bold text-green-600`} inputMode="numeric" value={bayar} onChange={(e) => setBayar(grouped(digits(e.target.value)))} />
                 </Field>
                 <div className="flex gap-1.5">
-                  <button type="button" className="flex-1 rounded bg-slate-200 py-1.5 text-[10px] font-bold" onClick={() => setBayar(grouped(total))}>Uang Pas</button>
+                  <button type="button" className="flex-1 rounded-md bg-slate-200 py-2.5 text-xs font-bold lg:py-1.5" onClick={() => setBayar(grouped(total))}>Uang Pas</button>
                   {[50000, 100000, 200000].map((nominal) => (
-                    <button key={nominal} type="button" className="flex-1 rounded bg-slate-200 py-1.5 text-[10px] font-bold" onClick={() => setBayar(grouped(nominal))}>{nominal / 1000}K</button>
+                    <button key={nominal} type="button" className="flex-1 rounded-md bg-slate-200 py-2.5 text-xs font-bold lg:py-1.5" onClick={() => setBayar(grouped(nominal))}>{nominal / 1000}K</button>
                   ))}
                 </div>
                 <div className="flex justify-between rounded-lg border border-green-100 bg-green-50 p-2 text-sm">
@@ -541,11 +548,26 @@ function KasirPage() {
               <span className="num text-2xl font-extrabold text-red-600">{rupiah(total)}</span>
             </div>
           </div>
-          <button className="w-full rounded-lg bg-green-600 p-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || !shiftId || cart.length === 0 || (metode === "Tunai" && bayarNum < total) || (metode === "Split" && (bayarNum <= 0 || bayarNum >= total || !bank)) || (metode === "Transfer" && !bank) || (metode === "Bon" && customer === "Umum")} onClick={() => void pay()}>
+          <div className="sticky bottom-0 z-10 -mx-4 -mb-4 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-4 backdrop-blur">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-600">Total Bayar</span>
+              <span className="num text-xl font-extrabold text-red-600">{rupiah(total)}</span>
+            </div>
+            <button className="w-full rounded-xl bg-green-600 p-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || !shiftId || cart.length === 0 || (metode === "Tunai" && bayarNum < total) || (metode === "Split" && (bayarNum <= 0 || bayarNum >= total || !bank)) || (metode === "Transfer" && !bank) || (metode === "Bon" && customer === "Umum")} onClick={() => void pay()}>
             {busy ? "Menyimpan..." : metode === "Bon" ? "Simpan Bon (Hutang)" : "Proses Bayar & Simpan"}
           </button>
+          </div>
         </div>
       </Panel>
+      {cartOpen ? <div className="fixed inset-0 z-30 bg-slate-900/50 lg:hidden" onClick={() => setCartOpen(false)} /> : null}
+      {!cartOpen && cart.length > 0 ? (
+        <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 backdrop-blur lg:hidden">
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 py-1.5 pr-1.5 pl-4 text-white">
+            <span className="text-sm font-semibold">{cart.reduce((sum, line) => sum + line.qty, 0)} item · {rupiah(total)}</span>
+            <button type="button" onClick={() => setCartOpen(true)} className="bg-white px-6 text-sm font-extrabold text-slate-900">Bayar</button>
+          </div>
+        </div>
+      ) : null}
       {customOpen ? (
         <CustomItem
           onClose={() => setCustomOpen(false)}
